@@ -1,3 +1,6 @@
+# ---- Notas locais (nao publicar) ----
+CLAUDE.md
+
 # ---- Segredos ----
 .env
 .env.local
