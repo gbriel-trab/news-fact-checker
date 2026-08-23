@@ -1,0 +1,51 @@
+# ---- Segredos ----
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+
+# ---- Ambiente virtual ----
+venv/
+.venv/
+env/
+ENV/
+
+# ---- Ferramentas / cache ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# ---- Artefatos do projeto ----
+# Notícias coletadas em bruto: volumoso e regenerável
+data/raw/
+# Índice vetorial persistido localmente
+.chroma/
+chroma_db/
+*.faiss
+# Modelos treinados do classificador
+models/*.pkl
+models/*.joblib
+# Logs
+*.log
+logs/
+
+# ---- IDE ----
+.vscode/
+.idea/
+*.swp
+
+# ---- Windows / OS ----
+Thumbs.db
+Desktop.ini
+.DS_Store
