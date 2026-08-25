@@ -1,157 +1,275 @@
 # Arquitetura
 
-Documento de decisões técnicas do projeto: o que foi escolhido, por quê, e o
-que ainda está em aberto.
+Documento de decisões técnicas: o que foi escolhido, por quê, o que ainda está
+em aberto, e o que o sistema deliberadamente **não** faz.
 
 ## O problema
 
-Verificar automaticamente se uma afirmação que circula na internet é sustentada
-por fontes independentes — e, quando não for, dizer isso explicitamente em vez
-de inventar uma resposta.
+Verificar se uma afirmação que circula é sustentada por fontes independentes —
+e, quando não for, dizer isso explicitamente em vez de inventar uma resposta.
 
-A abordagem ingênua seria perguntar a um LLM "isso é verdade?". Não funciona:
-o modelo responde com confiança tanto quando sabe quanto quando não sabe, e a
-resposta não carrega fonte alguma. O projeto existe para resolver exatamente
-esse ponto.
+A abordagem ingênua seria perguntar a um LLM "isso é verdade?". Não funciona: o
+modelo responde com a mesma confiança quando sabe e quando não sabe, e a
+resposta não carrega fonte alguma. O projeto existe para resolver esse ponto.
 
-## Duas metades, com gatilhos diferentes
+## O que o sistema é, e o que não é
 
-O sistema não é um pipeline só. São dois, que rodam em momentos distintos e por
-motivos distintos. Confundi-los é o erro de leitura mais fácil de cometer aqui.
+Duas delimitações que governam o resto do documento.
+
+**O acervo é catalogado, não verificado.** O banco guarda o que cada veículo
+**afirmou**, não o que é verdade. Se uma fonte publicar algo errado, entra
+igual, registrada como "este veículo afirmou X". Nada ali passa por checagem de
+veracidade.
+
+Por isso todo veredito é relativo às fontes: `confirmado` significa *"as fontes
+que tenho sustentam isso"*, jamais *"isso é verdade"*. A saída mostra
+"confirmado por 3 veículos" com os links, nunca um carimbo de verdade solto. Um
+sistema que afirmasse verdade seria o oráculo que este projeto recusa.
+
+**O sistema não gera as próprias perguntas.** Ele é um motor de verificação: a
+afirmação a ser checada é entrada dele, não parte dele. Monitorar redes sociais
+em busca de boatos é um produto separado, e é a parte que exige API paga. Dizer
+que o sistema "detecta desinformação sozinho" seria falso.
+
+## Duas metades, dois gatilhos
+
+O sistema não é um pipeline só. São dois, com gatilhos diferentes.
 
 ```
-┌── INGESTÃO ─────────────────── gatilho: relógio ──────────────────┐
+┌── INGESTÃO ─────────────────── gatilho: relógio, a cada 15 min ───┐
 │                                                                   │
 │   Coleta RSS → Segmentação → Classificação → Extração de triplas  │
-│                                                     ↓             │
-│                                    índice vetorial + grafo        │
+│                                                    ↓              │
+│                                   índice vetorial + grafo         │
 └───────────────────────────────────────────────────────────────────┘
-                                                     │
-                                                     │ consulta
-                                                     ↓
-┌── AGENTE (LangGraph) ───────── gatilho: pergunta ─────────────────┐
+                                                    │
+                                                    │ consulta
+                                                    ↓
+┌── CONSULTA ─────────────────── gatilho: uma afirmação de fora ────┐
 │                                                                   │
-│   afirmação → busca evidência → suficiente? ──não──┐              │
-│                     ↑                  │           │              │
-│                     └──────────────────┼───────────┘              │
-│                                        │ sim                      │
-│                                        ↓                          │
-│                       confirmado / contradito / sem evidência     │
-│                                   + fontes                        │
+│   afirmação → vira tripla → busca no acervo → julga → veredito    │
+│                                   ↑              │                │
+│                                   └── insuficiente? ──┘           │
+│                                      (ver "O ciclo")              │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-**Ingestão** roda sozinha, em intervalo fixo, sem ninguém pedir. Ela prepara o
-acervo. É trabalho caro e estável: cada matéria é processada uma única vez, e o
-resultado vira índice.
+A **ingestão** roda sozinha, em intervalo fixo. Prepara o acervo. É trabalho
+caro e estável: cada matéria é processada uma vez, e o resultado vira índice.
 
-**O agente** roda quando alguém faz uma pergunta. Ele não coleta nada e não
-extrai nada — apenas consulta o que a ingestão já preparou, decide se a
-evidência basta, e produz o veredito.
+A **consulta** roda quando chega uma afirmação. Não coleta nem extrai matéria —
+apenas consulta o que a ingestão preparou.
 
-A regra que separa as duas, e que vale para qualquer sistema RAG: **o que é
-caro e não depende da pergunta vai para a ingestão; o que depende da pergunta
-fica no agente.** Extrair triplas na hora da consulta significaria reprocessar
-o acervo inteiro a cada pergunta.
+A regra que separa as duas, e vale para qualquer sistema RAG: **o que é caro e
+não depende da pergunta vai para a ingestão; o que depende da pergunta fica na
+consulta.** Extrair triplas na hora da consulta significaria reprocessar o
+acervo inteiro a cada pergunta.
 
-### Por que LangGraph, e só na metade de baixo
+## De onde vem a afirmação
 
-O **ciclo** é o motivo da escolha do framework. Se a evidência recuperada for
-insuficiente, o grafo não desiste nem alucina: volta ao nó de busca e tenta
-outra query, até um limite de tentativas. Orquestradores lineares e frameworks
-baseados em conversa entre agentes não expressam isso de forma natural — um
-grafo de estado com aresta condicional expressa.
+Esta é a decisão que define se o sistema verifica ou apenas agrega.
 
-A ingestão não precisa disso: é uma sequência fixa, sem decisão em tempo de
-execução. Ela é um script agendado, não um agente.
+**A afirmação e o acervo precisam ser populações diferentes.** Checar imprensa
+contra imprensa é redundante: o resultado seria "três veículos disseram o
+mesmo". O valor aparece quando a afirmação vem de fora da imprensa — um boato,
+uma mensagem encaminhada, um post — e o acervo serve de corpo de evidência.
+
+| Origem | População distinta? | Autônoma? | Papel no projeto |
+|-|-|-|-|
+| Afirmação digitada na CLI | Sim | Não | Demonstração e uso real |
+| RSS de agências de checagem | Sim — são boatos de rede social | Sim, mas já vêm com o veredito | **Gabarito de avaliação** |
+| Rede social direto | Sim | Sim | Fora do orçamento (X cobra por post lido) |
+
+A entrada é uma CLI:
+
+```
+python -m src.check "o governo cancelou o programa X"
+```
+
+WhatsApp foi descartado. Ele havia sido pensado como *saída* — o sistema
+empurrando vereditos —, o que reforçava o problema: o sistema escolhendo sozinho
+o que verificar, e verificando o que já estava confirmado. Como *entrada* ele
+também não se justifica, porque exigiria integração para um caso de uso que a
+CLI cobre.
+
+O RSS das agências não é fonte de produto — elas já publicaram a resposta.
+É **gabarito**: roda-se o sistema sobre afirmações que Lupa, Aos Fatos ou
+Comprova já julgaram, sem mostrar o veredito delas, e compara-se. Ver
+"Como medir se funciona".
 
 ## Coleta contínua
 
-A fonte primária é **RSS de veículos de notícia**. Isso impõe uma restrição que
-molda o resto do sistema: **RSS não oferece busca**. Um feed devolve apenas os
-últimos N itens publicados, e não há como consultar o passado.
+A fonte é **RSS de veículos de notícia**, e isso impõe uma restrição que molda
+o resto: **RSS não oferece busca**. Um feed devolve os últimos N itens, e não há
+como consultar o passado.
 
-A consequência é que o acervo local **é** o índice de busca que o RSS não tem.
-O que não for coletado enquanto esteve no feed é irrecuperável — não existe
-backfill.
+O acervo local **é** o índice de busca que o RSS não tem. O que não for coletado
+enquanto esteve no feed é irrecuperável — não existe backfill.
 
-Por isso a coleta não é acumulação de notícia velha por nostalgia. Ela existe
-por **cobertura**:
+A coleta existe por **cobertura**, não por nostalgia:
 
 * **Corroboração cruzada.** Veículos publicam o mesmo fato em horários
-  diferentes. Coleta intermitente captura uma fonte só, e uma fonte sozinha não
-  confirma nada. Só a coleta contínua permite comparar relatos independentes.
-* **Casos que exigem passado.** Afirmação recirculada (fato verdadeiro e antigo
-  apresentado como atual), retratação posterior, e fato que mudou legitimamente
-  ao longo do tempo. Nenhum é detectável sem acervo.
+  diferentes. Coleta intermitente captura uma fonte só, e uma fonte não confirma
+  nada.
+* **Casos que exigem passado.** Afirmação recirculada, retratação posterior,
+  fato que mudou legitimamente.
 
-Consequência prática na ordem de construção: **o coletor é o primeiro
-componente a entrar em operação**, mesmo rudimentar. Todo o resto do sistema é
-recuperável — extração se refaz, classificador se retreina, grafo se
-reconstrói. O acervo não.
+Consequência na ordem de construção: **o coletor é o primeiro componente a
+entrar em operação.** Todo o resto é recuperável — extração se refaz,
+classificador se retreina, grafo se reconstrói. O acervo não.
+
+### Intervalo de coleta
+
+Medido, não estimado. Cada feed guarda um número fixo de itens; a janela de
+tempo é consequência do ritmo de publicação:
+
+| Feed | Itens | Janela coberta |
+|-|-|-|
+| Poder360 | 10 | **24 minutos** |
+| InfoMoney | 10 | 1 hora |
+| CNN Brasil | 60 | 2,2 horas |
+| G1 Política | 100 | 3,2 dias |
+| Folha Mundo | 100 | 8,2 dias |
+
+O intervalo é ditado pelo feed mais rápido, não pela média: **15 minutos**,
+com margem sobre os 24 do Poder360.
+
+O feed geral do G1 (janela de 97 minutos) foi descartado — ver "Fonte de dados".
+Feeds por editoria cobrem dias, o que torna a coleta **tolerante a falha**: uma
+noite com a máquina desligada não abre buraco. Isso importa porque a coleta é a
+única etapa sem backfill.
 
 ### Deduplicação
 
-Coletando um feed a cada 30 minutos, a grande maioria dos itens se repete. Sem
-deduplicação, a mesma matéria é armazenada e — muito pior — reprocessada por
-LLM dezenas de vezes por dia.
+Coletando a cada 15 minutos, a maioria dos itens se repete. Sem deduplicação, a
+mesma matéria é armazenada e — pior — reprocessada por LLM dezenas de vezes.
 
-A chave é a **URL normalizada** (sem parâmetros de rastreamento como `utm_*`),
-somada a um **hash do conteúdo**:
+A chave é a **URL normalizada** (sem parâmetros de rastreamento) somada a um
+**hash do conteúdo**:
 
 | Situação | Ação |
 |-|-|
 | URL nova | Armazena e processa |
 | URL conhecida, hash igual | Descarta |
-| URL conhecida, hash diferente | Matéria foi editada: reprocessa e versiona |
+| URL conhecida, hash diferente | Matéria editada: nova versão, preservando a anterior |
 
-O terceiro caso não é detalhe. Retratação e correção normalmente acontecem por
-edição da mesma página — deduplicar apenas por URL tornaria invisível um dos
-casos que o projeto mais quer capturar.
+O terceiro caso não é detalhe: retratação e correção acontecem por edição da
+mesma página. Deduplicar só por URL tornaria invisível um dos casos que o
+projeto mais quer capturar.
+
+## Fonte de dados
+
+**RSS de veículos de notícia é a fonte única.** X/Twitter foi descartado por
+custo; Bluesky exige autenticação para busca e Reddit exige OAuth — ambos fora
+do escopo, e não como etapa futura.
+
+Os feeds são **por editoria**, não gerais. O feed geral do G1 é dominado por
+conteúdo das afiliadas regionais — acidente municipal, evento local, grade de
+programação. Esse material é **estruturalmente inverificável**: só um veículo
+cobre, e afirmação de fonte única nunca pode ser corroborada.
+
+O efeito da troca, medido com a mesma metodologia:
+
+```
+feed geral,   5 veículos  →   4 histórias com 2+ veículos, de 213 matérias
+por editoria, 8 veículos  →  64 histórias com 2+ veículos, de 830 matérias
+```
+
+De ~2% para ~17% de matéria corroborável.
+
+### Veículo não é o mesmo que feed
+
+Duas editorias da mesma redação **não são fontes independentes**. Contá-las como
+duas inflaria toda medida de corroboração e produziria `confirmado` falso —
+violando o princípio de que falso positivo é o pior erro.
+
+A unidade de corroboração é o **veículo**. A editoria só organiza.
+
+### O que os feeds entregam
+
+Os veículos não usam os campos do RSS de forma consistente, e a causa é
+comercial: site com paywall publica só a chamada, porque o corpo é o produto que
+vende.
+
+| Veículo | Onde vem o texto | Tamanho médio |
+|-|-|-|
+| G1 | `summary` | ~4.000 caracteres |
+| CNN Brasil | `content` | ~3.300 |
+| InfoMoney | `content` | ~10.000 |
+| Agência Brasil | `summary` | ~3.200 |
+| Folha, BBC, UOL | manchete e linha fina | ~150 a 300 |
+
+Ler apenas `content` descartaria o corpo do G1 e da Agência Brasil, metade do
+volume. O texto usado é o mais longo entre os dois campos.
+
+Veículos que entregam só manchete não sustentam extração de triplas, mas
+permanecem no acervo como **sinal de cobertura** — saber que a Folha noticiou o
+mesmo fato conta para corroboração, mesmo sem o texto.
+
+O projeto usa apenas o que o feed entrega. Não há raspagem de site nem contorno
+de paywall.
 
 ## Camada de verificação
 
-O diferencial do projeto. Em vez de perguntar ao modelo se algo é verdade:
+Em vez de perguntar ao modelo se algo é verdade:
 
 1. A afirmação é extraída como tripla `(entidade, relação, entidade)`
 2. Buscam-se fontes independentes sobre essa tripla
 3. O resultado é classificado em **confirmado**, **contradito** ou
    **sem evidência**
-4. Toda saída carrega a fonte que a sustenta
+4. Toda saída carrega a fonte
 
-"Sem evidência" é uma resposta válida e esperada do sistema, não uma falha.
+"Sem evidência" é resposta válida e esperada, não falha.
 
 ### Vocabulário controlado de relações
 
-A relação da tripla vem de uma **lista fechada**, imposta como `enum` no
-structured output — restrição técnica na chamada, não pedido no prompt.
+A relação vem de uma **lista fechada**, imposta como `enum` no structured output
+— restrição técnica na chamada, não pedido no prompt.
 
-O motivo é concreto: com verbo livre, "comprou", "adquiriu" e "fechou_compra"
-viram três relações distintas, e três fontes que **confirmam o mesmo fato** não
-se encontram no grafo. O resultado não é um erro visível — é um "sem evidência"
-silencioso, que é o pior tipo de falha porque parece funcionamento normal.
+Com verbo livre, "comprou", "adquiriu" e "fechou_compra" viram três relações
+distintas, e três fontes que **confirmam o mesmo fato** não se encontram no
+grafo. O resultado não é erro visível: é um "sem evidência" silencioso, que é o
+pior tipo de falha porque parece funcionamento normal.
 
-Regras do vocabulário:
+* Sempre existe o valor **`outro`** como válvula de escape. Sem ele, o que não
+  couber desaparece sem rastro.
+* A lista é **derivada de dado real**: começar com 5–8 relações, rodar sobre
+  notícia de verdade, inspecionar o que caiu em `outro` e promover o frequente.
+  Alvo de convergência: 10–15.
+* Cada tripla grava a **versão do vocabulário**. Como a lista cresce, sem isso é
+  impossível distinguir "não cabia" de "essa relação ainda não existia".
 
-* Sempre existe um valor **`outro`** como válvula de escape. Sem ele, o que não
-  couber na lista desaparece sem deixar rastro.
-* A lista é **derivada de dado real**, não projetada no papel: começar com 5–8
-  relações, rodar sobre notícia de verdade, inspecionar o que caiu em `outro` e
-  promover o que for frequente. Alvo de convergência: 10–15 relações.
-* Cada tripla grava a **versão do vocabulário** vigente na extração. Como a
-  lista cresce com o tempo, sem isso é impossível distinguir "não cabia em
-  nenhuma relação" de "essa relação ainda não existia".
+### Canonicalização de entidade
+
+A extração devolve a **entidade canônica**, não a forma de superfície que
+apareceu no texto. Esta não é uma sutileza de prompt: é saída de primeira classe
+do schema.
+
+O motivo é o mesmo do enum, aplicado ao outro lado da tripla. Se o G1 extrai
+`Ministério da Saúde` e a Folha extrai `governo federal` sobre o mesmo ato, o
+grafo guarda duas entidades distintas, a comparação não acontece, e a
+contradição real passa batida.
+
+**O modo de falha é silencioso e enganoso.** Fragmentação de entidade produz
+exatamente o mesmo sintoma que ausência de contradição — grafo sem conflitos
+detectados. Concluir "contradição entre veículos é rara" quando a causa real é
+normalização quebrada mataria a metade autônoma do projeto por um bug.
+
+Dois problemas distintos, com dificuldades distintas:
+
+| Caso | Exemplo | Situação |
+|-|-|-|
+| **Apelido** | `Lula` = `Luiz Inácio Lula da Silva` = `o presidente` | Resolvido na extração |
+| **Hierarquia** | `Ministério da Saúde` ⊂ `governo federal` | **Em aberto** — não é normalização, é inferência |
+
+O segundo caso fica assumido como limitação. Uma afirmação atribuída ao
+"governo" pode não encontrar a matéria que atribui o ato a um ministério
+específico.
 
 ### Evento e estado são relações diferentes
 
-`comprou` é um evento datado. `possui` é um estado atual. Fundir os dois produz
-falso positivo: "comprou em 2019" e "não possui mais em 2026" são ambas
-verdadeiras, e um sistema que as unifica acusa contradição onde não há.
-
-Num verificador de fatos, **falso positivo é o pior erro possível** — acusar
-contradição inexistente destrói a confiança no sistema inteiro.
-
-A distinção também governa a detecção de conflito, descrita adiante:
+`comprou` é evento datado. `possui` é estado atual. Fundir os dois produz falso
+positivo: "comprou em 2019" e "não possui mais em 2026" são ambas verdadeiras.
 
 | Tipo | Semântica | Permanece verdadeiro? |
 |-|-|-|
@@ -161,40 +279,35 @@ A distinção também governa a detecção de conflito, descrita adiante:
 ### Questão em aberto: atribuição
 
 O padrão mais comum em jornalismo é `Fulano afirmou que Z`, onde `Z` é ela
-própria uma afirmação. A tripla plana modela isso como
-`(Fulano, afirmou, "Z")`, transformando um conteúdo verificável em string
-opaca.
+própria uma afirmação. A tripla plana modela isso como `(Fulano, afirmou, "Z")`,
+transformando conteúdo verificável em string opaca.
 
-São duas perguntas verificáveis distintas — *Fulano disse isso?* e *isso é
-verdade?* — e o modelo atual só alcança a primeira. Alternativas conhecidas
-envolvem reificação, com a tripla interna virando um nó. Ainda não decidido;
-será avaliado sobre dados reais.
+São duas perguntas distintas — *Fulano disse isso?* e *isso é verdade?* — e o
+modelo atual só alcança a primeira. Alternativas envolvem reificação, com a
+tripla interna virando um nó. Será avaliado sobre dados reais.
 
 ## Modelo da aresta
 
-Cada relação armazenada carrega, além dos dois nós:
-
 | Campo | Função |
 |-|-|
-| `fonte` | Veículo e URL de origem |
+| `veiculo` | Redação de origem — a unidade de corroboração |
+| `url` | Matéria específica |
 | `data_publicacao` | Quando a fonte publicou |
 | `data_fato` | Quando o fato ocorreu, segundo o texto |
-| `tipo` | `EXTRACTED` (explícito na fonte) ou `INFERRED` (deduzido pelo modelo) |
-| `vocab_versao` | Versão do vocabulário de relações usada |
+| `tipo` | `EXTRACTED` (explícito na fonte) ou `INFERRED` (deduzido) |
+| `vocab_versao` | Versão do vocabulário de relações |
 
-**As duas datas não são redundantes.** Elas divergem justamente no caso de
-desinformação mais comum: matéria publicada hoje sobre fato de anos atrás,
-apresentada como atual. Uma aresta que guarde apenas a data de publicação
-registra esse fato com a data errada e torna o caso indetectável.
+**As duas datas não são redundantes.** Elas divergem no caso de desinformação
+mais comum: matéria publicada hoje sobre fato de anos atrás, apresentada como
+atual. Uma aresta com apenas a data de publicação registra o fato com a data
+errada e torna o caso indetectável.
 
-`EXTRACTED` e `INFERRED` nunca são exibidos com o mesmo peso. O que a fonte diz
-e o que o modelo deduziu são coisas diferentes.
+`EXTRACTED` e `INFERRED` nunca são exibidos com o mesmo peso.
 
 ## Detecção de contradição
 
-Duas triplas com as mesmas entidades e relações incompatíveis são candidatas a
-contradição — mas só isso produz falso positivo em massa, porque fato evolui
-legitimamente:
+Duas triplas com as mesmas entidades e relações incompatíveis são candidatas —
+mas só isso produz falso positivo em massa, porque fato evolui:
 
 ```
 (X, possui, Y)      2019
@@ -203,160 +316,212 @@ legitimamente:
 
 A regra depende do tipo da relação:
 
-* **Estado** — compara-se pela janela temporal. Triplas conflitantes próximas
-  no tempo (dias) são contradição suspeita; separadas por meses ou anos são
-  evolução do fato.
-* **Evento** — a janela **não se aplica**. Duas fontes que discordam sobre o
-  que ocorreu em 2019 se contradizem, tenham sido publicadas com três dias ou
-  três anos de diferença. A comparação usa a `data_fato`, nunca a
-  `data_publicacao`.
+* **Estado** — compara-se pela janela temporal. Triplas conflitantes próximas no
+  tempo (dias) são contradição suspeita; separadas por meses ou anos são
+  evolução.
+* **Evento** — a janela **não se aplica**. Duas fontes que discordam sobre o que
+  ocorreu em 2019 se contradizem, tenham publicado com três dias ou três anos de
+  diferença. A comparação usa a `data_fato`, nunca a `data_publicacao`.
 
-Aplicar a janela uniformemente aos dois tipos produziria falso negativo em
-evento — o segundo pior erro do sistema, atrás apenas do falso positivo.
+Aplicar a janela uniformemente produziria falso negativo em evento — o segundo
+pior erro, atrás apenas do falso positivo.
+
+Esta varredura é **código sobre dado normalizado**: espaço fechado e enumerável,
+agrupado por entidade canônica. Não há estratégia de busca a adaptar, e portanto
+nada aqui justifica um agente.
 
 ## Dois índices, não um
 
 | Índice | Função |
 |-|-|
-| **Vetorial** (embeddings) | Recuperar notícias semanticamente relacionadas à afirmação |
+| **Vetorial** (embeddings) | Recuperar matérias semanticamente relacionadas à afirmação |
 | **Grafo** | Detectar quando duas fontes afirmam relações incompatíveis sobre as mesmas entidades |
 
 Busca vetorial sozinha não enxerga contradição: dois textos que se contradizem
 são semanticamente *parecidos* e ficam próximos no espaço de embeddings. É
 preciso comparar as relações afirmadas, não a similaridade dos textos.
 
-Contradição entre fontes independentes é sinal forte de fato duvidoso — e é
-justamente o caso que mais interessa detectar.
+## Filtro de custo
 
-## Filtro de custo: classificador factual vs opinião
+Armazenar texto é barato; chamar LLM não é. Tudo o que for coletado é guardado;
+só uma fração segue para extração. Dois filtros, em ordem de impacto.
 
-Classificador clássico (**scikit-learn**) separando **afirmação factual
-verificável** de **opinião**, para que apenas a primeira consuma chamada de
-LLM.
+### Cobertura múltipla
 
-A justificativa é econômica: armazenar texto é barato, chamar LLM não é. Tudo o
-que for coletado é guardado; só o que o classificador marcar como factual segue
-para extração.
+**O filtro principal.** Antes de qualquer chamada de LLM, as matérias do dia são
+agrupadas por similaridade de embedding — local, custo zero — e só os grupos com
+**dois ou mais veículos distintos** seguem para extração.
 
-**A unidade de classificação é a sentença, não a matéria.** Notícia mistura
-relato factual e opinião citada no mesmo texto. A segmentação em sentenças
-ocorre antes, e tem custo desprezível.
+A justificativa não é só econômica: matéria de fonte única **não pode ser
+corroborada por definição**. Extraí-la produz triplas que o sistema nunca
+conseguirá confirmar. Matéria solitária permanece no acervo; se outro veículo
+cobrir o assunto depois, ela entra no grupo e aí vale extrair.
+
+### Classificador factual vs opinião
+
+Classificador clássico (**scikit-learn**) separando afirmação factual
+verificável de opinião, no nível da **sentença** — notícia mistura relato
+factual e opinião citada no mesmo texto.
+
+**A justificativa original mudou.** Quando a fonte prevista eram redes sociais,
+o argumento era que conteúdo social é majoritariamente opinião. Com RSS de
+veículos, isso não vale: jornalismo já é majoritariamente factual, e o ruído do
+RSS não é opinião — é **irrelevância**. O classificador continua útil porque
+notícia tem editorial, coluna, análise e opinião citada, mas deixou de ser o
+filtro principal.
 
 **Ordem de construção.** O classificador depende de dataset rotulado à mão, que
-por sua vez depende de dados já coletados. Ele não pode ser a primeira peça:
+depende de dados já coletados. Ele não pode ser a primeira peça:
 
 ```
-coletar → extrair sem filtro → rotular à mão o coletado
-        → treinar → inserir o filtro no pipeline
+coletar → extrair sem filtro → rotular à mão → treinar → inserir o filtro
 ```
 
 É otimização introduzida depois de o pipeline funcionar, não componente do dia
-um.
+um. O gargalo dele não é volume de dados — é hora de rotulagem.
+
+## LLM não é agente
+
+Distinção que governa a decisão sobre o LangGraph.
+
+* **Chamada de LLM** — uma requisição, uma resposta. Sem ciclo, sem decisão.
+* **Agente** — um ciclo que decide, em tempo de execução, qual o próximo passo
+  com base no que aconteceu.
+
+Onde cada coisa entra:
+
+| Etapa | Precisa LLM? | Precisa agente? |
+|-|-|-|
+| Extração de triplas + entidade canônica | Sim | Não |
+| Varredura de contradição no grafo | Não | Não |
+| Afirmação de terceiro → tripla | Sim | Não |
+| Busca no acervo | Não | Não |
+| Julgar se sustenta ou contradiz | Sim | Não |
+| **Repetir a busca quando a primeira falha** | — | **Talvez** |
+
+Três chamadas de LLM. **Zero agentes obrigatórios.** O sistema inteiro é
+executável como pipeline linear.
+
+### O ciclo
+
+O ciclo tem exatamente um lugar candidato: refazer a busca quando a primeira não
+resolve. E ele **não é neutro** — um sistema que insiste até achar algo está
+estruturalmente inclinado a achar algo, o que o torna uma máquina de falso
+positivo.
+
+Se entrar, com duas travas obrigatórias:
+
+* **Limite duro de tentativas**, e esgotá-lo leva a `sem evidência` — nunca a
+  "aceita o que achou"
+* **A régua de evidência não afrouxa entre tentativas.** Muda *onde* procura,
+  nunca *o quanto aceita*
+
+E entra apenas se ganhar uma comparação medida:
+
+| | Cascata fixa | Adaptativo |
+|-|-|-|
+| Quem decide o próximo passo | o código, em ordem escrita antes | o modelo, diagnosticando a falha |
+| Achou evidência quando existia? | medir | medir |
+| **Emitiu veredito quando não devia?** | medir | medir |
+| Chamadas de LLM por afirmação | medir | medir |
+
+A segunda linha é obrigatória. O adaptativo tende a ganhar em encontrar — ele
+insiste mais. Se ganhar em recall e piorar em precisão, não é melhor.
+
+O resultado depende do modelo: um modelo fraco diagnosticando mal perde para uma
+cascata bem escrita. A pergunta não é "agente é melhor?", é "agente com qual
+modelo, e a diferença paga o custo?".
+
+Se a cascata fixa vencer, ela fica — e a decisão vai documentada.
 
 ## Stack
 
 | Camada | Escolha | Motivo |
 |-|-|-|
-| Orquestração | **LangGraph** | Ciclo com aresta condicional |
+| Orquestração | **LangGraph**, condicionado à medição acima | Ciclo com aresta condicional |
 | Vector DB | **ChromaDB** | Local, sem servidor, persiste em disco |
-| Embeddings | **sentence-transformers**, modelo multilíngue | Notícia em português; roda local, custo zero por documento |
+| Embeddings | **sentence-transformers**, multilíngue | Notícia em português; local, custo zero |
 | Grafo | **NetworkX** | Em processo, sem infraestrutura |
 | Classificador | **scikit-learn** | Filtro barato antes da chamada cara |
 
-Embeddings rodam localmente de propósito: o orçamento de chamada paga fica
-reservado para extração e verificação, que são as etapas onde o LLM é
-insubstituível.
+Embeddings rodam localmente de propósito: o orçamento de chamada paga fica para
+extração e verificação, onde o LLM é insubstituível.
 
 **NetworkX antes de Neo4j.** A detecção de contradição é lógica, não
-infraestrutura, e migrar depois é mecânico. Neo4j acrescenta servidor e
+infraestrutura, e migrar depois é mecânico. Neo4j acrescentaria servidor e
 container a um projeto onde Docker já está na fila de corte.
 
 ### Armadilha do embedding
 
 Indexação e consulta **têm** que usar o mesmo modelo. Modelos diferentes
 produzem sistemas de coordenadas diferentes: a busca não falha nem avisa, só
-devolve resultado sem sentido. Trocar de modelo obriga a reindexar tudo.
+devolve resultado sem sentido.
 
-Defesa: o nome e a versão do modelo ficam gravados nos metadados do índice e
-são conferidos na consulta. Isso converte uma falha silenciosa em erro
-explícito — troca sempre vantajosa.
+Defesa: nome e versão do modelo gravados nos metadados do índice e conferidos na
+consulta. Converte falha silenciosa em erro explícito.
 
-### Ordem de grandeza do armazenamento
+### Custo
 
-Estimativa, não medição: cerca de 7 KB por notícia entre texto, embedding e
-triplas. A 500 notícias por dia, algo como 3,5 MB/dia. Disco não é o gargalo.
+O único item pago do projeto é a API de LLM. RSS, SQLite, embeddings locais,
+NetworkX, scikit-learn e GitHub custam zero.
 
-O gargalo é **volume de chamada de LLM**, que cresce linearmente com a coleta —
-daí o classificador existir como filtro, e não como enfeite acadêmico.
+Três reduções, todas previstas na arquitetura: processamento em lote (metade do
+preço, e extração não tem pressa), cache do prefixo do prompt (o trecho de
+instruções e few-shot é idêntico em toda chamada), e os dois filtros acima.
+
+A saída é a parte cara e **só encolhe sendo projetada**: relação vinda do enum,
+sem devolver o trecho original da matéria — que já está no banco —, teto de
+triplas por matéria.
 
 ## Princípios de projeto
 
-Estas são as decisões que definem o que o projeto é. Funcionalidade nova que
-contrarie qualquer uma delas está errada, ou exige revisar o princípio de forma
-explícita — nunca por acidente.
+Funcionalidade nova que contrarie qualquer um destes está errada, ou exige
+revisar o princípio de forma explícita — nunca por acidente.
 
 1. **Nunca perguntar ao modelo se algo é verdade.** Todo veredito nasce de
-   evidência externa recuperada, não do conhecimento interno do LLM.
+   evidência externa recuperada.
 
 2. **Todo veredito carrega a fonte.** Afirmação sem fonte rastreável não é
-   apresentada como verificada, em nenhuma circunstância.
+   apresentada como verificada.
 
-3. **"Sem evidência" é uma resposta válida.** O sistema tem o direito de não
-   saber. Preencher a lacuna com plausibilidade é o fracasso que o projeto
-   existe para evitar.
+3. **"Sem evidência" é resposta válida.** O sistema tem o direito de não saber.
+   Preencher a lacuna com plausibilidade é o fracasso que o projeto existe para
+   evitar.
 
-4. **`EXTRACTED` e `INFERRED` nunca têm o mesmo peso.** O que a fonte diz e o
-   que o modelo deduziu são exibidos como coisas distintas.
+4. **`EXTRACTED` e `INFERRED` nunca têm o mesmo peso.**
 
 5. **Falso positivo é o pior erro.** Na dúvida entre acusar contradição
    inexistente e deixar passar, o sistema deixa passar.
 
-6. **Filtro barato antes de chamada cara.** Classificador clássico e heurística
-   rodam antes do LLM, nunca depois.
+6. **Filtro barato antes de chamada cara.**
 
-7. **O ciclo do grafo serve para tentar outra query, não para insistir até
-   inventar.** Há limite de tentativas, e esgotá-lo leva ao princípio 3.
+7. **O ciclo serve para tentar outra query, não para insistir até inventar.**
 
 8. **Nenhuma credencial no código.**
 
 Teste prático para funcionalidade nova: *ela consegue citar a fonte do que
-afirma?* Se não conseguir, não entra no caminho de verificação — no máximo em
-uma camada de apresentação claramente separada.
+afirma?* Se não conseguir, não entra no caminho de verificação.
 
-## Fonte de dados
+## Como medir se funciona
 
-**RSS de veículos de notícia é a fonte única do projeto.**
+Sem estas medições, o projeto é uma promessa. Ambas dependem apenas da extração
+e do acervo já coletado.
 
-X/Twitter foi descartado por custo de API. Bluesky exige autenticação para
-busca (retorna 403 sem credencial) e Reddit exige OAuth; ambos foram
-descartados para manter o escopo fechado, e não como etapa futura.
+**1. Rendimento da metade autônoma.** Extrair triplas de ~50 histórias já
+cobertas por dois ou mais veículos e contar em quantas há divergência real
+entre eles.
 
-O ponto fraco assumido: RSS de veículos grandes significa checar fonte
-confiável contra fonte confiável, o que enfraquece o caso "afirmação duvidosa
-circulando em rede social". O que permanece forte é **contradição entre
-veículos** — números, atribuições e cronologias divergentes sobre o mesmo
-evento — que é exatamente o que o índice em grafo foi desenhado para detectar.
+Antes de concluir qualquer coisa, verificar à mão se as entidades ficaram
+unificadas — resultado perto de zero pode significar "contradição é rara" ou
+"minhas entidades fragmentaram", e as duas conclusões levam a decisões opostas.
+Se o rendimento for real, o projeto tem uma metade que roda sem ninguém
+perguntar. Se for perto de zero, o grafo não se justifica e sai.
 
-### O que os feeds realmente entregam
+**2. Acurácia contra checador profissional.** Rodar ~50 afirmações já julgadas
+por Lupa, Aos Fatos ou Comprova, sem mostrar o veredito delas, e comparar.
 
-Medido na primeira coleta real, e não presumido. Os veículos não usam os campos
-do RSS de forma consistente:
-
-| Veículo | Itens por chamada | Onde vem o texto | Tamanho médio |
-|-|-|-|-|
-| G1 | 100 | `summary` | ~3.400 caracteres |
-| CNN Brasil | 60 | `content` | ~3.300 caracteres |
-| BBC Brasil | 42 | só manchete e linha fina | ~230 caracteres |
-| Agência Brasil | 10 | `summary` | ~3.200 caracteres |
-| InfoMoney | 10 | `content` | ~10.000 caracteres |
-
-Consequência de projeto: ler apenas `content` descartaria o corpo do G1 e da
-Agência Brasil, que juntos são metade do volume. O texto usado para extração é
-o mais longo entre os dois campos.
-
-A BBC entrega texto curto demais para extração de triplas. Fica no acervo
-porque manchete ainda serve como sinal de cobertura — vários veículos noticiando
-o mesmo fato —, mas não como base de afirmação verificável.
+Concordância com checador profissional é o único número que separa este projeto
+de um agregador — e nenhum agregador consegue produzi-lo.
 
 ## Convenções do repositório
 
