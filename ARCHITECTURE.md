@@ -291,18 +291,11 @@ uma camada de apresentação claramente separada.
 
 ## Fonte de dados
 
-**Decidido: RSS de veículos de notícia como fonte primária.**
+**RSS de veículos de notícia é a fonte única do projeto.**
 
-Verificado em teste: três feeds responderam sem credencial alguma, em menos de
-200 ms, e um deles devolve o corpo da matéria além do título — texto suficiente
-para extração de triplas.
-
-| Fonte | Custo | Situação |
-|-|-|-|
-| RSS de veículos | Grátis, sem credencial | **Escolhida.** Texto limpo e estruturado |
-| Bluesky | Grátis, exige app password | Secundária, futura. Busca sem autenticação retorna 403 |
-| Reddit | Grátis, exige OAuth | Não avaliada |
-| X / Twitter | Pago | Descartada |
+X/Twitter foi descartado por custo de API. Bluesky exige autenticação para
+busca (retorna 403 sem credencial) e Reddit exige OAuth; ambos foram
+descartados para manter o escopo fechado, e não como etapa futura.
 
 O ponto fraco assumido: RSS de veículos grandes significa checar fonte
 confiável contra fonte confiável, o que enfraquece o caso "afirmação duvidosa
@@ -310,8 +303,26 @@ circulando em rede social". O que permanece forte é **contradição entre
 veículos** — números, atribuições e cronologias divergentes sobre o mesmo
 evento — que é exatamente o que o índice em grafo foi desenhado para detectar.
 
-Bluesky entra depois como fonte secundária para recuperar o caso social, sem
-bloquear nada.
+### O que os feeds realmente entregam
+
+Medido na primeira coleta real, e não presumido. Os veículos não usam os campos
+do RSS de forma consistente:
+
+| Veículo | Itens por chamada | Onde vem o texto | Tamanho médio |
+|-|-|-|-|
+| G1 | 100 | `summary` | ~3.400 caracteres |
+| CNN Brasil | 60 | `content` | ~3.300 caracteres |
+| BBC Brasil | 42 | só manchete e linha fina | ~230 caracteres |
+| Agência Brasil | 10 | `summary` | ~3.200 caracteres |
+| InfoMoney | 10 | `content` | ~10.000 caracteres |
+
+Consequência de projeto: ler apenas `content` descartaria o corpo do G1 e da
+Agência Brasil, que juntos são metade do volume. O texto usado para extração é
+o mais longo entre os dois campos.
+
+A BBC entrega texto curto demais para extração de triplas. Fica no acervo
+porque manchete ainda serve como sinal de cobertura — vários veículos noticiando
+o mesmo fato —, mas não como base de afirmação verificável.
 
 ## Convenções do repositório
 

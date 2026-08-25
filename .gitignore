@@ -32,6 +32,11 @@ htmlcov/
 # ---- Artefatos do projeto ----
 # Notícias coletadas em bruto: volumoso e regenerável
 data/raw/
+# Acervo SQLite: binário e cresce sem parar. NAO e regeneravel --
+# precisa de backup fora do Git.
+data/*.db
+data/*.db-journal
+data/*.db-wal
 # Índice vetorial persistido localmente
 .chroma/
 chroma_db/
