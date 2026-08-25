@@ -1,21 +1,62 @@
 """Configuração da coleta: feeds, caminhos e parâmetros de rede."""
 
+from dataclasses import dataclass
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 DIR_DADOS = RAIZ / "data"
 BANCO = DIR_DADOS / "noticias.db"
 
-# Feeds RSS acompanhados. A chave é o nome do veículo, gravado em cada artigo.
-# Feed que passar a falhar de forma persistente deve sair daqui, não ser
-# silenciado: coleta que falha calada vira buraco invisível no acervo.
-FEEDS: dict[str, str] = {
-    "G1": "https://g1.globo.com/rss/g1/",
-    "Agência Brasil": "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml",
-    "BBC Brasil": "https://feeds.bbci.co.uk/portuguese/rss.xml",
-    "CNN Brasil": "https://www.cnnbrasil.com.br/feed/",
-    "InfoMoney": "https://www.infomoney.com.br/feed/",
-}
+
+@dataclass(frozen=True, slots=True)
+class Feed:
+    """Um feed RSS acompanhado.
+
+    `veiculo` e `editoria` são campos separados de propósito. Duas editorias do
+    mesmo veículo NÃO são fontes independentes: se a mesma matéria aparece em
+    "G1 Política" e "G1 Economia", isso é uma redação publicando uma vez, não
+    dois jornais concordando. Tratá-las como fontes distintas inflaria toda
+    contagem de corroboração e produziria "confirmado" falso — exatamente o
+    erro que o projeto considera o pior.
+
+    A unidade de corroboração é o `veiculo`. A `editoria` só organiza.
+    """
+
+    veiculo: str
+    editoria: str
+    url: str
+
+
+# Feeds acompanhados, medidos antes de entrar aqui.
+#
+# A separação abaixo importa para a etapa de extração: feed que só publica
+# manchete não sustenta extração de triplas, mas continua valendo como sinal
+# de que o veículo cobriu o assunto — que é o que a corroboração precisa.
+FEEDS: tuple[Feed, ...] = (
+    # --- Texto completo (~2.000 a 10.000 caracteres): servem para extração ---
+    Feed("G1", "Política", "https://g1.globo.com/rss/g1/politica/"),
+    Feed("G1", "Economia", "https://g1.globo.com/rss/g1/economia/"),
+    Feed("G1", "Mundo", "https://g1.globo.com/rss/g1/mundo/"),
+    Feed("G1", "Ciência e Saúde", "https://g1.globo.com/rss/g1/ciencia-e-saude/"),
+    Feed("CNN Brasil", "Geral", "https://www.cnnbrasil.com.br/feed/"),
+    Feed("Agência Brasil", "Política", "https://agenciabrasil.ebc.com.br/rss/politica/feed.xml"),
+    Feed("Agência Brasil", "Economia", "https://agenciabrasil.ebc.com.br/rss/economia/feed.xml"),
+    Feed("Poder360", "Geral", "https://www.poder360.com.br/feed/"),
+    Feed("InfoMoney", "Mercados", "https://www.infomoney.com.br/feed/"),
+    # --- Só manchete e linha fina (~150 a 300 caracteres): sinal de cobertura ---
+    Feed("Folha", "Poder", "https://feeds.folha.uol.com.br/poder/rss091.xml"),
+    Feed("Folha", "Mercado", "https://feeds.folha.uol.com.br/mercado/rss091.xml"),
+    Feed("Folha", "Mundo", "https://feeds.folha.uol.com.br/mundo/rss091.xml"),
+    Feed("BBC Brasil", "Geral", "https://feeds.bbci.co.uk/portuguese/rss.xml"),
+    Feed("UOL", "Notícias", "https://rss.uol.com.br/feed/noticias.xml"),
+)
+
+# O feed geral do G1 (g1.globo.com/rss/g1/) foi descartado deliberadamente.
+# Ele é dominado por conteúdo das afiliadas regionais — acidente de trânsito
+# municipal, evento local, grade de programação da TV. Esse material não é
+# ruído por ser irrelevante para o leitor: é estruturalmente inverificável,
+# porque só um veículo cobre, e afirmação de fonte única nunca pode ser
+# corroborada por fonte independente.
 
 TIMEOUT_SEGUNDOS = 15
 
@@ -51,6 +92,8 @@ PARAMS_RASTREIO: frozenset[str] = frozenset(
         "ref",
         "ref_src",
         "src",
+        "cmpid",
+        "xtor",
         # Rastreamento da BBC. Descobertos na primeira coleta real: sem eles,
         # a mesma matéria reaparecia como registro distinto.
         "at_campaign",
@@ -62,7 +105,5 @@ PARAMS_RASTREIO: frozenset[str] = frozenset(
         "at_link_type",
         "at_ptr_name",
         "at_bbc_team",
-        "cmpid",
-        "xtor",
     }
 )

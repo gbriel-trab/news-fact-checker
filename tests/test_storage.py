@@ -12,10 +12,12 @@ def artigo(
     titulo: str = "Título",
     resumo: str = "Resumo",
     conteudo: str = "Corpo",
-    fonte: str = "Veículo",
+    veiculo: str = "Veículo",
+    editoria: str = "Geral",
 ) -> Artigo:
     return Artigo(
-        fonte=fonte,
+        veiculo=veiculo,
+        editoria=editoria,
         titulo=titulo,
         url_original=url,
         url_norm=normaliza_url(url),
@@ -100,11 +102,22 @@ class TestEstatisticas:
         assert estatisticas(conexao) == {
             "registros": 0,
             "materias": 0,
-            "fontes": 0,
-            "bytes_conteudo": 0,
+            "veiculos": 0,
+            "bytes_texto": 0,
         }
 
-    def test_conta_fontes_distintas(self, conexao):
-        salva(conexao, artigo(url="https://a.com/x", fonte="A"))
-        salva(conexao, artigo(url="https://b.com/x", fonte="B"))
-        assert estatisticas(conexao)["fontes"] == 2
+    def test_conta_veiculos_distintos(self, conexao):
+        salva(conexao, artigo(url="https://a.com/x", veiculo="A"))
+        salva(conexao, artigo(url="https://b.com/x", veiculo="B"))
+        assert estatisticas(conexao)["veiculos"] == 2
+
+    def test_editorias_do_mesmo_veiculo_contam_como_um(self, conexao):
+        """Duas editorias da mesma redação não são fontes independentes.
+
+        Contá-las como duas inflaria a corroboração e produziria "confirmado"
+        onde há apenas um veículo publicando — o falso positivo que o
+        princípio 5 manda evitar acima de tudo.
+        """
+        salva(conexao, artigo(url="https://g1.com/a", veiculo="G1", editoria="Política"))
+        salva(conexao, artigo(url="https://g1.com/b", veiculo="G1", editoria="Economia"))
+        assert estatisticas(conexao)["veiculos"] == 1

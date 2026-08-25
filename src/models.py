@@ -26,8 +26,16 @@ class ResultadoGravacao(str, Enum):
 class Artigo:
     """Uma matéria coletada de um feed, antes de qualquer processamento."""
 
-    fonte: str
-    """Nome do veículo, conforme configurado em FEEDS."""
+    veiculo: str
+    """Nome do veículo — a unidade de corroboração.
+
+    Duas matérias do mesmo `veiculo` nunca contam como fontes independentes,
+    ainda que tenham vindo de editorias diferentes.
+    """
+
+    editoria: str
+    """Seção do veículo. Serve para organizar e filtrar, nunca para contar
+    fontes."""
 
     titulo: str
     url_original: str

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import feedparser
 import requests
 
-from ..config import TIMEOUT_SEGUNDOS, USER_AGENT
+from ..config import TIMEOUT_SEGUNDOS, USER_AGENT, Feed
 from ..models import Artigo
 from ..normalize import hash_conteudo, limpa_html, normaliza_url
 
@@ -41,7 +41,7 @@ def _corpo(entrada) -> str:
     return max(textos, key=len) if textos else ""
 
 
-def _para_artigo(fonte: str, entrada) -> Artigo | None:
+def _para_artigo(feed: Feed, entrada) -> Artigo | None:
     """Converte uma entrada do feed em Artigo, ou None se for inaproveitável."""
     url = (entrada.get("link") or "").strip()
     titulo = limpa_html(entrada.get("title"))
@@ -56,7 +56,8 @@ def _para_artigo(fonte: str, entrada) -> Artigo | None:
     conteudo = _corpo(entrada)
 
     return Artigo(
-        fonte=fonte,
+        veiculo=feed.veiculo,
+        editoria=feed.editoria,
         titulo=titulo,
         url_original=url,
         url_norm=normaliza_url(url),
@@ -69,7 +70,7 @@ def _para_artigo(fonte: str, entrada) -> Artigo | None:
     )
 
 
-def busca(fonte: str, url_feed: str) -> list[Artigo]:
+def busca(feed: Feed) -> list[Artigo]:
     """Baixa e interpreta um feed, devolvendo os artigos aproveitáveis.
 
     Levanta FalhaNoFeed se o download falhar. Entradas individuais defeituosas
@@ -78,7 +79,7 @@ def busca(fonte: str, url_feed: str) -> list[Artigo]:
     """
     try:
         resposta = requests.get(
-            url_feed,
+            feed.url,
             headers={"User-Agent": USER_AGENT},
             timeout=TIMEOUT_SEGUNDOS,
         )
@@ -86,7 +87,7 @@ def busca(fonte: str, url_feed: str) -> list[Artigo]:
     except requests.RequestException as erro:
         raise FalhaNoFeed(f"{type(erro).__name__}: {erro}") from erro
 
-    feed = feedparser.parse(resposta.content)
+    analisado = feedparser.parse(resposta.content)
 
-    artigos = (_para_artigo(fonte, entrada) for entrada in feed.entries)
+    artigos = (_para_artigo(feed, entrada) for entrada in analisado.entries)
     return [artigo for artigo in artigos if artigo is not None]

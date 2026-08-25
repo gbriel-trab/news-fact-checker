@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS artigos (
     id               INTEGER PRIMARY KEY,
     url_norm         TEXT    NOT NULL,
     url_original     TEXT    NOT NULL,
-    fonte            TEXT    NOT NULL,
+    veiculo          TEXT    NOT NULL,
+    editoria         TEXT    NOT NULL,
     titulo           TEXT    NOT NULL,
     resumo           TEXT    NOT NULL,
     conteudo         TEXT    NOT NULL,
@@ -32,9 +33,10 @@ CREATE TABLE IF NOT EXISTS artigos (
     UNIQUE (url_norm, hash_conteudo)
 );
 
-CREATE INDEX IF NOT EXISTS idx_artigos_url    ON artigos (url_norm);
-CREATE INDEX IF NOT EXISTS idx_artigos_data   ON artigos (data_publicacao);
-CREATE INDEX IF NOT EXISTS idx_artigos_fonte  ON artigos (fonte);
+CREATE INDEX IF NOT EXISTS idx_artigos_url      ON artigos (url_norm);
+CREATE INDEX IF NOT EXISTS idx_artigos_data     ON artigos (data_publicacao);
+CREATE INDEX IF NOT EXISTS idx_artigos_veiculo  ON artigos (veiculo);
+CREATE INDEX IF NOT EXISTS idx_artigos_editoria ON artigos (editoria);
 """
 
 
@@ -67,14 +69,15 @@ def salva(conexao: sqlite3.Connection, artigo: Artigo) -> ResultadoGravacao:
     conexao.execute(
         """
         INSERT INTO artigos (
-            url_norm, url_original, fonte, titulo, resumo, conteudo,
-            data_publicacao, hash_conteudo, versao, coletado_em
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            url_norm, url_original, veiculo, editoria, titulo, resumo,
+            conteudo, data_publicacao, hash_conteudo, versao, coletado_em
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             artigo.url_norm,
             artigo.url_original,
-            artigo.fonte,
+            artigo.veiculo,
+            artigo.editoria,
             artigo.titulo,
             artigo.resumo,
             artigo.conteudo,
@@ -90,19 +93,23 @@ def salva(conexao: sqlite3.Connection, artigo: Artigo) -> ResultadoGravacao:
 
 
 def estatisticas(conexao: sqlite3.Connection) -> dict[str, int]:
-    """Números do acervo, para acompanhar o crescimento da coleta."""
+    """Números do acervo, para acompanhar o crescimento da coleta.
+
+    `veiculos` conta redações distintas, não feeds: é a métrica que importa,
+    porque corroboração exige fontes independentes.
+    """
     linha = conexao.execute(
         """
         SELECT COUNT(*)                     AS registros,
                COUNT(DISTINCT url_norm)     AS materias,
-               COUNT(DISTINCT fonte)        AS fontes,
-               SUM(LENGTH(conteudo))        AS bytes_conteudo
+               COUNT(DISTINCT veiculo)      AS veiculos,
+               SUM(LENGTH(conteudo) + LENGTH(resumo)) AS bytes_texto
         FROM artigos
         """
     ).fetchone()
     return {
         "registros": linha["registros"] or 0,
         "materias": linha["materias"] or 0,
-        "fontes": linha["fontes"] or 0,
-        "bytes_conteudo": linha["bytes_conteudo"] or 0,
+        "veiculos": linha["veiculos"] or 0,
+        "bytes_texto": linha["bytes_texto"] or 0,
     }
