@@ -14,22 +14,56 @@ o modelo responde com confiança tanto quando sabe quanto quando não sabe, e a
 resposta não carrega fonte alguma. O projeto existe para resolver exatamente
 esse ponto.
 
-## Pipeline
+## Duas metades, com gatilhos diferentes
 
-Orquestração em **LangGraph**, com estado compartilhado atravessando os nós:
+O sistema não é um pipeline só. São dois, que rodam em momentos distintos e por
+motivos distintos. Confundi-los é o erro de leitura mais fácil de cometer aqui.
 
 ```
-Coleta → Segmentação → Classificação (factual vs opinião)
-       → Extração de triplas → Busca de evidência → Verificação → Entrega
-                                        ↑                 |
-                                        └── evidência insuficiente ──┘
+┌── INGESTÃO ─────────────────── gatilho: relógio ──────────────────┐
+│                                                                   │
+│   Coleta RSS → Segmentação → Classificação → Extração de triplas  │
+│                                                     ↓             │
+│                                    índice vetorial + grafo        │
+└───────────────────────────────────────────────────────────────────┘
+                                                     │
+                                                     │ consulta
+                                                     ↓
+┌── AGENTE (LangGraph) ───────── gatilho: pergunta ─────────────────┐
+│                                                                   │
+│   afirmação → busca evidência → suficiente? ──não──┐              │
+│                     ↑                  │           │              │
+│                     └──────────────────┼───────────┘              │
+│                                        │ sim                      │
+│                                        ↓                          │
+│                       confirmado / contradito / sem evidência     │
+│                                   + fontes                        │
+└───────────────────────────────────────────────────────────────────┘
 ```
+
+**Ingestão** roda sozinha, em intervalo fixo, sem ninguém pedir. Ela prepara o
+acervo. É trabalho caro e estável: cada matéria é processada uma única vez, e o
+resultado vira índice.
+
+**O agente** roda quando alguém faz uma pergunta. Ele não coleta nada e não
+extrai nada — apenas consulta o que a ingestão já preparou, decide se a
+evidência basta, e produz o veredito.
+
+A regra que separa as duas, e que vale para qualquer sistema RAG: **o que é
+caro e não depende da pergunta vai para a ingestão; o que depende da pergunta
+fica no agente.** Extrair triplas na hora da consulta significaria reprocessar
+o acervo inteiro a cada pergunta.
+
+### Por que LangGraph, e só na metade de baixo
 
 O **ciclo** é o motivo da escolha do framework. Se a evidência recuperada for
 insuficiente, o grafo não desiste nem alucina: volta ao nó de busca e tenta
 outra query, até um limite de tentativas. Orquestradores lineares e frameworks
 baseados em conversa entre agentes não expressam isso de forma natural — um
 grafo de estado com aresta condicional expressa.
+
+A ingestão não precisa disso: é uma sequência fixa, sem decisão em tempo de
+execução. Ela é um script agendado, não um agente.
 
 ## Coleta contínua
 
