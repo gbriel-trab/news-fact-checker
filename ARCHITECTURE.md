@@ -73,6 +73,37 @@ desperdiça chamada paga em texto que nunca produziria um veredito. O
 classificador roda antes, é ordens de magnitude mais barato, e derruba boa
 parte do volume.
 
+## Princípios de projeto
+
+Estas são as decisões que definem o que o projeto é. Funcionalidade nova que
+contrarie qualquer uma delas está errada, ou exige revisar o princípio de forma
+explícita — nunca por acidente.
+
+1. **Nunca perguntar ao modelo se algo é verdade.** Todo veredito nasce de
+   evidência externa recuperada, não do conhecimento interno do LLM.
+
+2. **Todo veredito carrega a fonte.** Afirmação sem fonte rastreável não é
+   apresentada como verificada, em nenhuma circunstância.
+
+3. **"Sem evidência" é uma resposta válida.** O sistema tem o direito de não
+   saber. Preencher a lacuna com plausibilidade é o fracasso que o projeto
+   existe para evitar.
+
+4. **`EXTRACTED` e `INFERRED` nunca têm o mesmo peso.** O que a fonte diz e o
+   que o modelo deduziu são exibidos como coisas distintas.
+
+5. **Filtro barato antes de chamada cara.** Classificador clássico e heurística
+   rodam antes do LLM, nunca depois.
+
+6. **O ciclo do grafo serve para tentar outra query, não para insistir até
+   inventar.** Há limite de tentativas, e esgotá-lo leva ao princípio 3.
+
+7. **Nenhuma credencial no código.**
+
+Teste prático para funcionalidade nova: *ela consegue citar a fonte do que
+afirma?* Se não conseguir, não entra no caminho de verificação — no máximo em
+uma camada de apresentação claramente separada.
+
 ## Decisão pendente: fonte de dados
 
 A API do X/Twitter é paga e cara o suficiente para inviabilizar a fonte.
