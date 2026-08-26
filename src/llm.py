@@ -31,16 +31,28 @@ from . import config  # noqa: F401
 MODELO_ANTHROPIC = "claude-opus-5"
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODELO = os.getenv("OLLAMA_MODELO", "mistral-small")
+OLLAMA_MODELO = os.getenv("OLLAMA_MODELO", "qwen3.5:9b")
 """Modelo local padrao, sobrescrito por OLLAMA_MODELO no .env.
 
-Mistral Small foi escolhido por combinar saida JSON nativa com bom
-desempenho em linguas romanicas, que e o que esta materia exige. Confira o
-nome exato da tag com `ollama list` antes de confiar neste padrao.
+Qwen 3.5 9B foi escolhido por ser multilingue e caber inteiro em 16 GB de
+VRAM com folga, o que mantem a iteracao de prompt rapida. Se a qualidade
+nao bastar nas partes de julgamento, mistral-small (13 GB) e o proximo
+degrau. Confira a tag com `ollama list` antes de confiar neste padrao.
 """
 
 TIMEOUT_LOCAL = 600
 """Modelo local em CPU pode demorar minutos por matéria. Em GPU, segundos."""
+
+MAX_TOKENS_SAIDA = 8000
+"""Teto de tokens gerados, igual nos dois provedores para que a comparação de
+qualidade não esbarre em limites diferentes."""
+
+NUM_CTX_LOCAL = 16384
+"""Janela de contexto do modelo local, em tokens.
+
+Precisa acomodar instruções, matéria, schema e resposta. Consome mais VRAM,
+mas o custo de errar para baixo é uma falha que não se parece com falha.
+"""
 
 
 class FalhaNoModelo(Exception):
@@ -58,7 +70,7 @@ def _via_anthropic(system: str, user: str, esquema: type[BaseModel]) -> BaseMode
     cliente = anthropic.Anthropic()
     resposta = cliente.messages.parse(
         model=MODELO_ANTHROPIC,
-        max_tokens=8000,
+        max_tokens=MAX_TOKENS_SAIDA,
         # O bloco de instruções é idêntico em toda chamada, então vai marcado
         # para cache. ATENÇÃO: o prefixo mínimo cacheável é ~1024 tokens, e
         # hoje este bloco tem ~625 — ou seja, a marcação ainda não faz efeito
@@ -93,10 +105,25 @@ def _via_ollama(system: str, user: str, esquema: type[BaseModel]) -> BaseModel:
                 ],
                 "format": esquema.model_json_schema(),
                 "stream": False,
-                # Extração precisa ser determinística: a mesma matéria deve
-                # produzir as mesmas triplas em duas execuções, senão não há
-                # como testar nem como comparar provedores.
-                "options": {"temperature": 0},
+                # Raciocínio desligado. Modelo de raciocínio escreve num campo
+                # `thinking` separado e só depois preenche `content` — e o
+                # padrão é verborrágico a ponto de estourar a janela antes de
+                # chegar à resposta. Medido: 4.056 tokens de raciocínio para
+                # uma frase de dez palavras, terminando com `content` vazio.
+                # Com `think: False`, a mesma extração sai em 42 tokens.
+                "think": False,
+                "options": {
+                    # Determinismo: a mesma matéria precisa produzir as mesmas
+                    # triplas em duas execuções, senão não há como testar nem
+                    # comparar provedores.
+                    "temperature": 0,
+                    # O Ollama usa 4.096 de contexto por padrão, o que não cabe
+                    # uma matéria mais o schema mais a resposta. Estourar aqui
+                    # não dá erro: devolve `content` vazio e `done_reason:
+                    # length`, que parece falha de formato e não é.
+                    "num_ctx": NUM_CTX_LOCAL,
+                    "num_predict": MAX_TOKENS_SAIDA,
+                },
             },
             timeout=TIMEOUT_LOCAL,
         )
@@ -107,7 +134,20 @@ def _via_ollama(system: str, user: str, esquema: type[BaseModel]) -> BaseModel:
             f"O servidor está rodando e o modelo {OLLAMA_MODELO} foi baixado?"
         ) from erro
 
-    bruto = resposta.json().get("message", {}).get("content", "")
+    dados = resposta.json()
+    bruto = dados.get("message", {}).get("content", "")
+
+    if not bruto:
+        # Resposta vazia quase sempre significa janela estourada, nao formato
+        # invalido. Dizer isso na mensagem evita horas procurando bug no schema.
+        raise FalhaNoModelo(
+            f"{OLLAMA_MODELO} devolveu conteudo vazio "
+            f"(done_reason={dados.get('done_reason')}, "
+            f"{dados.get('eval_count')} tokens gerados). "
+            f"Se done_reason for 'length', a janela de contexto "
+            f"({NUM_CTX_LOCAL}) nao coube a materia mais a resposta."
+        )
+
     try:
         return esquema.model_validate(json.loads(bruto))
     except (json.JSONDecodeError, ValueError) as erro:
