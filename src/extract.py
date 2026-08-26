@@ -375,6 +375,26 @@ def extrai(titulo: str, veiculo: str, data_pub: str | None,
 
 # ---------------------------------------------------------------- interface
 
+def _por_id(conexao: sqlite3.Connection, ids: list[int]) -> list[sqlite3.Row]:
+    """Matérias escolhidas a dedo, para extrair uma história inteira.
+
+    Sem isto só dá para pegar as mais recentes, e a detecção de contradição
+    precisa do oposto: as matérias que cobrem o MESMO fato em veículos
+    diferentes, que raramente são as últimas publicadas.
+    """
+    marcadores = ",".join("?" * len(ids))
+    linhas = conexao.execute(
+        f"""
+        SELECT id, veiculo, editoria, titulo, resumo, conteudo,
+               data_publicacao, url_norm
+        FROM artigos WHERE id IN ({marcadores})
+        """,
+        ids,
+    ).fetchall()
+    por_id = {linha["id"]: linha for linha in linhas}
+    return [por_id[i] for i in ids if i in por_id]
+
+
 def _materias(conexao: sqlite3.Connection, limite: int) -> list[sqlite3.Row]:
     """Pega matérias com texto suficiente para sustentar extração.
 
@@ -408,6 +428,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Extrai triplas do acervo.")
     parser.add_argument("-n", type=int, default=5, help="quantas matérias")
     parser.add_argument(
+        "--ids",
+        help="ids de matérias, separados por vírgula. Extrai exatamente essas, "
+             "na ordem dada, ignorando o filtro de tamanho — para processar uma "
+             "história inteira em vez das mais recentes",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="mostra a requisição que seria enviada, sem chamar a API",
@@ -417,7 +443,10 @@ def main() -> None:
     total_uso: list[llm.Uso] = []
 
     conexao = conecta(config.BANCO)
-    linhas = _materias(conexao, args.n)
+    if args.ids:
+        linhas = _por_id(conexao, [int(x) for x in args.ids.split(",")])
+    else:
+        linhas = _materias(conexao, args.n)
     if not linhas:
         print("Nenhuma matéria nova para extrair.")
         print(f"Tudo o que tem texto suficiente já foi processado por "
