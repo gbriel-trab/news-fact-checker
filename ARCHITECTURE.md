@@ -236,6 +236,79 @@ por editoria, 8 veículos  →  64 histórias com 2+ veículos, de 830 matérias
 
 De ~2% para ~17% de matéria corroborável.
 
+### Camadas de fonte
+
+Nem toda fonte precisa ser corroborada, e tratar todas igual quebra o sistema
+num caso concreto.
+
+| Camada | Exemplos | Precisa de outra fonte? |
+|-|-|-|
+| **Primária** | BoJ, Federal Reserve, BCE, TSE, Senado | **Não** — é a fonte do próprio ato |
+| **Imprensa** | G1, Folha, CNN, Poder360 | Sim: dois veículos independentes |
+
+Exigir duas testemunhas para um banco central anunciando a própria decisão não
+é rigor, é erro de categoria: o comunicado **é** o registro autoritativo.
+
+O problema apareceu medindo o acervo. Das 830 matérias coletadas:
+
+```
+Federal Reserve      0 matérias
+BoJ / Japão         13 matérias, todas do G1
+BCE / Europa         9 matérias, 8 delas do G1
+```
+
+Macroeconomia internacional é coberta por um veículo só, ou por nenhum. O
+filtro de cobertura múltipla, aplicado sem camadas, **apagaria esse domínio
+inteiro** — justamente o que menos aparece na imprensa generalista brasileira e
+mais importa para crédito e mercado.
+
+Com camadas, o caso se resolve:
+
+```
+G1 afirma "BoJ elevou juros"  +  feed do BoJ registra comunicado no mesmo dia
+                              =  corroborado
+```
+
+Um veículo somado à instituição é evidência mais forte que dois veículos.
+
+### Ausência de registro primário é evidência
+
+Fonte primária **não ter dito nada** é informação, e produz veredito:
+
+> *"Circula que o BoJ elevou juros. O feed oficial do BoJ não registra
+> comunicado de política monetária nas últimas 48 horas."*
+
+Isso só vale para fonte primária sobre o próprio ato — silêncio da imprensa não
+significa nada, silêncio de um banco central sobre a própria política significa.
+E exige coleta contínua da fonte primária, senão a ausência é do acervo, não do
+mundo.
+
+Feeds primários testados entregam **apenas manchete**, sem corpo. Não sustentam
+extração de triplas, mas sustentam os dois mecanismos acima, que dependem da
+existência e da data do comunicado, não do texto dele.
+
+### Rede social é radar, nunca evidência
+
+O caso que motiva: um assunto ganha tração antes de a imprensa brasileira
+cobrir, ou sem que ela vá cobrir.
+
+```
+rede social  →  assunto em alta
+                    ↓
+        busca a fonte primária sobre ele
+                    ↓
+   registro existe   →  confirmado, citando a instituição
+   registro ausente  →  "circulando, sem registro na fonte oficial"
+```
+
+O post nunca entra como evidência. Ele indica **onde olhar**; a evidência vem
+sempre da instituição ou da imprensa. Isso preserva o princípio de que todo
+veredito carrega fonte rastreável — resumo de modelo sobre o que está
+circulando não seria citável.
+
+Depende da API da xAI, precificada em "De onde vem a afirmação". Fica para
+depois de a extração e o grafo existirem.
+
 ### Veículo não é o mesmo que feed
 
 Duas editorias da mesma redação **não são fontes independentes**. Contá-las como
