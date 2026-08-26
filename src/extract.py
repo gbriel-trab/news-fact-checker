@@ -13,6 +13,7 @@ e imposta como enum. O resto do schema já é estrito.
 """
 
 import argparse
+import hashlib
 import json
 import sqlite3
 import sys
@@ -22,6 +23,8 @@ from pydantic import BaseModel, Field
 
 from . import config, llm
 from .segment import em_sentencas
+from .storage import (
+    conecta, estatisticas_triplas, salva_extracao)
 
 VOCAB_VERSAO = 0
 """Versão do vocabulário de relações. Zero significa "ainda livre, não fechado"."""
@@ -251,6 +254,25 @@ Exemplo:
 """
 
 
+def versao_prompt() -> str:
+    """Identidade do prompt e do schema, juntos, como hash curto.
+
+    Serve para saber qual versão produziu cada tripla. Durante a calibração o
+    prompt mudou várias vezes, e triplas de versões diferentes não são
+    comparáveis — misturá-las no acervo sem marcação tornaria impossível saber
+    se uma diferença veio da fonte ou da instrução.
+
+    Calculado em vez de mantido à mão porque versão que depende de alguém
+    lembrar de incrementar fica errada exatamente quando importa.
+    """
+    material = INSTRUCOES + json.dumps(
+        Extracao.model_json_schema(), sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
+
+
+PROMPT_VERSAO = versao_prompt()
+
+
 def monta_conteudo(titulo: str, veiculo: str, data_pub: str | None,
                    sentencas: list[str]) -> str:
     """Monta a parte variável da requisição — a que não é cacheável."""
@@ -275,26 +297,29 @@ def extrai(titulo: str, veiculo: str, data_pub: str | None,
 
 # ---------------------------------------------------------------- interface
 
-def _materias(limite: int) -> list[sqlite3.Row]:
+def _materias(conexao: sqlite3.Connection, limite: int) -> list[sqlite3.Row]:
     """Pega matérias com texto suficiente para sustentar extração.
 
     Veículo que só publica manchete no RSS não entra: 200 caracteres não dão
     tripla, e a chamada seria desperdício.
     """
-    conexao = sqlite3.connect(config.BANCO)
-    conexao.row_factory = sqlite3.Row
-    linhas = conexao.execute(
+    return conexao.execute(
         """
-        SELECT veiculo, editoria, titulo, resumo, conteudo, data_publicacao, url_norm
-        FROM artigos
-        WHERE MAX(LENGTH(conteudo), LENGTH(resumo)) > 1200
-        ORDER BY data_publicacao DESC
+        SELECT a.id, a.veiculo, a.editoria, a.titulo, a.resumo, a.conteudo,
+               a.data_publicacao, a.url_norm
+        FROM artigos a
+        WHERE MAX(LENGTH(a.conteudo), LENGTH(a.resumo)) > 1200
+          AND NOT EXISTS (
+              SELECT 1 FROM extracoes e
+              WHERE e.artigo_id = a.id
+                AND e.modelo = ?
+                AND e.prompt_versao = ?
+          )
+        ORDER BY a.data_publicacao DESC
         LIMIT ?
         """,
-        (limite,),
+        (llm.MODELO, PROMPT_VERSAO, limite),
     ).fetchall()
-    conexao.close()
-    return linhas
 
 
 def main() -> None:
@@ -313,10 +338,15 @@ def main() -> None:
 
     total_uso: list[llm.Uso] = []
 
-    linhas = _materias(args.n)
+    conexao = conecta(config.BANCO)
+    linhas = _materias(conexao, args.n)
     if not linhas:
-        print("Nenhuma matéria com texto suficiente. Rode a coleta primeiro.")
-        sys.exit(1)
+        print("Nenhuma matéria nova para extrair.")
+        print(f"Tudo o que tem texto suficiente já foi processado por "
+              f"{llm.MODELO} com o prompt {PROMPT_VERSAO}.")
+        print("Colete mais, ou mude o prompt — a versão muda junto e libera "
+              "reprocessamento.")
+        sys.exit(0)
 
     if not args.dry_run:
         print(f"Provedor: {llm.descricao()}\n")
@@ -362,6 +392,12 @@ def main() -> None:
         # sendo o indice. Mas sem ela na tela nao ha como julgar se a tripla
         # esta certa, e julgar sem ler a fonte e o erro que o proprio campo
         # INFERRED existe para evitar.
+        # Grava antes de imprimir: chamada paga que nao persiste e dinheiro perdido.
+        salva_extracao(
+            conexao, linha["id"], resultado.dados.triplas,
+            llm.MODELO, PROMPT_VERSAO, VOCAB_VERSAO, resultado.uso,
+        )
+
         por_sentenca: dict[int, list[Tripla]] = {}
         for t in resultado.dados.triplas:
             por_sentenca.setdefault(t.sentenca, []).append(t)
