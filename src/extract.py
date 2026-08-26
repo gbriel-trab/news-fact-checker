@@ -20,7 +20,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import config
+from . import config, llm
 from .segment import em_sentencas
 
 VOCAB_VERSAO = 0
@@ -163,30 +163,14 @@ def monta_conteudo(titulo: str, veiculo: str, data_pub: str | None,
     )
 
 
-def extrai(cliente, titulo: str, veiculo: str, data_pub: str | None,
+def extrai(titulo: str, veiculo: str, data_pub: str | None,
            sentencas: list[str]) -> Extracao:
-    """Chama o modelo e devolve as triplas validadas contra o schema."""
-    resposta = cliente.messages.parse(
-        model="claude-opus-5",
-        max_tokens=8000,
-        # O bloco de instruções é idêntico em toda chamada, então vai marcado
-        # para cache. ATENÇÃO: o prefixo mínimo cacheável é ~1024 tokens, e
-        # hoje este bloco tem ~625 — ou seja, a marcação ainda não faz efeito
-        # e a falha é silenciosa. Ela passa a valer quando o vocabulário
-        # fechado e mais exemplos entrarem aqui. Conferir em
-        # `usage.cache_read_input_tokens` antes de contar com a economia.
-        system=[{
-            "type": "text",
-            "text": INSTRUCOES,
-            "cache_control": {"type": "ephemeral"},
-        }],
-        messages=[{
-            "role": "user",
-            "content": monta_conteudo(titulo, veiculo, data_pub, sentencas),
-        }],
-        output_format=Extracao,
+    """Chama o provedor ativo e devolve as triplas validadas contra o schema."""
+    return llm.gera(
+        INSTRUCOES,
+        monta_conteudo(titulo, veiculo, data_pub, sentencas),
+        Extracao,
     )
-    return resposta.parsed_output
 
 
 # ---------------------------------------------------------------- interface
@@ -232,11 +216,8 @@ def main() -> None:
         print("Nenhuma matéria com texto suficiente. Rode a coleta primeiro.")
         sys.exit(1)
 
-    cliente = None
     if not args.dry_run:
-        import anthropic
-
-        cliente = anthropic.Anthropic()
+        print(f"Provedor: {llm.descricao()}\n")
 
     for i, linha in enumerate(linhas, 1):
         texto = max(linha["conteudo"], linha["resumo"], key=len)
@@ -264,7 +245,7 @@ def main() -> None:
             continue
 
         resultado = extrai(
-            cliente, linha["titulo"], linha["veiculo"],
+            linha["titulo"], linha["veiculo"],
             linha["data_publicacao"], sentencas,
         )
         print(f"  {len(resultado.triplas)} triplas\n")

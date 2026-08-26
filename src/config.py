@@ -3,9 +3,19 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 RAIZ = Path(__file__).resolve().parent.parent
 DIR_DADOS = RAIZ / "data"
 BANCO = DIR_DADOS / "noticias.db"
+
+# Carrega o .env para o ambiente do processo. Sem isto, `os.getenv` e o SDK da
+# Anthropic não enxergam nada do arquivo — a chave ficaria lá parada e a falha
+# seria "credencial ausente", sem indicar o motivo real.
+#
+# Fica aqui porque config é importado por todos os pontos de entrada, e
+# variável de ambiente já definida de fora tem precedência sobre o arquivo.
+load_dotenv(RAIZ / ".env")
 
 
 @dataclass(frozen=True, slots=True)
