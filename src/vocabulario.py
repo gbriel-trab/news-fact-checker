@@ -16,6 +16,21 @@ extração livre produziu, agrupados pelo que significam.
 Como evoluir: rodar, medir a fração que caiu em `outro`, e promover o que for
 frequente. Cada promoção incrementa VERSAO — sem isso é impossível distinguir
 "não cabia em nenhuma" de "essa relação ainda não existia".
+
+LIMITAÇÃO CONHECIDA DA v1: a amostra que gerou esta lista foram quatro matérias,
+todas de política eleitoral brasileira. Economia, mercado e cobertura
+internacional não estão representados. Uma matéria sobre decisão de banco
+central — "elevou juros para 0,75%", "sinalizou corte" — cairia quase toda em
+`outro`.
+
+Isso é o mecanismo funcionando, não falha: `outro` alto num domínio é
+exatamente o sinal de que faltam relações para ele. A correção é ampliar a
+AMOSTRA antes de ampliar a lista. Inventar relações de macroeconomia sem ter
+lido uma matéria de macroeconomia seria projetar no papel, que é o que este
+desenho recusa.
+
+Antes de fechar a v2: extrair matérias espalhadas por editoria — economia,
+mundo, ciência — e deixar o `outro` dizer o que falta.
 """
 
 from enum import StrEnum

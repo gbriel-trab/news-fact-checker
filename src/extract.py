@@ -266,31 +266,41 @@ Regras que importam mais que as outras:
 Exemplo:
 
   Matéria publicada em 2026-08-20, sentenças numeradas:
-    [0] A Vale, presidida por Gustavo Pimenta, confirmou nesta quarta-feira a
-        compra da mineradora Ferrous por R$ 3 bilhões.
-    [1] O negócio ainda depende de aval do Cade.
-    [2] Para analistas, o preço foi salgado.
-    [3] Assine nossa newsletter e siga o canal do jornal no YouTube.
+    [0] O Ibope divulgou nesta quarta-feira pesquisa que mostra o senador
+        Carlos Lima (PSD) com 41% das intenções de voto ao governo paulista.
+    [1] O levantamento custou R$ 30.000 e ouviu 2.000 eleitores.
+    [2] Lima disse que "a segurança pública será prioridade absoluta".
+    [3] Para analistas, o resultado surpreende.
 
   Saída:
-    (Vale S.A., comprou, Ferrous Resources)
+    (Instituto Brasileiro de Opinião Pública e Estatística, divulgou,
+     Pesquisa Ibope SP agosto 2026)
        evento · EXTRACTED · fato 2026-08-19 · sent 0
-    (Vale S.A., pagou_por, Ferrous Resources)
+    (Carlos Lima, obteve_percentual_em, Pesquisa Ibope SP agosto 2026)
        evento · EXTRACTED · fato 2026-08-19 · sent 0
-       valor_numero 3000000000 · valor_unidade "BRL"
-    (Gustavo Pimenta, presidiu, Vale S.A.)
+       valor_numero 41 · valor_unidade "%"
+    (Carlos Lima, integra, Partido Social Democrático)
        estado · EXTRACTED · fato null · sent 0
-    (Vale S.A., aguarda_aprovacao_de, Conselho Administrativo de Defesa Econômica)
+    (Carlos Lima, candidatou_se_a, Governo do Estado de São Paulo)
+       estado · EXTRACTED · fato null · sent 0
+    (Pesquisa Ibope SP agosto 2026, tem_atributo, null)
        estado · EXTRACTED · fato null · sent 1
+       valor_numero 30000 · valor_unidade "BRL" · valor_contexto "custo"
+    (Pesquisa Ibope SP agosto 2026, tem_atributo, null)
+       estado · EXTRACTED · fato null · sent 1
+       valor_numero 2000 · valor_unidade "pessoas" · valor_contexto "amostra"
+    (Carlos Lima, afirmou, a segurança pública será prioridade absoluta)
+       evento · EXTRACTED · fato 2026-08-19 · sent 2
 
   Repare em cada decisão:
-  - "nesta quarta-feira" virou data real; o Cade foi expandido no canônico
-  - o preço saiu do objeto e virou valor numérico, para que outro veículo
-    noticiando a mesma compra chegue ao mesmo número
-  - a presidência é estado e o texto não a data: fato fica null, nunca a data
-    da publicação
-  - a sentença [2] é opinião e não gerou tripla
-  - a sentença [3] é chamada institucional do veículo e não gerou tripla
+  - "nesta quarta-feira" virou data real, e o Ibope foi expandido no canônico
+  - o percentual saiu do objeto e virou valor, para que outro veículo
+    noticiando a mesma pesquisa chegue ao mesmo número
+  - filiação e candidatura são estado, e o texto não as data: fato null
+  - custo e amostra são atributos: objeto null, e o que eles medem vai em
+    valor_contexto
+  - a fala virou o CONTEÚDO dito, não o assunto
+  - a sentença [3] é opinião de terceiros e não gerou tripla
 """
 
 
