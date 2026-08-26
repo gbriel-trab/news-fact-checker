@@ -146,3 +146,37 @@ class TestEstatisticas:
         n = estatisticas_triplas(conexao)
         assert n["relacoes"] == 2
         assert n["entidades"] == 2
+
+
+class TestDescartaVazias:
+    """Tripla sem objeto e sem valor não afirma nada.
+
+    Pior que ocupar espaço: ela parece uma afirmação registrada quando a
+    afirmação se perdeu. Apareceu de verdade — a regra de atributo nulo vazou
+    para a atribuição e produziu seis `(Fulano, afirmou, null)` numa matéria.
+    """
+
+    def test_mantem_tripla_com_objeto(self):
+        from src.extract import descarta_vazias
+        boas, vazias = descarta_vazias([tripla()])
+        assert len(boas) == 1 and vazias == 0
+
+    def test_mantem_atributo_com_valor_e_sem_objeto(self):
+        from src.extract import descarta_vazias
+        t = tripla(relacao="teve_margem_de_erro", objeto=None,
+                   valor=2, unidade="pontos percentuais")
+        boas, vazias = descarta_vazias([t])
+        assert len(boas) == 1 and vazias == 0
+
+    def test_descarta_declaracao_sem_conteudo(self):
+        from src.extract import descarta_vazias
+        t = tripla(relacao="afirmou", objeto=None)
+        boas, vazias = descarta_vazias([t])
+        assert boas == [] and vazias == 1
+
+    def test_conta_quantas_cairam(self):
+        from src.extract import descarta_vazias
+        entrada = [tripla(), tripla(relacao="afirmou", objeto=None),
+                   tripla(relacao="criticou", objeto=None), tripla()]
+        boas, vazias = descarta_vazias(entrada)
+        assert len(boas) == 2 and vazias == 2

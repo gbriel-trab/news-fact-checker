@@ -158,6 +158,16 @@ Regras que importam mais que as outras:
    artigo. Não invente hierarquia: se o texto diz "Ministério da Saúde", o
    canônico é o ministério, nunca "governo federal".
 
+   Use o nome COMPLETO, nunca só o sobrenome. O texto abrevia depois da
+   primeira menção; o canônico não pode acompanhar essa abreviação, senão duas
+   matérias sobre a mesma pessoa não se encontram.
+
+   Errado: Zucco · Couto · Haddad
+   Certo:  Luciano Zucco · Fernando Haddad
+
+   Se o nome completo não estiver na matéria, use a forma mais completa que
+   houver e marque a tripla como INFERRED.
+
 3. RELAÇÃO GENÉRICA. Escolha o verbo mais comum que descreva o fato. Se três
    veículos noticiam a mesma compra usando "comprou", "adquiriu" e "fechou
    acordo", os três precisam chegar a comprou. Prefira o verbo simples.
@@ -194,6 +204,16 @@ Regras que importam mais que as outras:
    Margem de erro, custo e nível de confiança são propriedades da pesquisa, não
    relações com algo. Inventar um objeto para preencher o campo produz tripla
    que não se conecta a nada no grafo.
+
+   ISTO NÃO VALE PARA DECLARAÇÃO. Relação de fala — afirmou, criticou,
+   defendeu, chamou, declarou — SEMPRE tem objeto: é o conteúdo do que foi
+   dito. Objeto nulo ali apaga a afirmação inteira.
+
+   Errado: (Ruas, afirmou, null)
+   Certo:  (Ruas, afirmou, ADPF 635 transformou o Rio em resort para criminosos)
+
+   Regra geral: toda tripla precisa carregar OU um objeto OU um valor
+   numérico. Sem nenhum dos dois, ela não afirma nada e não deve existir.
 
 7. PROPOSTA NÃO É FATO CONSUMADO. Projeto de lei, plano, promessa e proposta
    descrevem o que ACONTECERIA, não o que aconteceu.
@@ -283,6 +303,21 @@ def monta_conteudo(titulo: str, veiculo: str, data_pub: str | None,
         f"Título: {titulo}\n\n"
         f"Sentenças:\n{numeradas}"
     )
+
+
+def descarta_vazias(triplas: list[Tripla]) -> tuple[list[Tripla], int]:
+    """Separa as triplas que não afirmam nada. Devolve as boas e quantas caíram.
+
+    Uma tripla precisa carregar ou um objeto ou um valor numérico. Sem nenhum
+    dos dois — `(Fulano, afirmou, null)` — ela ocupa espaço no grafo sem dizer
+    nada, e pior: parece uma afirmação registrada quando a afirmação se perdeu.
+
+    A regra está no prompt, mas fica repetida aqui porque instrução é pedido e
+    isto é garantia. A primeira versão da regra de atributo nulo vazou para a
+    atribuição e produziu seis dessas numa única matéria.
+    """
+    boas = [t for t in triplas if t.objeto_canonico or t.valor_numero is not None]
+    return boas, len(triplas) - len(boas)
 
 
 def extrai(titulo: str, veiculo: str, data_pub: str | None,
@@ -380,7 +415,11 @@ def main() -> None:
             linha["titulo"], linha["veiculo"],
             linha["data_publicacao"], sentencas,
         )
-        print(f"  {len(resultado.dados.triplas)} triplas · {resultado.uso}")
+        boas, vazias = descarta_vazias(resultado.dados.triplas)
+        resultado.dados.triplas[:] = boas
+
+        aviso = f" · {vazias} vazias descartadas" if vazias else ""
+        print(f"  {len(boas)} triplas{aviso} · {resultado.uso}")
         total_uso.append(resultado.uso)
 
         # Agrupado por sentenca de origem. O lide jornalistico brasileiro
