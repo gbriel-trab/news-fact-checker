@@ -119,6 +119,43 @@ O RSS das agências não é fonte de produto — elas já publicaram a resposta.
 Comprova já julgaram, sem mostrar o veredito delas, e compara-se. Ver
 "Como medir se funciona".
 
+## Duas saídas, dois gatilhos
+
+O sistema entrega por dois caminhos, e eles resolvem problemas diferentes.
+
+| | Gatilho | Entrada | O que produz |
+|-|-|-|-|
+| **Digest diário** | relógio | o acervo do dia | onde os veículos divergem |
+| **Consulta** (`check.py`) | uma pessoa | afirmação vinda de fora | veredito sobre aquela afirmação |
+
+### Digest diário
+
+Roda sozinho, sem ninguém pedir. Percorre as histórias do dia cobertas por dois
+ou mais veículos e reporta **onde eles não concordam**.
+
+O produto é a divergência, não a confirmação. Vários veículos publicando a mesma
+coisa é o estado normal do jornalismo — reportar isso seria agregação. O que
+nenhum agregador entrega é *"o G1 diz 38% e a Folha diz 36% sobre a mesma
+pesquisa"*, ou *"a CNN atribui a declaração ao ministro e o Poder360 ao
+assessor"*.
+
+Um item só entra no digest se estiver confirmado por dois veículos
+independentes — a unidade sendo o veículo, nunca a editoria. Item sem
+confirmação não é enviado com ressalva: não é enviado.
+
+**Risco assumido:** o valor do digest depende de com que frequência os veículos
+de fato divergem, e isso ainda não foi medido. Se a divergência for rara, o
+digest degrada para uma lista de fatos corroborados — que é agregação. A
+medição está em "Como medir se funciona" e precede a construção.
+
+### Consulta
+
+Recebe uma afirmação que não veio do acervo e a julga contra ele. É o caso
+não-redundante, descrito em "De onde vem a afirmação".
+
+Os dois compartilham a mesma máquina: coleta, extração, índices e detecção de
+contradição. Só o gatilho e a apresentação mudam.
+
 ## Coleta contínua
 
 A fonte é **RSS de veículos de notícia**, e isso impõe uma restrição que molda
