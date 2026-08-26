@@ -421,3 +421,30 @@ def main() -> None:
                     meta += f" · valor: {valor}"
                 print(meta)
 
+
+    print(f"\n{'=' * 78}")
+    if args.dry_run:
+        print("Nada foi enviado. Para rodar de verdade, preencha "
+              "ANTHROPIC_API_KEY no .env e remova --dry-run.")
+    elif total_uso:
+        custo = sum(u.custo for u in total_uso)
+        entrada = sum(u.entrada + u.cache_leitura + u.cache_escrita
+                      for u in total_uso)
+        saida = sum(u.saida for u in total_uso)
+        print(f"{len(total_uso)} matérias · {entrada} tokens de entrada · "
+              f"{saida} de saída")
+        print(f"US$ {custo:.4f} nesta rodada · "
+              f"US$ {custo / len(total_uso):.4f} por matéria")
+
+        t = estatisticas_triplas(conexao)
+        print(f"\nAcervo de triplas: {t['triplas']} triplas de {t['materias']} "
+              f"matérias · {t['relacoes']} relações distintas · "
+              f"{t['entidades']} entidades")
+        print(f"Custo acumulado: US$ {t['custo']:.4f} · "
+              f"prompt {PROMPT_VERSAO}")
+
+    conexao.close()
+
+
+if __name__ == "__main__":
+    main()
