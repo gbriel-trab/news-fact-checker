@@ -62,8 +62,16 @@ class Tripla(BaseModel):
             "descrevendo o mesmo fato cheguem ao mesmo valor."
         )
     )
-    objeto: str = Field(description="Segunda entidade como apareceu no texto.")
-    objeto_canonico: str = Field(description="Nome canônico da segunda entidade.")
+    objeto: str | None = Field(
+        description=(
+            "Segunda entidade como apareceu no texto. null quando a afirmação é "
+            "um ATRIBUTO do sujeito e não uma relação com outra entidade — "
+            "margem de erro, custo, nível de confiança."
+        )
+    )
+    objeto_canonico: str | None = Field(
+        description="Nome canônico da segunda entidade. null junto com `objeto`."
+    )
     tipo_relacao: Literal["evento", "estado"] = Field(
         description=(
             "'evento' se afirma algo ocorrido num instante (comprou, anunciou, "
@@ -131,6 +139,15 @@ Regras que importam mais que as outras:
    você deduziu. Distinguir os dois é o ponto central deste sistema — marcar
    dedução como EXTRACTED corrompe o resultado em silêncio. Na dúvida, INFERRED.
 
+   Resolver a quem um apelido se refere é DEDUÇÃO, mesmo quando é óbvio:
+
+   Frase:  "Juliana tem 48%, contra 35% do emedebista."
+   Errado: (Gabriel Souza, obteve_percentual_em, ...) EXTRACTED
+   Certo:  (Gabriel Souza, obteve_percentual_em, ...) INFERRED
+
+   O nome não está na frase. Você o recuperou do contexto — isso é INFERRED.
+   Vale para "o emedebista", "o senador amapaense", "a ex-deputada", "ele".
+
 2. ENTIDADE CANÔNICA. Fontes diferentes chamam a mesma entidade de formas
    diferentes. O campo canônico precisa convergir: se duas matérias falam da
    mesma pessoa ou instituição, os valores canônicos têm que ser idênticos,
@@ -163,15 +180,37 @@ Regras que importam mais que as outras:
    grafo. Como número, se encontram — e divergência entre eles é justamente a
    contradição que o sistema procura.
 
-6. RELAÇÃO PRECISA SIGNIFICAR ALGO. Nunca use verbos vazios como "foi", "teve"
+6. ATRIBUTO NÃO É RELAÇÃO. Quando a afirmação é uma PROPRIEDADE do sujeito e
+   não um vínculo com outra entidade, `objeto` e `objeto_canonico` são null.
+
+   Errado: (Pesquisa X, teve_margem_de_erro, margem de erro)
+   Errado: (Pesquisa X, custou, Instituto Y)
+   Certo:  (Pesquisa X, teve_margem_de_erro, null) valor 2 "pontos percentuais"
+   Certo:  (Pesquisa X, teve_custo, null)          valor 24000 "BRL"
+
+   Margem de erro, custo e nível de confiança são propriedades da pesquisa, não
+   relações com algo. Inventar um objeto para preencher o campo produz tripla
+   que não se conecta a nada no grafo.
+
+7. PROPOSTA NÃO É FATO CONSUMADO. Projeto de lei, plano, promessa e proposta
+   descrevem o que ACONTECERIA, não o que aconteceu.
+
+   Frase:  "o PL 2.234/2022, que legaliza cassinos"
+   Errado: (PL 2.234/2022, legalizou, Jogos de azar) EXTRACTED
+   Certo:  (PL 2.234/2022, preve_legalizacao_de, Jogos de azar) EXTRACTED
+
+   O projeto legalizaria. Ele está em tramitação. Registrar como consumado
+   coloca no acervo um fato que não ocorreu.
+
+8. RELAÇÃO PRECISA SIGNIFICAR ALGO. Nunca use verbos vazios como "foi", "teve"
    ou "esteve" sozinhos. (Jonathan Karter, foi, Poder360) não afirma nada.
    Prefira exercer_cargo_em, integrou, foi_transmitido_em.
 
-7. IGNORE TEXTO INSTITUCIONAL DO VEÍCULO. Chamada de podcast, agregador,
+9. IGNORE TEXTO INSTITUCIONAL DO VEÍCULO. Chamada de podcast, agregador,
    newsletter, canal no YouTube e descrição da própria redação não são
    notícia. Nada disso vira tripla.
 
-8. ATRIBUIÇÃO. Para "Fulano afirmou que Z", o objeto é o CONTEÚDO de Z,
+10. ATRIBUIÇÃO. Para "Fulano afirmou que Z", o objeto é o CONTEÚDO de Z,
    resumido numa frase curta — nunca o assunto nem a pessoa citada.
 
    Errado:  (Girão, afirmou, Davi Alcolumbre)
@@ -311,38 +350,38 @@ def main() -> None:
             linha["titulo"], linha["veiculo"],
             linha["data_publicacao"], sentencas,
         )
-        print(f"  {len(resultado.dados.triplas)} triplas · {resultado.uso}\n")
+        print(f"  {len(resultado.dados.triplas)} triplas · {resultado.uso}")
         total_uso.append(resultado.uso)
 
+        # Agrupado por sentenca de origem. O lide jornalistico brasileiro
+        # empacota muitos fatos numa frase so -- a abertura de uma das materias
+        # rendeu dez triplas --, e imprimir a frase sob cada uma repetia o mesmo
+        # texto dez vezes. Agrupado, ve-se o que cada frase de fato produziu.
+        #
+        # A frase aparece so aqui, na avaliacao: o que vai para o banco continua
+        # sendo o indice. Mas sem ela na tela nao ha como julgar se a tripla
+        # esta certa, e julgar sem ler a fonte e o erro que o proprio campo
+        # INFERRED existe para evitar.
+        por_sentenca: dict[int, list[Tripla]] = {}
         for t in resultado.dados.triplas:
-            marca = " " if t.origem == "EXTRACTED" else "~"
-            print(f"  {marca} ({t.sujeito_canonico}, {t.relacao}, {t.objeto_canonico})")
+            por_sentenca.setdefault(t.sentenca, []).append(t)
 
-            linha_meta = f"      {t.tipo_relacao} · {t.origem} · fato: {t.data_fato}"
-            if t.valor_numero is not None:
-                valor = f"{t.valor_numero:g} {t.valor_unidade or ''}".strip()
-                if t.valor_contexto:
-                    valor += f" ({t.valor_contexto})"
-                linha_meta += f" · valor: {valor}"
-            print(linha_meta)
-
-            # A frase de origem so aparece aqui, na avaliacao. O que vai para o
-            # banco continua sendo o indice: a frase ja esta armazenada, e
-            # pedir que o modelo a repita seria pagar duas vezes pelo mesmo
-            # dado. Sem ela na tela, porem, nao ha como julgar se a tripla
-            # esta certa -- e julgar sem ler a fonte e o erro que o proprio
-            # campo INFERRED existe para evitar.
-            if 0 <= t.sentenca < len(sentencas):
-                frase = sentencas[t.sentenca]
-                print(f'      [{t.sentenca}] "{frase[:150]}'
-                      f'{"..." if len(frase) > 150 else ""}"')
+        for idx in sorted(por_sentenca):
+            frase = sentencas[idx] if 0 <= idx < len(sentencas) else "(fora da materia)"
+            corte = frase[:165] + ("..." if len(frase) > 165 else "")
             print()
+            print(f'    [{idx}] "{corte}"')
 
-    if args.dry_run:
-        print(f"\n{'=' * 78}")
-        print("Nada foi enviado. Para rodar de verdade, preencha "
-              "ANTHROPIC_API_KEY no .env e remova --dry-run.")
+            for t in por_sentenca[idx]:
+                marca = " " if t.origem == "EXTRACTED" else "~"
+                alvo = t.objeto_canonico or "—"
+                print(f"      {marca} ({t.sujeito_canonico}, {t.relacao}, {alvo})")
 
+                meta = f"          {t.tipo_relacao} · {t.origem} · fato: {t.data_fato}"
+                if t.valor_numero is not None:
+                    valor = f"{t.valor_numero:g} {t.valor_unidade or ''}".strip()
+                    if t.valor_contexto:
+                        valor += f" ({t.valor_contexto})"
+                    meta += f" · valor: {valor}"
+                print(meta)
 
-if __name__ == "__main__":
-    main()
