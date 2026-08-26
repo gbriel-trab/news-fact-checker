@@ -77,6 +77,24 @@ class Tripla(BaseModel):
             "a deduziu combinando informações. Na dúvida, INFERRED."
         )
     )
+    valor_numero: float | None = Field(
+        description=(
+            "Quando a afirmação é sobre uma quantidade, o número puro aqui — "
+            "38, não '38%'. null quando não houver quantidade."
+        )
+    )
+    valor_unidade: str | None = Field(
+        description=(
+            "Unidade do número, curta e padronizada: '%', 'BRL', 'pessoas', "
+            "'pontos percentuais', 'votos'. null se não houver."
+        )
+    )
+    valor_contexto: str | None = Field(
+        description=(
+            "O que o número mede, curto: '1º turno', 'margem de erro', "
+            "'2º cenário'. null se não houver."
+        )
+    )
     data_fato: str | None = Field(
         description=(
             "Quando o fato ocorreu, em AAAA-MM-DD, ou AAAA-MM / AAAA se o texto "
@@ -124,30 +142,73 @@ Regras que importam mais que as outras:
    veículos noticiam a mesma compra usando "comprou", "adquiriu" e "fechou
    acordo", os três precisam chegar a comprou. Prefira o verbo simples.
 
-4. DATA DO FATO. É quando o fato ocorreu, não quando a matéria foi publicada.
-   Elas divergem quando a matéria trata de algo antigo, e essa divergência é
-   justamente o que o sistema precisa enxergar.
+4. DATA DO FATO. É quando o fato ocorreu, não quando a matéria foi
+   publicada. Elas divergem quando a matéria trata de algo antigo, e essa
+   divergência é justamente o que o sistema precisa enxergar.
 
-5. ATRIBUIÇÃO. Para "Fulano afirmou que Z", extraia (Fulano, afirmou, <resumo
-   curto de Z>) e marque EXTRACTED. Não trate Z como fato do mundo — o
-   verificável ali é que Fulano disse, não que Z seja verdade.
+   Para relação de ESTADO sem data explícita no texto, use null. Filiação
+   partidária, cargo e propriedade duram anos; carimbá-los com a data da
+   matéria inventa uma precisão que a fonte não deu, e faz duas matérias sobre
+   o mesmo fato permanente parecerem separadas no tempo.
+
+5. QUANTIDADE NÃO VAI NO OBJETO. Se a afirmação é sobre um número, o objeto é
+   a ENTIDADE a que o número se refere, e o número vai nos campos de valor.
+
+   Errado:  (Fulano, obteve, 38% das intenções de voto no 1º turno)
+   Certo:   (Fulano, obteve_percentual_em, Pesquisa X)
+            valor_numero 38 · valor_unidade "%" · valor_contexto "1º turno"
+
+   O motivo é concreto: dois veículos noticiando a mesma pesquisa nunca
+   escreveriam a mesma frase no objeto, e as triplas jamais se encontrariam no
+   grafo. Como número, se encontram — e divergência entre eles é justamente a
+   contradição que o sistema procura.
+
+6. RELAÇÃO PRECISA SIGNIFICAR ALGO. Nunca use verbos vazios como "foi", "teve"
+   ou "esteve" sozinhos. (Jonathan Karter, foi, Poder360) não afirma nada.
+   Prefira exercer_cargo_em, integrou, foi_transmitido_em.
+
+7. IGNORE TEXTO INSTITUCIONAL DO VEÍCULO. Chamada de podcast, agregador,
+   newsletter, canal no YouTube e descrição da própria redação não são
+   notícia. Nada disso vira tripla.
+
+8. ATRIBUIÇÃO. Para "Fulano afirmou que Z", o objeto é o CONTEÚDO de Z,
+   resumido numa frase curta — nunca o assunto nem a pessoa citada.
+
+   Errado:  (Girão, afirmou, Davi Alcolumbre)
+   Errado:  (Girão, afirmou, Casas de apostas on-line)
+   Certo:   (Girão, afirmou, Alcolumbre tem obsessão por jogos de azar)
+
+   Marque EXTRACTED e não trate Z como fato do mundo: o verificável ali é que
+   Fulano disse, não que Z seja verdade.
 
 Exemplo:
 
   Matéria publicada em 2026-08-20, sentenças numeradas:
-    [0] A Vale confirmou nesta quarta-feira a compra da mineradora Ferrous por
-        R$ 3 bilhões.
-    [1] O negócio, negociado desde 2024, ainda depende de aval do Cade.
+    [0] A Vale, presidida por Gustavo Pimenta, confirmou nesta quarta-feira a
+        compra da mineradora Ferrous por R$ 3 bilhões.
+    [1] O negócio ainda depende de aval do Cade.
     [2] Para analistas, o preço foi salgado.
+    [3] Assine nossa newsletter e siga o canal do jornal no YouTube.
 
   Saída:
-    (Vale S.A., comprou, Ferrous Resources) evento, EXTRACTED, 2026-08-19, sent 0
-    (Vale S.A., aguarda_aprovacao_de, Conselho Administrativo de Defesa
-     Econômica) estado, EXTRACTED, 2026-08-20, sent 1
+    (Vale S.A., comprou, Ferrous Resources)
+       evento · EXTRACTED · fato 2026-08-19 · sent 0
+    (Vale S.A., pagou_por, Ferrous Resources)
+       evento · EXTRACTED · fato 2026-08-19 · sent 0
+       valor_numero 3000000000 · valor_unidade "BRL"
+    (Gustavo Pimenta, presidiu, Vale S.A.)
+       estado · EXTRACTED · fato null · sent 0
+    (Vale S.A., aguarda_aprovacao_de, Conselho Administrativo de Defesa Econômica)
+       estado · EXTRACTED · fato null · sent 1
 
-  A sentença [2] não gerou tripla: é opinião de terceiros, não é verificável.
-  Repare que "nesta quarta-feira" virou a data real, e que o Cade foi expandido
-  para o nome oficial no campo canônico.
+  Repare em cada decisão:
+  - "nesta quarta-feira" virou data real; o Cade foi expandido no canônico
+  - o preço saiu do objeto e virou valor numérico, para que outro veículo
+    noticiando a mesma compra chegue ao mesmo número
+  - a presidência é estado e o texto não a data: fato fica null, nunca a data
+    da publicação
+  - a sentença [2] é opinião e não gerou tripla
+  - a sentença [3] é chamada institucional do veículo e não gerou tripla
 """
 
 
@@ -164,8 +225,8 @@ def monta_conteudo(titulo: str, veiculo: str, data_pub: str | None,
 
 
 def extrai(titulo: str, veiculo: str, data_pub: str | None,
-           sentencas: list[str]) -> Extracao:
-    """Chama o provedor ativo e devolve as triplas validadas contra o schema."""
+           sentencas: list[str]) -> llm.Resposta:
+    """Chama o modelo e devolve as triplas validadas mais o consumo da chamada."""
     return llm.gera(
         INSTRUCOES,
         monta_conteudo(titulo, veiculo, data_pub, sentencas),
@@ -211,6 +272,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    total_uso: list[llm.Uso] = []
+
     linhas = _materias(args.n)
     if not linhas:
         print("Nenhuma matéria com texto suficiente. Rode a coleta primeiro.")
@@ -248,12 +311,32 @@ def main() -> None:
             linha["titulo"], linha["veiculo"],
             linha["data_publicacao"], sentencas,
         )
-        print(f"  {len(resultado.triplas)} triplas\n")
-        for t in resultado.triplas:
+        print(f"  {len(resultado.dados.triplas)} triplas · {resultado.uso}\n")
+        total_uso.append(resultado.uso)
+
+        for t in resultado.dados.triplas:
             marca = " " if t.origem == "EXTRACTED" else "~"
             print(f"  {marca} ({t.sujeito_canonico}, {t.relacao}, {t.objeto_canonico})")
-            print(f"      {t.tipo_relacao} · {t.origem} · fato: {t.data_fato}"
-                  f" · sent [{t.sentenca}]")
+
+            linha_meta = f"      {t.tipo_relacao} · {t.origem} · fato: {t.data_fato}"
+            if t.valor_numero is not None:
+                valor = f"{t.valor_numero:g} {t.valor_unidade or ''}".strip()
+                if t.valor_contexto:
+                    valor += f" ({t.valor_contexto})"
+                linha_meta += f" · valor: {valor}"
+            print(linha_meta)
+
+            # A frase de origem so aparece aqui, na avaliacao. O que vai para o
+            # banco continua sendo o indice: a frase ja esta armazenada, e
+            # pedir que o modelo a repita seria pagar duas vezes pelo mesmo
+            # dado. Sem ela na tela, porem, nao ha como julgar se a tripla
+            # esta certa -- e julgar sem ler a fonte e o erro que o proprio
+            # campo INFERRED existe para evitar.
+            if 0 <= t.sentenca < len(sentencas):
+                frase = sentencas[t.sentenca]
+                print(f'      [{t.sentenca}] "{frase[:150]}'
+                      f'{"..." if len(frase) > 150 else ""}"')
+            print()
 
     if args.dry_run:
         print(f"\n{'=' * 78}")

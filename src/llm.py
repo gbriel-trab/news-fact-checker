@@ -10,6 +10,7 @@ trocar de modelo sem tocar em quem chama.
 """
 
 import os
+from dataclasses import dataclass
 
 from pydantic import BaseModel
 
@@ -22,12 +23,48 @@ MODELO = "claude-opus-5"
 
 MAX_TOKENS_SAIDA = 8000
 
+# US$ por milhao de tokens. Cache lido custa 0,1x da entrada; cache escrito,
+# 1,25x. Numeros usados so para relatorio -- a fatura real esta no console.
+PRECO = {"entrada": 5.00, "saida": 25.00, "cache_leitura": 0.50, "cache_escrita": 6.25}
+
+
+@dataclass(frozen=True, slots=True)
+class Uso:
+    """Consumo de uma chamada. Existe para que custo seja medido, nao estimado."""
+
+    entrada: int
+    saida: int
+    cache_leitura: int
+    cache_escrita: int
+
+    @property
+    def custo(self) -> float:
+        return (
+            self.entrada * PRECO["entrada"]
+            + self.saida * PRECO["saida"]
+            + self.cache_leitura * PRECO["cache_leitura"]
+            + self.cache_escrita * PRECO["cache_escrita"]
+        ) / 1_000_000
+
+    def __str__(self) -> str:
+        cache = ""
+        if self.cache_leitura or self.cache_escrita:
+            cache = f" · cache {self.cache_leitura}r/{self.cache_escrita}w"
+        return (f"{self.entrada} entrada · {self.saida} saida{cache}"
+                f" · US$ {self.custo:.4f}")
+
+
+@dataclass(frozen=True, slots=True)
+class Resposta:
+    dados: BaseModel
+    uso: Uso
+
 
 class FalhaNoModelo(Exception):
     """O modelo respondeu, mas não com o que o schema exige."""
 
 
-def gera(system: str, user: str, esquema: type[BaseModel]) -> BaseModel:
+def gera(system: str, user: str, esquema: type[BaseModel]) -> Resposta:
     """Manda o par system/user ao modelo e devolve o objeto validado.
 
     O schema não é pedido no prompt: vai como restrição da chamada, e a API
@@ -61,7 +98,16 @@ def gera(system: str, user: str, esquema: type[BaseModel]) -> BaseModel:
         messages=[{"role": "user", "content": user}],
         output_format=esquema,
     )
-    return resposta.parsed_output
+    u = resposta.usage
+    return Resposta(
+        dados=resposta.parsed_output,
+        uso=Uso(
+            entrada=u.input_tokens,
+            saida=u.output_tokens,
+            cache_leitura=getattr(u, "cache_read_input_tokens", 0) or 0,
+            cache_escrita=getattr(u, "cache_creation_input_tokens", 0) or 0,
+        ),
+    )
 
 
 def descricao() -> str:
