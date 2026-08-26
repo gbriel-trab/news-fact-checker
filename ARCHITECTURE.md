@@ -78,7 +78,29 @@ uma mensagem encaminhada, um post — e o acervo serve de corpo de evidência.
 |-|-|-|-|
 | Afirmação digitada na CLI | Sim | Não | Demonstração e uso real |
 | RSS de agências de checagem | Sim — são boatos de rede social | Sim, mas já vêm com o veredito | **Gabarito de avaliação** |
-| Rede social direto | Sim | Sim | Fora do orçamento (X cobra por post lido) |
+| Rede social via API do X | Sim | Sim | Descartada: US$ 0,005 por **post lido** |
+| Rede social via API da xAI | Sim | Sim | Viável, ver abaixo |
+
+### Rede social pela API da xAI
+
+Identificado e precificado, não implementado.
+
+A API do X cobra **por post lido** (US$ 0,005), o que inviabiliza volume: 500
+posts/dia dariam ~US$ 75/mês. A API da xAI expõe busca no X como ferramenta e
+cobra **por chamada de busca**, ao mesmo preço unitário — e uma busca devolve
+vários posts. Cinco buscas por dia ficam em torno de US$ 0,75/mês, cerca de
+cem vezes menos.
+
+A diferença não é de desconto, é de unidade de cobrança. Vale registrar porque
+a conclusão anterior — "rede social está fora do orçamento" — era verdadeira
+para a API do X e falsa como afirmação geral.
+
+Condição para adotar: **a busca precisa devolver o post com autor e link.**
+Se devolver apenas um resumo do modelo sobre o que está circulando, não serve
+— afirmação sem fonte rastreável quebra o princípio 2 já na entrada, e o
+sistema passaria a confiar na paráfrase de um modelo como se fosse registro.
+
+Fica para depois de a extração estar validada.
 
 A entrada é uma CLI:
 
