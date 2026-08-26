@@ -21,6 +21,17 @@ from . import config  # noqa: F401
 
 MODELO = "claude-opus-5"
 
+ESFORCO = "medium"
+"""Profundidade de raciocínio, de low a max. O padrão da API é high.
+
+Baixado para medium por decisão explícita: raciocínio é cobrado como saída, a
+saída é ~87% do custo, e cerca de metade dela eram tokens de raciocínio. A
+extração tem schema rígido e vocabulário fechado, o que restringe o espaço de
+resposta — é onde deliberação máxima menos rende.
+
+Trocar isto muda o custo e a qualidade juntos, e a comparação está registrada
+no README."""
+
 MAX_TOKENS_SAIDA = 8000
 
 # US$ por milhao de tokens. Cache lido custa 0,1x da entrada; cache escrito,
@@ -97,6 +108,7 @@ def gera(system: str, user: str, esquema: type[BaseModel]) -> Resposta:
         }],
         messages=[{"role": "user", "content": user}],
         output_format=esquema,
+        output_config={"effort": ESFORCO},
     )
     u = resposta.usage
     return Resposta(

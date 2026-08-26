@@ -21,7 +21,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import config, llm
+from . import boilerplate, config, llm
 from .segment import em_sentencas
 from .storage import (
     conecta, estatisticas_triplas, salva_extracao)
@@ -275,7 +275,7 @@ Exemplo:
 
 
 def versao_prompt() -> str:
-    """Identidade do prompt e do schema, juntos, como hash curto.
+    """Identidade de tudo que determina o resultado, como hash curto.
 
     Serve para saber qual versão produziu cada tripla. Durante a calibração o
     prompt mudou várias vezes, e triplas de versões diferentes não são
@@ -286,7 +286,20 @@ def versao_prompt() -> str:
     lembrar de incrementar fica errada exatamente quando importa.
     """
     material = INSTRUCOES + json.dumps(
-        Extracao.model_json_schema(), sort_keys=True, ensure_ascii=False)
+        {
+            "schema": Extracao.model_json_schema(),
+            # O filtro de rodapé muda o texto que chega ao modelo, logo muda o
+            # resultado. Fora do hash, ajustar o filtro sem mexer no prompt
+            # deixaria extrações incomparáveis com a mesma versão.
+            "filtro": {
+                "marcadores": boilerplate.MARCADORES,
+                "min_ocorrencias": boilerplate.MIN_OCORRENCIAS,
+                "min_dias": boilerplate.MIN_DIAS_DISTINTOS,
+                "min_materias": boilerplate.MIN_MATERIAS,
+            },
+            "esforco": llm.ESFORCO,
+        },
+        sort_keys=True, ensure_ascii=False, default=list)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
 
 
@@ -386,14 +399,30 @@ def main() -> None:
     if not args.dry_run:
         print(f"Provedor: {llm.descricao()}\n")
 
+    # Frases institucionais por veículo, calculadas uma vez e reaproveitadas.
+    # Percorrer o acervo inteiro por matéria seria lento sem ganho nenhum.
+    repetidas: dict[str, set[str]] = {}
+
     for i, linha in enumerate(linhas, 1):
         texto = max(linha["conteudo"], linha["resumo"], key=len)
-        sentencas = em_sentencas(texto)
+        veiculo = linha["veiculo"]
+
+        if veiculo not in repetidas:
+            repetidas[veiculo] = boilerplate.frases_repetidas(
+                conexao, veiculo, em_sentencas)
+
+        sentencas, removidas = boilerplate.filtra(
+            em_sentencas(texto), repetidas[veiculo])
 
         print(f"\n{'=' * 78}")
         print(f"[{i}/{len(linhas)}] {linha['veiculo']} / {linha['editoria']}")
         print(f"  {linha['titulo'][:70]}")
-        print(f"  {len(texto)} caracteres → {len(sentencas)} sentenças")
+        print(f"  {len(texto)} caracteres → {len(sentencas)} sentenças"
+              + (f" ({len(removidas)} institucionais fora)" if removidas else ""))
+        # Impresso porque filtro que corta em silêncio não pode ser conferido,
+        # e este corta antes de o texto chegar ao modelo.
+        for r in removidas:
+            print(f"      fora: {r[:96]}")
 
         if args.dry_run:
             conteudo = monta_conteudo(
