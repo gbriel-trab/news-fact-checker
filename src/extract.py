@@ -21,13 +21,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import boilerplate, config, llm
+from . import boilerplate, config, llm, vocabulario
+from .vocabulario import Relacao
 from .segment import em_sentencas
 from .storage import (
     conecta, estatisticas_triplas, salva_extracao)
 
-VOCAB_VERSAO = 0
-"""Versão do vocabulário de relações. Zero significa "ainda livre, não fechado"."""
+VOCAB_VERSAO = vocabulario.VERSAO
 
 MAX_TRIPLAS: int | None = None
 """Teto de triplas por matéria, ou None para não limitar.
@@ -58,11 +58,11 @@ class Tripla(BaseModel):
             "o mesmo valor aqui."
         )
     )
-    relacao: str = Field(
+    relacao: Relacao = Field(
         description=(
-            "Verbo da afirmação, no passado, minúsculo, sem espaços "
-            "(use_underscore). Genérico o bastante para que fontes diferentes "
-            "descrevendo o mesmo fato cheguem ao mesmo valor."
+            "A relação que a afirmação estabelece. Escolha da lista fechada; "
+            "não há outros valores possíveis. Use `outro` quando nenhuma "
+            "servir — forçar uma relação errada é pior que admitir a lacuna."
         )
     )
     objeto: str | None = Field(
@@ -168,9 +168,29 @@ Regras que importam mais que as outras:
    Se o nome completo não estiver na matéria, use a forma mais completa que
    houver e marque a tripla como INFERRED.
 
-3. RELAÇÃO GENÉRICA. Escolha o verbo mais comum que descreva o fato. Se três
-   veículos noticiam a mesma compra usando "comprou", "adquiriu" e "fechou
-   acordo", os três precisam chegar a comprou. Prefira o verbo simples.
+3. RELAÇÃO. Escolha uma da lista fechada abaixo. Não existem outros
+   valores: o schema recusa qualquer coisa fora dela.
+
+  afirmou                declarou algo, sem valoração explícita
+  criticou               declarou com valoração negativa, ou atacou alguém ou algo
+  defendeu               declarou apoio a algo, ou propôs que algo seja feito
+  integra                faz parte de partido, chapa, comissão ou organização
+  exerce_cargo_em        ocupa cargo numa instituição, sem dirigi-la
+  preside                dirige uma instituição, comissão ou órgão
+  candidatou_se_a        é candidato a um cargo
+  obteve_percentual_em   resultado em pesquisa ou votação; número no valor
+  submeteu_a_votacao     pôs proposta em votação, ou ela foi votada num órgão
+  preve                  projeto ou proposta prevê algo; nunca fato consumado
+  abriu_processo_contra  iniciou processo, investigação ou ação contra
+  participou_de          esteve em entrevista, sabatina, sessão ou evento
+  divulgou               publicou ou tornou público um dado, estudo ou documento
+  tem_atributo           propriedade com valor numérico — custo, margem de erro, amostra. Objeto null, e o nome da propriedade vai em valor_contexto
+  outro                  afirmação verificável que não cabe em nenhuma acima. Use sem hesitar: forçar uma relação que não serve é pior
+
+   Prefira a relação específica quando ela couber. `outro` existe para
+   afirmação verificável que nenhuma descreve — usá-la é melhor que
+   forçar uma relação que não serve, porque a lista aprende com o que
+   cai lá, e não aprende com o que foi forçado.
 
 4. DATA DO FATO. É quando o fato ocorreu, não quando a matéria foi
    publicada. Elas divergem quando a matéria trata de algo antigo, e essa
@@ -504,12 +524,28 @@ def main() -> None:
         print(f"US$ {custo:.4f} nesta rodada · "
               f"US$ {custo / len(total_uso):.4f} por matéria")
 
+        # A fracao em `outro` e o sinal de que o vocabulario precisa crescer.
+        # Sem medir isso, a lista fechada congela no que alguem imaginou uma
+        # vez, e o que nao coube desaparece sem deixar rastro.
+        fora = conexao.execute(
+            "SELECT COUNT(*) FROM triplas t JOIN extracoes e ON e.id = t.extracao_id "
+            "WHERE e.vocab_versao = ? AND t.relacao = 'outro'", (VOCAB_VERSAO,)
+        ).fetchone()[0]
+        no_vocab = conexao.execute(
+            "SELECT COUNT(*) FROM triplas t JOIN extracoes e ON e.id = t.extracao_id "
+            "WHERE e.vocab_versao = ?", (VOCAB_VERSAO,)
+        ).fetchone()[0]
+
         t = estatisticas_triplas(conexao)
         print(f"\nAcervo de triplas: {t['triplas']} triplas de {t['materias']} "
               f"matérias · {t['relacoes']} relações distintas · "
               f"{t['entidades']} entidades")
         print(f"Custo acumulado: US$ {t['custo']:.4f} · "
-              f"prompt {PROMPT_VERSAO}")
+              f"prompt {PROMPT_VERSAO} · vocabulário v{VOCAB_VERSAO}")
+        if no_vocab:
+            print(f"Em 'outro': {fora} de {no_vocab} "
+                  f"({100 * fora / no_vocab:.0f}%) — se subir, a lista precisa "
+                  f"de relação nova")
 
     conexao.close()
 

@@ -14,7 +14,7 @@ from src.storage import (
 from tests.test_storage import artigo
 
 
-def tripla(sujeito="Vale S.A.", relacao="comprou", objeto="Ferrous",
+def tripla(sujeito="Vale S.A.", relacao="outro", objeto="Ferrous",
            valor=None, unidade=None, data_fato="2026-08-19", sentenca=0):
     return Tripla(
         sujeito=sujeito, sujeito_canonico=sujeito,
@@ -44,7 +44,7 @@ def artigo_id(con):
 class TestGravacao:
     def test_grava_triplas(self, conexao):
         salva_extracao(conexao, artigo_id(conexao),
-                       [tripla(), tripla(relacao="pagou_por")],
+                       [tripla(), tripla(relacao="divulgou")],
                        "claude-opus-5", "abc123", 0, USO)
         assert estatisticas_triplas(conexao)["triplas"] == 2
 
@@ -55,7 +55,7 @@ class TestGravacao:
 
     def test_atributo_grava_objeto_nulo(self, conexao):
         """Margem de erro é propriedade da pesquisa, não relação com entidade."""
-        t = tripla(relacao="teve_margem_de_erro", objeto=None,
+        t = tripla(relacao="tem_atributo", objeto=None,
                    valor=2, unidade="pontos percentuais")
         salva_extracao(conexao, artigo_id(conexao), [t],
                        "claude-opus-5", "abc123", 0, USO)
@@ -139,9 +139,9 @@ class TestEstatisticas:
     def test_conta_relacoes_e_entidades_distintas(self, conexao):
         salva_extracao(
             conexao, artigo_id(conexao),
-            [tripla(sujeito="A", relacao="comprou"),
-             tripla(sujeito="A", relacao="vendeu"),
-             tripla(sujeito="B", relacao="comprou")],
+            [tripla(sujeito="A", relacao="afirmou"),
+             tripla(sujeito="A", relacao="criticou"),
+             tripla(sujeito="B", relacao="afirmou")],
             "claude-opus-5", "abc123", 0, USO)
         n = estatisticas_triplas(conexao)
         assert n["relacoes"] == 2
@@ -163,7 +163,7 @@ class TestDescartaVazias:
 
     def test_mantem_atributo_com_valor_e_sem_objeto(self):
         from src.extract import descarta_vazias
-        t = tripla(relacao="teve_margem_de_erro", objeto=None,
+        t = tripla(relacao="tem_atributo", objeto=None,
                    valor=2, unidade="pontos percentuais")
         boas, vazias = descarta_vazias([t])
         assert len(boas) == 1 and vazias == 0
