@@ -26,9 +26,22 @@ from .segment import em_sentencas
 VOCAB_VERSAO = 0
 """Versão do vocabulário de relações. Zero significa "ainda livre, não fechado"."""
 
-MAX_TRIPLAS = 12
-"""Teto por matéria. Corta a cauda longa de afirmação irrelevante e limita o
-custo de saída, que é a parte cara e a única que não tem cache."""
+MAX_TRIPLAS: int | None = None
+"""Teto de triplas por matéria, ou None para não limitar.
+
+None durante a fase de medição. O teto existe para conter o custo de saída —
+que é a parte cara e a única sem cache —, mas aplicá-lo antes de olhar o dado
+cortaria exatamente a cauda que precisa ser inspecionada: é ela que revela
+quais relações a realidade produz e onde o corte deveria ficar.
+
+Repor depois de medir a distribuição real de triplas por matéria.
+"""
+
+_LINHA_TETO = (
+    f"- No máximo {MAX_TRIPLAS} por matéria, priorizando as centrais"
+    if MAX_TRIPLAS
+    else "- Todas as que a matéria fizer. Não limite a quantidade"
+)
 
 
 class Tripla(BaseModel):
@@ -87,7 +100,7 @@ estrutura como triplas (sujeito, relação, objeto).
 
 O que extrair:
 - Afirmações factuais que poderiam ser confirmadas ou desmentidas por outra fonte
-- No máximo {MAX_TRIPLAS} por matéria, priorizando as centrais
+{_LINHA_TETO}
 
 O que NÃO extrair:
 - Opinião, análise, previsão, hipótese e pergunta
