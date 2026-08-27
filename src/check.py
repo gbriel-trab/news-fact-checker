@@ -222,11 +222,15 @@ def verifica(texto: str, verboso: bool = False,
             valor = ""
             if m.get("valor") not in ("", None):
                 valor = f" = {m['valor']:g} {m.get('unidade', '')}".rstrip()
-            print(f"  [{m['veiculo']}] {m['titulo'][:66]}")
-            print(f"    {e.texto[:88]}{valor}")
-            print(f"    fato: {m['data_fato'] or 'não informada'} · "
-                  f"{m['origem']} · {m['url'][:62]}")
-        print()
+            # Nada truncado aqui, e nao e questao de estetica: o principio 2 diz
+            # que todo veredito carrega a fonte, e fonte que o leitor nao
+            # consegue abrir nao e fonte. A URL cortada em 62 caracteres
+            # parecia citacao e nao servia para conferir nada.
+            print(f"  [{m['veiculo']}] {m['titulo']}")
+            print(f"    {e.texto}{valor}")
+            print(f"    fato: {m['data_fato'] or 'não informada'} · {m['origem']}")
+            print(f"    {m['url']}")
+            print()
 
     # Separado das fontes de propósito: é o sistema falando, não o veículo.
     print(f"POR QUE\n  {julgamento.justificativa}")

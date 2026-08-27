@@ -22,6 +22,7 @@ devolve resultado sem sentido. Por isso o nome do modelo vai gravado nos
 metadados da coleção e é conferido na abertura.
 """
 
+import os
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -56,6 +57,16 @@ class Achado:
 
 @lru_cache(maxsize=1)
 def _modelo():
+    # Barra de progresso e aviso de token no meio de um veredito parecem
+    # defeito do sistema. Silenciados aqui, no unico ponto que carrega o
+    # modelo, e nao globalmente -- erro de verdade continua aparecendo.
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+    import logging
+
+    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+    logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
     from sentence_transformers import SentenceTransformer
 
     return SentenceTransformer(MODELO_EMBEDDING)
