@@ -32,7 +32,15 @@ resposta — é onde deliberação máxima menos rende.
 Trocar isto muda o custo e a qualidade juntos, e a comparação está registrada
 no README."""
 
-MAX_TOKENS_SAIDA = 8000
+MAX_TOKENS_SAIDA = 16000
+"""Teto de tokens gerados.
+
+Era 8000 e truncou numa materia de 51 sentencas: a resposta cortou no meio de
+uma string e o JSON ficou invalido. Truncamento e falha PAGA -- o modelo gera
+ate o teto, a chamada e cobrada, e nao volta nada aproveitavel.
+
+16000 cobre com folga a materia mais longa do acervo. Acima disso a SDK pede
+streaming para nao esbarrar em timeout de HTTP."""
 
 # US$ por milhao de tokens. Cache lido custa 0,1x da entrada; cache escrito,
 # 1,25x. Numeros usados so para relatorio -- a fatura real esta no console.
@@ -92,24 +100,37 @@ def gera(system: str, user: str, esquema: type[BaseModel]) -> Resposta:
         )
 
     cliente = anthropic.Anthropic()
-    resposta = cliente.messages.parse(
-        model=MODELO,
-        max_tokens=MAX_TOKENS_SAIDA,
-        # O bloco de instruções é idêntico em toda chamada, então vai marcado
-        # para cache. ATENÇÃO: o prefixo mínimo cacheável é ~1024 tokens, e
-        # hoje este bloco tem ~625 — ou seja, a marcação ainda não faz efeito
-        # e a falha é silenciosa. Ela passa a valer quando o vocabulário
-        # fechado e mais exemplos entrarem nas instruções. Conferir em
-        # `usage.cache_read_input_tokens` antes de contar com a economia.
-        system=[{
-            "type": "text",
-            "text": system,
-            "cache_control": {"type": "ephemeral"},
-        }],
-        messages=[{"role": "user", "content": user}],
-        output_format=esquema,
-        output_config={"effort": ESFORCO},
-    )
+    try:
+        resposta = cliente.messages.parse(
+            model=MODELO,
+            max_tokens=MAX_TOKENS_SAIDA,
+            # O bloco de instruções é idêntico em toda chamada e vai marcado
+            # para cache. Passou a valer quando o vocabulário fechado entrou:
+            # o prefixo mínimo cacheável é ~1024 tokens e o bloco hoje tem
+            # ~2000. Confirmado em execução — a segunda matéria de cada rodada
+            # lê o prefixo do cache em vez de reenviá-lo.
+            system=[{
+                "type": "text",
+                "text": system,
+                "cache_control": {"type": "ephemeral"},
+            }],
+            messages=[{"role": "user", "content": user}],
+            output_format=esquema,
+            output_config={"effort": ESFORCO},
+        )
+    except Exception as erro:
+        # Resposta truncada chega aqui como erro de JSON invalido, o que parece
+        # defeito de schema e nao e. Nomear a causa evita procurar no lugar
+        # errado -- e lembrar que foi cobrado evita repetir sem ajustar.
+        if "Invalid JSON" in str(erro) or "EOF while parsing" in str(erro):
+            raise FalhaNoModelo(
+                f"Resposta truncada: a geracao bateu no teto de "
+                f"{MAX_TOKENS_SAIDA} tokens antes de fechar o JSON. "
+                f"A chamada foi cobrada mesmo assim. Materia longa demais para "
+                f"o teto atual, ou triplas demais por materia."
+            ) from erro
+        raise
+
     u = resposta.usage
     return Resposta(
         dados=resposta.parsed_output,

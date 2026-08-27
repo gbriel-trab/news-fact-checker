@@ -1,5 +1,7 @@
 # ---- Notas locais (nao publicar) ----
 CLAUDE.md
+# Prompt gerado para conferencia manual num chat limpo.
+teste-prompt.txt
 
 # ---- Segredos ----
 .env

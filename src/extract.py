@@ -29,16 +29,19 @@ from .storage import (
 
 VOCAB_VERSAO = vocabulario.VERSAO
 
-MAX_TRIPLAS: int | None = None
-"""Teto de triplas por matéria, ou None para não limitar.
+MAX_TRIPLAS: int | None = 30
+"""Teto de triplas por matéria.
 
-None durante a fase de medição. O teto existe para conter o custo de saída —
-que é a parte cara e a única sem cache —, mas aplicá-lo antes de olhar o dado
-cortaria exatamente a cauda que precisa ser inspecionada: é ela que revela
-quais relações a realidade produz e onde o corte deveria ficar.
+Esteve em None durante a medição, de propósito: capar antes de olhar o dado
+cortaria a cauda que revela quais relações a realidade produz.
 
-Repor depois de medir a distribuição real de triplas por matéria.
-"""
+Medido e reposto. Matérias de 18 a 23 sentenças renderam 24 a 33 triplas, e a
+concentração de fato verificável está nas primeiras. 30 acomoda a matéria
+típica inteira e limita a cauda de uma longa.
+
+O teto também protege de truncamento: uma matéria de 51 sentenças estourou o
+limite de tokens de saída, cortou o JSON no meio e a chamada foi cobrada sem
+devolver nada."""
 
 _LINHA_TETO = (
     f"- No máximo {MAX_TRIPLAS} por matéria, priorizando as centrais"
@@ -441,6 +444,7 @@ def main() -> None:
     args = parser.parse_args()
 
     total_uso: list[llm.Uso] = []
+    falhas: list[tuple[int, str]] = []
 
     conexao = conecta(config.BANCO)
     if args.ids:
@@ -499,10 +503,17 @@ def main() -> None:
                                  ensure_ascii=False)[:1400])
             continue
 
-        resultado = extrai(
-            linha["titulo"], linha["veiculo"],
-            linha["data_publicacao"], sentencas,
-        )
+        # Falha numa matéria não derruba o lote. As anteriores já estão
+        # gravadas, e abortar deixaria as seguintes por extrair sem motivo.
+        try:
+            resultado = extrai(
+                linha["titulo"], linha["veiculo"],
+                linha["data_publicacao"], sentencas,
+            )
+        except llm.FalhaNoModelo as erro:
+            falhas.append((linha["id"], str(erro)))
+            print(f"  FALHOU: {erro}")
+            continue
         boas, vazias = descarta_vazias(resultado.dados.triplas)
         resultado.dados.triplas[:] = boas
 
