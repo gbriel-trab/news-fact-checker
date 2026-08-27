@@ -371,6 +371,41 @@ pior tipo de falha porque parece funcionamento normal.
 * Cada tripla grava a **versão do vocabulário**. Como a lista cresce, sem isso é
   impossível distinguir "não cabia" de "essa relação ainda não existia".
 
+### Por que não uma biblioteca pronta de extração
+
+Existem extratores de tripla gratuitos e locais. O mais próximo do que este
+projeto precisa é o **mREBEL** (`Babelscape/mrebel-large`): multilíngue com
+português, roda offline, custo zero por matéria.
+
+Testado em 27/08/2026 sobre 5 matérias já extraídas, no mesmo lide, com beam
+search de 3 sequências. **60 triplas, 30 relações distintas, nenhuma no
+vocabulário** — com mapeamento manual generoso (`position held` →
+`exerce_cargo_em`, `office contested` → `candidatou_se_a`), chegaria a ~12%.
+
+A causa é estrutural, não de qualidade: o mREBEL foi treinado nas propriedades
+do **Wikidata**, que modela fato permanente de entidade — *tem sede em*, *é
+subsidiária de*, *é filiado a*. Notícia é feita de **evento e ato de fala**, e
+o Wikidata não tem coluna para "negou recurso", "afirmou que" ou "submeteu a
+votação".
+
+O que o teste mostrou, além da cobertura:
+
+* **Nenhum número, em nenhuma das cinco.** Não extraiu os R$ 1.741 do salário
+  mínimo, os R$ 130,6 bilhões da Braskem, nem a multa de R$ 420 mil. A detecção
+  de divergência roda em cima de número — só isso já encerra a questão.
+* **Erro de sujeito da mesma família que o do Haiku, e pior**: devolveu
+  `(José Antonio Encinas Manfré, member of political party, PRTB)`, filiando o
+  magistrado ao partido do réu que ele julgou.
+* Não distingue `EXTRACTED` de `INFERRED` (princípio 4), não carrega valor com
+  unidade e contexto, e não mantém entidade canônica estável entre matérias.
+
+Conclusão registrada para não ser refeita: **a extração paga não é preguiça de
+procurar alternativa.** O vocabulário deste projeto é de corroboração
+jornalística, e não existe pronto porque quase ninguém constrói isso.
+
+O script do teste foi descartado de propósito — 2,3 GB de dependência para
+rodar uma vez não pertence ao repositório. O resultado, sim.
+
 ### Canonicalização de entidade
 
 A extração devolve a **entidade canônica**, não a forma de superfície que
