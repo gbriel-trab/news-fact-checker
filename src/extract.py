@@ -499,12 +499,34 @@ MIN_SIMILARIDADE = 0.70
 Ver a justificativa e a medição em `_por_historia`. Roda no modelo local de
 embedding — não custa chamada."""
 
-MIN_TEXTO = 1200
-"""Caracteres mínimos para uma matéria sustentar extração.
+MIN_SENTENCAS = 2
+"""Sentenças mínimas para uma matéria sustentar extração.
 
-Veículo que só publica manchete no RSS não entra: 200 caracteres não dão
-tripla, e a chamada seria desperdício.
-"""
+ERA UM PISO DE 1200 CARACTERES, e ele ficou errado quando o corte no lide
+entrou. O piso de caracteres foi escrito quando a matéria inteira ia para o
+modelo: ali, texto curto significava pouco material. Depois do corte, só vão
+5 sentenças de qualquer forma — uma matéria de 280 caracteres manda 2 em vez
+de 5, gasta MENOS, e o que ela manda é justamente o lide.
+
+E o lide é onde a corroboração vive: medimos que 84% das triplas úteis estão
+nas sentenças 0 a 2. Um RSS que entrega só o lide não é a pior forma de
+matéria para este sistema — é a ideal.
+
+MEDIDO no acervo, matérias que o piso antigo excluía e este aceita:
+
+    Folha           216 de 518    2,2 sentenças, 100% com número
+    Exame            18 de 28
+    BBC Brasil       13 de 55
+    UOL               6 de 49
+    Cointelegraph     3 de 30
+    Carta Capital     3 de 20
+
+A Folha é o destravamento: segundo maior veículo do acervo, e fazia par com
+todo mundo sem poder virar evidência.
+
+Duas sentenças e não uma: com uma só, metade das matérias do UOL e do
+Cointelegraph entrariam trazendo um fato solto sem contexto de data ou
+entidade, e tripla sem contexto não corrobora nem contradiz."""
 
 
 def _por_historia(conexao: sqlite3.Connection, quantas: int,
@@ -547,9 +569,16 @@ def _por_historia(conexao: sqlite3.Connection, quantas: int,
                                  for m in historia.materias):
             continue
 
+        # Conta sentenças em vez de caracteres. Ver `MIN_SENTENCAS`. O
+        # boilerplate NÃO é removido aqui: exigiria varrer o acervo por
+        # veículo a cada candidata, e o filtro de verdade roda na extração.
+        # Erra para mais — uma matéria pode entrar e render menos do que
+        # aparentava — e errar para mais aqui custa uma chamada, não uma
+        # conclusão.
         com_texto = [m for m in sorted(historia.materias,
                                        key=lambda x: -x["tamanho"])
-                     if m["tamanho"] > MIN_TEXTO]
+                     if len(em_sentencas(max(m["conteudo"], m["resumo"],
+                                             key=len))) >= MIN_SENTENCAS]
 
         # Um por veículo, o de texto mais longo. Duas matérias do mesmo veículo
         # na mesma história são a mesma redação publicando duas vezes — pagar
@@ -615,6 +644,9 @@ def _materias(conexao: sqlite3.Connection, limite: int) -> list[sqlite3.Row]:
         SELECT a.id, a.veiculo, a.editoria, a.titulo, a.resumo, a.conteudo,
                a.data_publicacao, a.url_norm
         FROM artigos a
+        -- Prefiltro barato: corta manchete pura sem segmentar nada. O piso
+        -- de sentenças é aplicado em `_por_historia`; aqui, com ORDER BY
+        -- data e LIMIT, segmentar o acervo inteiro seria pior que o ganho.
         WHERE MAX(LENGTH(a.conteudo), LENGTH(a.resumo)) > ?
           AND NOT EXISTS (
               SELECT 1 FROM extracoes e
@@ -625,7 +657,7 @@ def _materias(conexao: sqlite3.Connection, limite: int) -> list[sqlite3.Row]:
         ORDER BY a.data_publicacao DESC
         LIMIT ?
         """,
-        (MIN_TEXTO, llm.EXTRACAO.id, PROMPT_VERSAO, limite),
+        (150, llm.EXTRACAO.id, PROMPT_VERSAO, limite),
     ).fetchall()
 
 

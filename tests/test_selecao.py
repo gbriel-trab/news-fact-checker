@@ -9,17 +9,30 @@ from src.storage import conecta, salva, salva_extracao
 from tests.test_storage import artigo
 
 
+def _corpo(sentencas: int) -> str:
+    """Texto com N sentencas de verdade.
+
+    O piso passou de caracteres para SENTENCAS (ver `MIN_SENTENCAS`), entao
+    encher de caractere nao basta: 2000 letras sem pontuacao sao uma sentenca
+    so, e a materia seria descartada com razao.
+    """
+    return " ".join(
+        f"O orgao divulgou o dado numero {i} nesta quarta-feira." 
+        for i in range(sentencas)
+    )
+
+
 def _base(tmp_path, materias):
-    """materias: lista de (veiculo, titulo, tamanho_do_texto, ja_extraida)."""
+    """materias: lista de (veiculo, titulo, quantas_sentencas, ja_extraida)."""
     from src import llm
     from src.llm import Uso
 
     conexao = conecta(tmp_path / "t.db")
     uso = Uso(modelo=llm.EXTRACAO, entrada=1, saida=1,
               cache_leitura=0, cache_escrita=0)
-    for i, (veiculo, titulo, tamanho, extraida) in enumerate(materias):
+    for i, (veiculo, titulo, sentencas, extraida) in enumerate(materias):
         salva(conexao, artigo(url=f"https://x/{i}", titulo=titulo,
-                              veiculo=veiculo, conteudo="c" * tamanho))
+                              veiculo=veiculo, conteudo=_corpo(sentencas)))
         if extraida:
             linha = conexao.execute(
                 "SELECT id FROM artigos WHERE url_norm LIKE ?",
@@ -41,8 +54,8 @@ class TestParParcial:
         Contar só as pendentes descartava exatamente esta história.
         """
         conexao = _base(tmp_path, [
-            ("G1", TITULO_A, 2000, True),
-            ("Folha", TITULO_B, 2000, False),
+            ("G1", TITULO_A, 3, True),
+            ("Folha", TITULO_B, 3, False),
         ])
         escolhidas = extract._por_historia(conexao, 5)
         assert [m["veiculo"] for m in escolhidas] == ["Folha"]
@@ -50,8 +63,8 @@ class TestParParcial:
 
     def test_nao_seleciona_quando_tudo_ja_foi_extraido(self, tmp_path):
         conexao = _base(tmp_path, [
-            ("G1", TITULO_A, 2000, True),
-            ("Folha", TITULO_B, 2000, True),
+            ("G1", TITULO_A, 3, True),
+            ("Folha", TITULO_B, 3, True),
         ])
         assert extract._por_historia(conexao, 5) == []
         conexao.close()
@@ -61,15 +74,15 @@ class TestFonteUnica:
     def test_veiculo_sozinho_nao_entra(self, tmp_path):
         """Não pode ser corroborado por definição — a chamada seria gasto sem
         retorno possível. Continua no acervo; só não entra nesta fila."""
-        conexao = _base(tmp_path, [("G1", TITULO_A, 2000, False)])
+        conexao = _base(tmp_path, [("G1", TITULO_A, 3, False)])
         assert extract._por_historia(conexao, 5) == []
         conexao.close()
 
     def test_duas_materias_do_mesmo_veiculo_nao_formam_par(self, tmp_path):
         """Mesma redação publicando duas vezes não é confirmação independente."""
         conexao = _base(tmp_path, [
-            ("G1", TITULO_A, 2000, False),
-            ("G1", TITULO_B, 2000, False),
+            ("G1", TITULO_A, 3, False),
+            ("G1", TITULO_B, 3, False),
         ])
         assert extract._por_historia(conexao, 5) == []
         conexao.close()
@@ -79,18 +92,20 @@ class TestPeneiraSemantica:
     def test_titulos_de_assuntos_diferentes_nao_formam_par(self, tmp_path):
         """Termo em comum não é assunto em comum. Ver `_por_historia`."""
         conexao = _base(tmp_path, [
-            ("G1", TITULO_A, 2000, False),
-            ("Folha", TITULO_OUTRO, 2000, False),
+            ("G1", TITULO_A, 3, False),
+            ("Folha", TITULO_OUTRO, 3, False),
         ])
         assert extract._por_historia(conexao, 5) == []
         conexao.close()
 
 
 class TestTextoInsuficiente:
-    def test_so_manchete_nao_entra(self, tmp_path):
+    def test_uma_sentenca_so_nao_entra(self, tmp_path):
+        """Uma sentenca traz fato solto, sem data nem entidade em volta, e
+        tripla sem contexto nao corrobora nem contradiz."""
         conexao = _base(tmp_path, [
-            ("G1", TITULO_A, 2000, False),
-            ("Folha", TITULO_B, 100, False),
+            ("G1", TITULO_A, 3, False),
+            ("Folha", TITULO_B, 1, False),
         ])
         assert extract._por_historia(conexao, 5) == []
         conexao.close()

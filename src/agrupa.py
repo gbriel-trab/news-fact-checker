@@ -91,7 +91,7 @@ def agrupa(materias: list[sqlite3.Row]) -> list[Historia]:
 def carrega(conexao: sqlite3.Connection) -> list[sqlite3.Row]:
     return conexao.execute(
         """
-        SELECT id, veiculo, editoria, titulo,
+        SELECT id, veiculo, editoria, titulo, resumo, conteudo,
                MAX(LENGTH(conteudo), LENGTH(resumo)) AS tamanho,
                (SELECT COUNT(*) FROM extracoes e WHERE e.artigo_id = artigos.id) AS extraida
         FROM artigos
