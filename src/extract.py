@@ -21,7 +21,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import boilerplate, config, llm, vocabulario
+from . import agrupa, boilerplate, config, indice, llm, vocabulario
 from .vocabulario import Relacao
 from .segment import em_sentencas
 from .storage import (
@@ -417,18 +417,100 @@ def _por_id(conexao: sqlite3.Connection, ids: list[int]) -> list[sqlite3.Row]:
     return [por_id[i] for i in ids if i in por_id]
 
 
-def _materias(conexao: sqlite3.Connection, limite: int) -> list[sqlite3.Row]:
-    """Pega matérias com texto suficiente para sustentar extração.
+MIN_SIMILARIDADE = 0.70
+"""Proximidade semântica mínima entre dois títulos para valer o par.
 
-    Veículo que só publica manchete no RSS não entra: 200 caracteres não dão
-    tripla, e a chamada seria desperdício.
+Ver a justificativa e a medição em `_por_historia`. Roda no modelo local de
+embedding — não custa chamada."""
+
+MIN_TEXTO = 1200
+"""Caracteres mínimos para uma matéria sustentar extração.
+
+Veículo que só publica manchete no RSS não entra: 200 caracteres não dão
+tripla, e a chamada seria desperdício.
+"""
+
+
+def _por_historia(conexao: sqlite3.Connection, quantas: int,
+                  por_historia: int = 2) -> list[sqlite3.Row]:
+    """Matérias escolhidas aos PARES, um veículo diferente em cada.
+
+    É a seleção que faz o dinheiro render. `_materias` pega as mais recentes,
+    e recência não tem relação nenhuma com corroboração: matéria de fonte única
+    nunca vira confirmação, por mais nova que seja. Extrair uma delas gasta o
+    mesmo e não move o número de fatos confirmados.
+
+    O que move é PAR — dois veículos distintos cobrindo o mesmo fato. Por isso
+    a história só entra se sobrarem dois veículos com texto suficiente depois
+    de todos os filtros; história que não forma par é descartada inteira, e não
+    parcialmente, porque metade de um par não corrobora nada.
+
+    Já extraídas pelo modelo ativo ficam de fora, em qualquer versão de prompt:
+    elas já estão no acervo e o grafo já as lê. Reextrair com o prompt novo
+    melhoraria a qualidade delas, mas gastaria onde não há confirmação nova a
+    ganhar — e é justamente o que este seletor existe para evitar.
+    """
+    ja_extraidas = {
+        linha["artigo_id"] for linha in conexao.execute(
+            "SELECT artigo_id FROM extracoes WHERE modelo = ?",
+            (llm.EXTRACAO.id,))
+    }
+
+    escolhidas: list[int] = []
+    for historia in agrupa.agrupa(agrupa.carrega(conexao)):
+        if not historia.corroborada:
+            continue
+
+        # Um por veículo, o de texto mais longo. Duas matérias do mesmo veículo
+        # na mesma história são a mesma redação publicando duas vezes — pagar
+        # pelas duas compra zero corroboração.
+        por_veiculo: dict[str, sqlite3.Row] = {}
+        for m in sorted(historia.materias, key=lambda x: -x["tamanho"]):
+            if (m["tamanho"] > MIN_TEXTO
+                    and m["id"] not in ja_extraidas
+                    and m["veiculo"] not in por_veiculo):
+                por_veiculo[m["veiculo"]] = m
+
+        if len(por_veiculo) < 2:
+            continue
+
+        # Segunda peneira, semântica. O agrupamento de `agrupa` casa termos do
+        # título, e termo em comum não é assunto em comum: "Flávio e Lula
+        # empatam no RS" e "Quaest em SC: Flávio Bolsonaro, 45%" compartilham
+        # três termos e são pesquisas em ESTADOS diferentes. Extrair esse par
+        # gasta duas chamadas e produz zero corroboração, porque as triplas
+        # falam de coisas distintas.
+        #
+        # Medido em 8 pares propostos pelo critério léxico: os verdadeiros
+        # ficaram entre 0,81 e 0,96, os falsos entre 0,43 e 0,58. Amostra
+        # pequena — o limiar vai ter que se mover quando houver mais dados.
+        #
+        # A peneira erra para o lado seguro: um par verdadeiro rejeitado só
+        # deixa de ser extraído nesta rodada; um par falso aceito é dinheiro
+        # gasto sem retorno possível.
+        candidatos = list(por_veiculo.values())[:por_historia]
+        if indice.similaridade(candidatos[0]["titulo"],
+                               candidatos[1]["titulo"]) < MIN_SIMILARIDADE:
+            continue
+
+        escolhidas.extend(m["id"] for m in candidatos)
+        if len(escolhidas) >= quantas * por_historia:
+            break
+
+    return _por_id(conexao, escolhidas)
+
+
+def _materias(conexao: sqlite3.Connection, limite: int) -> list[sqlite3.Row]:
+    """Pega matérias com texto suficiente para sustentar extração, por recência.
+
+    Ver `_por_historia` para a seleção que rende mais por dólar.
     """
     return conexao.execute(
         """
         SELECT a.id, a.veiculo, a.editoria, a.titulo, a.resumo, a.conteudo,
                a.data_publicacao, a.url_norm
         FROM artigos a
-        WHERE MAX(LENGTH(a.conteudo), LENGTH(a.resumo)) > 1200
+        WHERE MAX(LENGTH(a.conteudo), LENGTH(a.resumo)) > ?
           AND NOT EXISTS (
               SELECT 1 FROM extracoes e
               WHERE e.artigo_id = a.id
@@ -438,7 +520,7 @@ def _materias(conexao: sqlite3.Connection, limite: int) -> list[sqlite3.Row]:
         ORDER BY a.data_publicacao DESC
         LIMIT ?
         """,
-        (llm.EXTRACAO.id, PROMPT_VERSAO, limite),
+        (MIN_TEXTO, llm.EXTRACAO.id, PROMPT_VERSAO, limite),
     ).fetchall()
 
 
@@ -456,6 +538,14 @@ def main() -> None:
              "história inteira em vez das mais recentes",
     )
     parser.add_argument(
+        "--historias",
+        type=int,
+        metavar="N",
+        help="extrai as N maiores historias AOS PARES, um veiculo diferente "
+             "em cada. E a selecao que rende mais por dolar: materia de fonte "
+             "unica nunca vira confirmacao. Consome 2*N chamadas",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="mostra a requisição que seria enviada, sem chamar a API",
@@ -468,6 +558,8 @@ def main() -> None:
     conexao = conecta(config.BANCO)
     if args.ids:
         linhas = _por_id(conexao, [int(x) for x in args.ids.split(",")])
+    elif args.historias:
+        linhas = _por_historia(conexao, args.historias)
     else:
         linhas = _materias(conexao, args.n)
     if not linhas:

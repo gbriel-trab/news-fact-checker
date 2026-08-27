@@ -30,7 +30,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from . import config, grafo, indice, llm
-from .storage import conecta
+from .storage import conecta, salva_consulta
 from .vocabulario import Relacao
 
 MIN_PROXIMIDADE = 0.55
@@ -178,7 +178,8 @@ def julga(texto: str, evidencias: list[indice.Achado]) -> tuple[Julgamento, llm.
     return r.dados, r.uso
 
 
-def verifica(texto: str, verboso: bool = False) -> None:
+def verifica(texto: str, verboso: bool = False,
+             conexao=None) -> None:
     print(f'AFIRMAÇÃO\n  "{texto}"\n')
 
     afirmacao, uso1 = estrutura(texto)
@@ -195,6 +196,13 @@ def verifica(texto: str, verboso: bool = False) -> None:
               "ela seja falsa —\n  significa que os veículos coletados não "
               "falam do assunto.")
         print(f"\n  custo: US$ {uso1.custo:.4f}")
+        # Gravado tambem quando nao ha evidencia: a consulta foi feita,
+        # foi cobrada, e "o acervo nao cobre isto" e justamente o que
+        # precisa ser contado para saber onde a coleta tem buraco.
+        if conexao is not None:
+            salva_consulta(conexao, texto, "sem_evidencia",
+                           "Nenhuma candidata acima do piso de proximidade.",
+                           0, 0, 0, llm.VERIFICACAO.id, uso1.custo)
         return
 
     julgamento, uso2 = julga(texto, evidencias)
@@ -229,6 +237,12 @@ def verifica(texto: str, verboso: bool = False) -> None:
     print(f"\n  {len(evidencias)} candidatas recuperadas · "
           f"custo US$ {uso1.custo + uso2.custo:.4f}")
 
+    if conexao is not None:
+        salva_consulta(conexao, texto, julgamento.veredito,
+                       julgamento.justificativa, len(evidencias),
+                       len(citadas), len(veiculos), llm.VERIFICACAO.id,
+                       uso1.custo + uso2.custo)
+
 
 def main() -> None:
     for fluxo in (sys.stdout, sys.stderr):
@@ -244,9 +258,10 @@ def main() -> None:
     if not grafo.carrega(conexao):
         print("Acervo sem afirmações. Rode a coleta, a extração e o índice.")
         sys.exit(1)
-    conexao.close()
-
-    verifica(" ".join(args), verboso="-v" in sys.argv)
+    try:
+        verifica(" ".join(args), verboso="-v" in sys.argv, conexao=conexao)
+    finally:
+        conexao.close()
 
 
 if __name__ == "__main__":

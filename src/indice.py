@@ -27,7 +27,7 @@ import sys
 from dataclasses import dataclass
 from functools import lru_cache
 
-from . import config
+from . import config, llm
 from .storage import conecta
 
 MODELO_EMBEDDING = "paraphrase-multilingual-MiniLM-L12-v2"
@@ -105,14 +105,28 @@ def indexa_entidades(conexao: sqlite3.Connection) -> int:
     sob outro nome. Sujeito e objeto entram juntos: a mesma entidade aparece
     nos dois papéis conforme a frase.
     """
+    # Mesmo recorte do resto: so o modelo ativo, uma extracao por materia.
+    # Entidade canonizada por outro modelo entra com grafia diferente e
+    # concorre com a legitima na busca por semelhanca.
+    ativas = """
+        SELECT t.sujeito_canonico s, t.objeto_canonico o
+        FROM triplas t JOIN extracoes e ON e.id = t.extracao_id
+        WHERE e.id IN (
+                  SELECT MAX(id) FROM extracoes
+                  WHERE vocab_versao = (SELECT MAX(vocab_versao) FROM extracoes)
+                    AND modelo = ?
+                  GROUP BY artigo_id
+              )
+    """
     linhas = conexao.execute(
-        """
-        SELECT sujeito_canonico AS nome, COUNT(*) AS n FROM triplas
-        GROUP BY 1
-        UNION ALL
-        SELECT objeto_canonico, COUNT(*) FROM triplas
-        WHERE objeto_canonico IS NOT NULL GROUP BY 1
-        """
+        f"""
+        SELECT nome, COUNT(*) AS n FROM (
+            SELECT s AS nome FROM ({ativas})
+            UNION ALL
+            SELECT o FROM ({ativas}) WHERE o IS NOT NULL
+        ) GROUP BY 1
+        """,
+        (llm.EXTRACAO.id, llm.EXTRACAO.id),
     ).fetchall()
 
     total: dict[str, int] = {}
@@ -149,8 +163,18 @@ def indexa_afirmacoes(conexao: sqlite3.Connection) -> int:
         FROM triplas t
         JOIN extracoes e ON e.id = t.extracao_id
         JOIN artigos   a ON a.id = e.artigo_id
-        WHERE e.vocab_versao = (SELECT MAX(vocab_versao) FROM extracoes)
-        """
+        -- Mesmo recorte de `grafo.carrega`, e pelo mesmo motivo: uma extracao
+        -- por materia, do modelo ativo. O indice alimenta a evidencia que o
+        -- check.py julga -- deixar entrar tripla de teste de outro modelo poe
+        -- no veredito uma frase que o acervo nao contem.
+        WHERE e.id IN (
+                  SELECT MAX(id) FROM extracoes
+                  WHERE vocab_versao = (SELECT MAX(vocab_versao) FROM extracoes)
+                    AND modelo = ?
+                  GROUP BY artigo_id
+              )
+        """,
+        (llm.EXTRACAO.id,),
     ).fetchall()
 
     if not linhas:
@@ -201,6 +225,19 @@ def busca(colecao_nome: str, texto: str, quantos: int = 8) -> list[Achado]:
         for doc, dist, meta in zip(
             r["documents"][0], r["distances"][0], r["metadatas"][0])
     ]
+
+
+def similaridade(a: str, b: str) -> float:
+    """Cosseno entre dois textos, de 0 a 1. Não consulta a coleção.
+
+    Serve para conferir, sem gravar nada, se duas coisas que outro critério
+    juntou de fato tratam do mesmo assunto.
+    """
+    import numpy as np
+
+    v = np.array(_vetores([a, b]))
+    v = v / np.linalg.norm(v, axis=1, keepdims=True)
+    return max(0.0, float(v[0] @ v[1]))
 
 
 def entidade_parecida(nome: str, minimo: float = 0.85) -> Achado | None:

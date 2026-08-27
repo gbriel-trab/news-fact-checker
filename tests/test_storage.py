@@ -175,3 +175,36 @@ class TestCarregaUmaExtracaoPorMateria:
         afirmacoes = grafo.carrega(conexao, desde="2000-01-01")
         assert [a.objeto for a in afirmacoes] == ["do modelo ativo"]
         conexao.close()
+
+
+class TestConsultas:
+    """O par (afirmação que chegou, veredito que saiu) é o único registro de
+    avaliação que o sistema tem. Sem ele não há como medir acerto depois."""
+
+    def test_grava_e_conta_custo(self, tmp_path):
+        from src.storage import conecta, salva_consulta
+
+        conexao = conecta(tmp_path / "t.db")
+        salva_consulta(conexao, "o salário mínimo vai a R$ 1.741",
+                       "confirmado", "duas fontes afirmam", 10, 2, 2,
+                       "modelo-x", 0.028)
+        salva_consulta(conexao, "o BoJ elevou os juros", "sem_evidencia",
+                       "nada no acervo", 0, 0, 0, "modelo-x", 0.015)
+
+        linhas = conexao.execute(
+            "SELECT veredito, custo_usd FROM consultas ORDER BY id").fetchall()
+        assert [l["veredito"] for l in linhas] == ["confirmado", "sem_evidencia"]
+        assert sum(l["custo_usd"] for l in linhas) == pytest.approx(0.043)
+        conexao.close()
+
+    def test_veredito_fora_do_dominio_e_recusado(self, tmp_path):
+        """O CHECK repete validação que o Pydantic já faz na entrada. É defesa
+        em profundidade: import ou correção manual não passam pelo Pydantic."""
+        import sqlite3
+
+        from src.storage import conecta, salva_consulta
+
+        conexao = conecta(tmp_path / "t.db")
+        with pytest.raises(sqlite3.IntegrityError):
+            salva_consulta(conexao, "x", "provavelmente", "y", 1, 1, 1, "m", 0.0)
+        conexao.close()

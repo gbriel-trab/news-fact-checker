@@ -91,6 +91,32 @@ CREATE INDEX IF NOT EXISTS idx_triplas_extracao ON triplas (extracao_id);
 CREATE INDEX IF NOT EXISTS idx_triplas_sujeito  ON triplas (sujeito_canonico);
 CREATE INDEX IF NOT EXISTS idx_triplas_objeto   ON triplas (objeto_canonico);
 CREATE INDEX IF NOT EXISTS idx_triplas_relacao  ON triplas (relacao);
+
+-- Toda consulta ao check.py, com o que ela custou e o que respondeu.
+--
+-- Existe por dois motivos. O primeiro e contabil: sem isto o unico custo
+-- registrado era o de extracao, e o relatorio subestimava o gasto real
+-- chamando de "acumulado" o que era so uma parte.
+--
+-- O segundo importa mais. Este e o unico lugar onde fica o par
+-- (afirmacao que chegou, veredito que saiu). E o conjunto de avaliacao do
+-- sistema: sem ele nao ha como medir acerto contra Lupa ou Aos Fatos depois,
+-- porque nao se sabe o que foi perguntado.
+CREATE TABLE IF NOT EXISTS consultas (
+    id             INTEGER PRIMARY KEY,
+    afirmacao      TEXT    NOT NULL,
+    veredito       TEXT    NOT NULL CHECK (
+                       veredito IN ('confirmado', 'contradito', 'sem_evidencia')),
+    justificativa  TEXT    NOT NULL,
+    candidatas     INTEGER NOT NULL,
+    citadas        INTEGER NOT NULL,
+    veiculos       INTEGER NOT NULL,
+    modelo         TEXT    NOT NULL,
+    custo_usd      REAL    NOT NULL,
+    consultado_em  TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_consultas_data ON consultas (consultado_em);
 """
 
 
@@ -225,6 +251,24 @@ def salva_extracao(conexao: sqlite3.Connection, artigo_id: int, triplas,
             ],
         )
     return extracao_id
+
+
+def salva_consulta(conexao: sqlite3.Connection, afirmacao: str, veredito: str,
+                   justificativa: str, candidatas: int, citadas: int,
+                   veiculos: int, modelo: str, custo: float) -> int:
+    """Grava a consulta e o veredito. Devolve o id."""
+    cursor = conexao.execute(
+        """
+        INSERT INTO consultas (afirmacao, veredito, justificativa, candidatas,
+                               citadas, veiculos, modelo, custo_usd,
+                               consultado_em)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (afirmacao, veredito, justificativa, candidatas, citadas, veiculos,
+         modelo, custo, datetime.now(timezone.utc).isoformat()),
+    )
+    conexao.commit()
+    return cursor.lastrowid
 
 
 def estatisticas_triplas(conexao: sqlite3.Connection) -> dict[str, object]:
