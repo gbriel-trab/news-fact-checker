@@ -458,20 +458,30 @@ def _por_historia(conexao: sqlite3.Connection, quantas: int,
 
     escolhidas: list[int] = []
     for historia in agrupa.agrupa(agrupa.carrega(conexao)):
-        if not historia.corroborada:
-            continue
+        com_texto = [m for m in sorted(historia.materias,
+                                       key=lambda x: -x["tamanho"])
+                     if m["tamanho"] > MIN_TEXTO]
 
         # Um por veículo, o de texto mais longo. Duas matérias do mesmo veículo
         # na mesma história são a mesma redação publicando duas vezes — pagar
         # pelas duas compra zero corroboração.
         por_veiculo: dict[str, sqlite3.Row] = {}
-        for m in sorted(historia.materias, key=lambda x: -x["tamanho"]):
-            if (m["tamanho"] > MIN_TEXTO
-                    and m["id"] not in ja_extraidas
-                    and m["veiculo"] not in por_veiculo):
-                por_veiculo[m["veiculo"]] = m
+        for m in com_texto:
+            por_veiculo.setdefault(m["veiculo"], m)
 
+        # A elegibilidade olha o que o ACERVO terá, não só o que falta extrair.
+        # Contar apenas as pendentes descartava a história em que um veículo já
+        # foi extraído e o outro não — justamente o par que falta uma metade
+        # para fechar, e o mais barato de completar. Custava uma chamada e
+        # rendia uma confirmação nova; pulá-lo é o oposto do que este seletor
+        # existe para fazer.
         if len(por_veiculo) < 2:
+            continue
+
+        pendentes = [m for m in por_veiculo.values()
+                     if m["id"] not in ja_extraidas]
+        prontas = [m for m in por_veiculo.values() if m["id"] in ja_extraidas]
+        if not pendentes:
             continue
 
         # Segunda peneira, semântica. O agrupamento de `agrupa` casa termos do
@@ -488,12 +498,18 @@ def _por_historia(conexao: sqlite3.Connection, quantas: int,
         # A peneira erra para o lado seguro: um par verdadeiro rejeitado só
         # deixa de ser extraído nesta rodada; um par falso aceito é dinheiro
         # gasto sem retorno possível.
-        candidatos = list(por_veiculo.values())[:por_historia]
-        if indice.similaridade(candidatos[0]["titulo"],
-                               candidatos[1]["titulo"]) < MIN_SIMILARIDADE:
+        #
+        # O par conferido é sempre a pendente contra a sua contraparte — outra
+        # pendente, ou a que já está no acervo. Comparar uma pendente consigo
+        # mesma daria 1,0 e a peneira não filtraria nada.
+        referencia = (prontas or pendentes[1:])
+        if not referencia:
+            continue
+        if indice.similaridade(pendentes[0]["titulo"],
+                               referencia[0]["titulo"]) < MIN_SIMILARIDADE:
             continue
 
-        escolhidas.extend(m["id"] for m in candidatos)
+        escolhidas.extend(m["id"] for m in pendentes[:por_historia])
         if len(escolhidas) >= quantas * por_historia:
             break
 
