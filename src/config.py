@@ -65,7 +65,18 @@ FEEDS: tuple[Feed, ...] = (
     # edicao brasileira mudou de dominio. Vale registrar porque 410 nao e
     # falha temporaria: e o servidor dizendo que o recurso saiu de proposito,
     # e insistir nele nunca voltaria a funcionar.
+    # Cripto precisa de mais de um veiculo pelo mesmo motivo que economia:
+    # confirmacao exige duas redacoes independentes. Com o Cointelegraph
+    # sozinho, TODA afirmacao sobre cripto ficava presa em "um veiculo so".
+    # Medido antes de adicionar: 22 materias de cripto no acervo, 22 dele.
+    #
+    # Os tres abaixo entregam texto cheio (3.200 a 4.900 caracteres, 21 a 36
+    # sentencas) e sustentam extracao -- ao contrario do Cointelegraph, que
+    # publica uma sentenca por item e fica so como sinal de cobertura.
     Feed("Cointelegraph", "Cripto", "https://cointelegraph.com.br/rss"),
+    Feed("Portal do Bitcoin", "Cripto", "https://portaldobitcoin.uol.com.br/feed/"),
+    Feed("Livecoins", "Cripto", "https://livecoins.com.br/feed/"),
+    Feed("CriptoFácil", "Cripto", "https://www.criptofacil.com/feed/"),
     Feed("Folha", "Poder", "https://feeds.folha.uol.com.br/poder/rss091.xml"),
     Feed("Folha", "Mercado", "https://feeds.folha.uol.com.br/mercado/rss091.xml"),
     Feed("Folha", "Mundo", "https://feeds.folha.uol.com.br/mundo/rss091.xml"),

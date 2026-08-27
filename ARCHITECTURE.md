@@ -719,6 +719,35 @@ A saída é a parte cara e **só encolhe sendo projetada**: relação vinda do e
 sem devolver o trecho original da matéria — que já está no banco —, teto de
 triplas por matéria.
 
+### O que é observável não se verifica, se consulta
+
+Preço de bitcoin, cotação do dólar, valor da Selic hoje: são **observáveis
+diretamente**, em tempo real, na fonte autoritativa. Checar isso contra um
+acervo de notícia é pior que inútil — o acervo tem a versão de ontem, e a
+resposta certa está a um clique no gráfico ou no site do Banco Central.
+
+O que precisa de verificação é o que **não dá para olhar**: decisão, evento,
+atribuição, ato oficial.
+
+```
+✗ "o bitcoin caiu 40%"                    abre o gráfico
+✓ "a SEC aprovou novas regras de custódia" precisa de fonte
+✗ "a Selic está em 15%"                    site do BC
+✓ "o Copom decidiu por unanimidade"        precisa de fonte
+```
+
+Confirmado pelos dados: das histórias de cripto que reuniram dois veículos no
+acervo, nenhuma é preço. São regra da SEC, lançamento de stablecoin,
+recomendação de atualização de software, transação resistente a ataque
+quântico. Preço não vira notícia corroborada porque não é notícia — é leitura
+de instrumento.
+
+**Consequência para a checagem de premissa de análise:** premissa que cita
+estatística oficial (IPCA, Selic, PIB) deveria ser conferida contra a
+INSTITUIÇÃO, não contra a cobertura de imprensa. O jornal é intermediário, e
+intermediário arredonda. Isso ainda não existe e é o argumento mais forte a
+favor dos feeds de fonte primária.
+
 ## Princípios de projeto
 
 Funcionalidade nova que contrarie qualquer um destes está errada, ou exige
