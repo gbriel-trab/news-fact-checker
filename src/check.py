@@ -130,7 +130,8 @@ Regras que importam mais que as outras:
 
 
 def estrutura(texto: str) -> tuple[AfirmacaoRecebida, llm.Uso]:
-    r = llm.gera(INSTRUCOES_ESTRUTURA, f"Afirmação: {texto}", AfirmacaoRecebida)
+    r = llm.gera(INSTRUCOES_ESTRUTURA, f"Afirmação: {texto}",
+                 AfirmacaoRecebida, modelo=llm.VERIFICACAO)
     return r.dados, r.uso
 
 
@@ -172,7 +173,8 @@ def julga(texto: str, evidencias: list[indice.Achado]) -> tuple[Julgamento, llm.
         f"AFIRMAÇÃO A VERIFICAR:\n{texto}\n\n"
         f"EVIDÊNCIA RECUPERADA DO ACERVO:\n" + "\n".join(linhas)
     )
-    r = llm.gera(INSTRUCOES_JULGAMENTO, corpo, Julgamento)
+    r = llm.gera(INSTRUCOES_JULGAMENTO, corpo, Julgamento,
+                 modelo=llm.VERIFICACAO)
     return r.dados, r.uso
 
 

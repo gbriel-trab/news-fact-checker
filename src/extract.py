@@ -331,7 +331,10 @@ def versao_prompt() -> str:
                 "min_dias": boilerplate.MIN_DIAS_DISTINTOS,
                 "min_materias": boilerplate.MIN_MATERIAS,
             },
-            "esforco": llm.ESFORCO,
+            # O esforco vem do modelo de extracao. Trocar de modelo muda a
+            # versao do prompt junto, e isso esta certo: a configuracao que
+            # produziu as triplas de fato mudou.
+            "esforco": llm.EXTRACAO.esforco,
         },
         sort_keys=True, ensure_ascii=False, default=list)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
@@ -374,6 +377,7 @@ def extrai(titulo: str, veiculo: str, data_pub: str | None,
         INSTRUCOES,
         monta_conteudo(titulo, veiculo, data_pub, sentencas),
         Extracao,
+        modelo=llm.EXTRACAO,
     )
 
 
@@ -420,7 +424,7 @@ def _materias(conexao: sqlite3.Connection, limite: int) -> list[sqlite3.Row]:
         ORDER BY a.data_publicacao DESC
         LIMIT ?
         """,
-        (llm.MODELO, PROMPT_VERSAO, limite),
+        (llm.EXTRACAO.id, PROMPT_VERSAO, limite),
     ).fetchall()
 
 
@@ -455,13 +459,13 @@ def main() -> None:
     if not linhas:
         print("Nenhuma matéria nova para extrair.")
         print(f"Tudo o que tem texto suficiente já foi processado por "
-              f"{llm.MODELO} com o prompt {PROMPT_VERSAO}.")
+              f"{llm.EXTRACAO.id} com o prompt {PROMPT_VERSAO}.")
         print("Colete mais, ou mude o prompt — a versão muda junto e libera "
               "reprocessamento.")
         sys.exit(0)
 
     if not args.dry_run:
-        print(f"Provedor: {llm.descricao()}\n")
+        print(f"Provedor: {llm.descricao(llm.EXTRACAO)}\n")
 
     # Frases institucionais por veículo, calculadas uma vez e reaproveitadas.
     # Percorrer o acervo inteiro por matéria seria lento sem ganho nenhum.
@@ -534,7 +538,7 @@ def main() -> None:
         # Grava antes de imprimir: chamada paga que nao persiste e dinheiro perdido.
         salva_extracao(
             conexao, linha["id"], resultado.dados.triplas,
-            llm.MODELO, PROMPT_VERSAO, VOCAB_VERSAO, resultado.uso,
+            llm.EXTRACAO.id, PROMPT_VERSAO, VOCAB_VERSAO, resultado.uso,
         )
 
         por_sentenca: dict[int, list[Tripla]] = {}

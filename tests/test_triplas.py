@@ -8,6 +8,7 @@ contradição lê errado.
 import pytest
 
 from src.extract import Extracao, Tripla
+from src import llm
 from src.llm import Uso
 from src.storage import (
     conecta, estatisticas_triplas, ja_extraido, salva, salva_extracao)
@@ -26,7 +27,8 @@ def tripla(sujeito="Vale S.A.", relacao="outro", objeto="Ferrous",
     )
 
 
-USO = Uso(entrada=1000, saida=2000, cache_leitura=0, cache_escrita=0)
+USO = Uso(modelo=llm.EXTRACAO, entrada=1000, saida=2000,
+          cache_leitura=0, cache_escrita=0)
 
 
 @pytest.fixture
