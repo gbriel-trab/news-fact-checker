@@ -41,6 +41,7 @@ data/*.db-journal
 data/*.db-wal
 # Índice vetorial persistido localmente
 .chroma/
+data/chroma/
 chroma_db/
 *.faiss
 # Modelos treinados do classificador
