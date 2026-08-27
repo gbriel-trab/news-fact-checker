@@ -22,7 +22,6 @@ devolve resultado sem sentido. Por isso o nome do modelo vai gravado nos
 metadados da coleção e é conferido na abertura.
 """
 
-import os
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -57,19 +56,48 @@ class Achado:
 
 @lru_cache(maxsize=1)
 def _modelo():
-    # Barra de progresso e aviso de token no meio de um veredito parecem
-    # defeito do sistema. Silenciados aqui, no unico ponto que carrega o
-    # modelo, e nao globalmente -- erro de verdade continua aparecendo.
+    """Carrega o modelo de embedding, do cache local e sem tocar a rede.
+
+    Offline por padrao. O modelo nao muda entre execucoes, entao consultar o
+    HuggingFace a cada veredito nao decide nada -- so adiciona latencia, uma
+    dependencia de rede que o resto do `check.py` nao tem, e um aviso de token
+    impresso no meio da resposta, que parece defeito do sistema.
+
+    Cai para online quando o cache ainda nao existe, que e a primeira execucao
+    de quem clonou o repositorio.
+    """
+    import os
+
+    # A variavel PRECISA ser definida antes do import: huggingface_hub le
+    # HF_HUB_OFFLINE uma vez, no proprio import, e guarda numa constante.
+    # Definir depois nao tem efeito nenhum e nao da erro -- so continua online.
+    anterior = os.environ.get("HF_HUB_OFFLINE")
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    # Mesma regra da linha acima: antes do import, ou nao vale.
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
     os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
-    import logging
+    try:
+        from sentence_transformers import SentenceTransformer
 
-    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
-    logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+        return SentenceTransformer(MODELO_EMBEDDING)
+    except Exception:
+        # Sem cache ainda: precisa baixar mesmo. A barra de progresso aqui e
+        # bem-vinda -- sao ~450 MB e o silencio pareceria travamento.
+        if anterior is None:
+            os.environ.pop("HF_HUB_OFFLINE", None)
+        else:
+            os.environ["HF_HUB_OFFLINE"] = anterior
+        # Reimporta: o modulo ja carregado guardou a constante antiga, e so um
+        # processo novo a releria. Aqui basta porque a primeira execucao ainda
+        # nao tinha o modulo carregado quando entrou no try.
+        import importlib
 
-    from sentence_transformers import SentenceTransformer
+        import huggingface_hub.constants
 
-    return SentenceTransformer(MODELO_EMBEDDING)
+        importlib.reload(huggingface_hub.constants)
+        from sentence_transformers import SentenceTransformer
+
+        return SentenceTransformer(MODELO_EMBEDDING)
 
 
 @lru_cache(maxsize=1)
