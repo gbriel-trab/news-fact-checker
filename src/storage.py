@@ -309,6 +309,33 @@ def salva_consulta(conexao: sqlite3.Connection, afirmacao: str, veredito: str,
     return cursor.lastrowid
 
 
+def orfas(conexao: sqlite3.Connection,
+          vocab_versao: int) -> tuple[int, float]:
+    """Matérias pagas cujo resultado o acervo não enxerga.
+
+    Extração sob vocabulário antigo é dinheiro gasto que não corrobora nada: o
+    grafo a exclui — corretamente, porque relação de vocabulários diferentes
+    não é comparável — e nada na saída dizia que ela existia.
+
+    O sintoma é uma consulta responder "sem evidência" sobre matéria que está
+    visivelmente no banco, e o sistema não ter como explicar a diferença. Foi
+    exatamente o que aconteceu com a pesquisa do RS: o acervo tinha os 38% da
+    Juliana Brizola, sob `liderou_pesquisa` e `obteve_percentual_em` de um
+    vocabulário que não existe mais.
+    """
+    linha = conexao.execute(
+        """
+        SELECT COUNT(DISTINCT artigo_id) n, COALESCE(SUM(custo_usd), 0) c
+        FROM extracoes
+        WHERE vocab_versao < ?
+          AND artigo_id NOT IN (SELECT artigo_id FROM extracoes
+                                WHERE vocab_versao = ?)
+        """,
+        (vocab_versao, vocab_versao),
+    ).fetchone()
+    return linha["n"], linha["c"]
+
+
 def estatisticas_triplas(conexao: sqlite3.Connection) -> dict[str, object]:
     """Números do acervo de triplas, para acompanhar o que já foi extraído."""
     linha = conexao.execute(

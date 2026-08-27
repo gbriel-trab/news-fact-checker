@@ -25,7 +25,7 @@ from . import agrupa, boilerplate, config, indice, llm, vocabulario
 from .vocabulario import Relacao
 from .segment import em_sentencas
 from .storage import (
-    conecta, estatisticas_triplas, salva_extracao)
+    conecta, estatisticas_triplas, orfas, salva_extracao)
 
 VOCAB_VERSAO = vocabulario.VERSAO
 
@@ -502,10 +502,14 @@ def _por_historia(conexao: sqlite3.Connection, quantas: int,
     melhoraria a qualidade delas, mas gastaria onde não há confirmação nova a
     ganhar — e é justamente o que este seletor existe para evitar.
     """
+    # `vocab_versao` entra no filtro, e sem ele havia um buraco silencioso:
+    # matéria extraída sob vocabulário antigo contava como extraída e nunca
+    # mais era oferecida — enquanto o grafo, corretamente, a ignorava por ter
+    # relações que o enum atual não tem. Paga, invisível, e sem volta.
     ja_extraidas = {
         linha["artigo_id"] for linha in conexao.execute(
-            "SELECT artigo_id FROM extracoes WHERE modelo = ?",
-            (llm.EXTRACAO.id,))
+            "SELECT artigo_id FROM extracoes WHERE modelo = ? "
+            "AND vocab_versao = ?", (llm.EXTRACAO.id, VOCAB_VERSAO))
     }
 
     escolhidas: list[int] = []
@@ -780,6 +784,16 @@ def main() -> None:
             "SELECT COUNT(*) FROM triplas t JOIN extracoes e ON e.id = t.extracao_id "
             "WHERE e.vocab_versao = ?", (VOCAB_VERSAO,)
         ).fetchone()[0]
+
+        n_orfas, custo_orfas = orfas(conexao, VOCAB_VERSAO)
+        if n_orfas:
+            print()
+            print(f"ATENÇÃO: {n_orfas} matérias extraídas sob vocabulário "
+                  f"antigo (US$ {custo_orfas:.2f} pagos).")
+            print("O grafo as ignora — relação de vocabulários diferentes não "
+                  "é comparável.")
+            print("Elas voltaram para a fila: --historias e -n as oferecem de "
+                  "novo.")
 
         t = estatisticas_triplas(conexao)
         print(f"\nAcervo de triplas: {t['triplas']} triplas de {t['materias']} "
