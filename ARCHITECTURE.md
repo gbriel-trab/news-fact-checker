@@ -80,6 +80,7 @@ uma mensagem encaminhada, um post — e o acervo serve de corpo de evidência.
 | RSS de agências de checagem | Sim — são boatos de rede social | Sim, mas já vêm com o veredito | **Gabarito de avaliação** |
 | Rede social via API do X | Sim | Sim | Descartada: US$ 0,005 por **post lido** |
 | Rede social via API da xAI | Sim | Sim | Viável, ver abaixo |
+| Análise econômica (premissas) | Sim | Sim | Direção registrada, ver abaixo |
 
 ### Rede social pela API da xAI
 
@@ -101,6 +102,84 @@ Se devolver apenas um resumo do modelo sobre o que está circulando, não serve
 sistema passaria a confiar na paráfrase de um modelo como se fosse registro.
 
 Fica para depois de a extração estar validada.
+
+#### Não existe trending topic
+
+Conferido na documentação oficial em 27/08/2026, no nível dos parâmetros. O
+`x_search` aceita exatamente isto:
+
+```
+allowed_x_handles           só posts destes handles (máx 20)
+excluded_x_handles          exclui estes handles (máx 20)
+from_date / to_date         janela de data, ISO8601
+enable_image_understanding  analisa imagem do post
+enable_video_understanding  analisa vídeo do post
+```
+
+Nenhum parâmetro de engajamento, contagem, popularidade, ordenação ou ranking.
+Não dá para perguntar QUAIS assuntos estão em alta — só perguntar SOBRE um
+assunto que você escolheu. Pedir ao Grok "o que está bombando" devolve a
+impressão dele a partir de uma busca, o que é pior que não ter: tem forma de
+dado e não é.
+
+Trending de verdade está na API do X, que é outro produto, outra conta, outra
+cobrança — e cobra por post lido, que é o modelo já descartado acima.
+
+#### A lista de handles é o RSS do radar
+
+`allowed_x_handles` funciona como a lista de feeds: fonte curada, coleta
+periódica, janela de data. Mesmo mecanismo, **papel oposto**:
+
+```
+RSS       →  ACERVO   →  é a evidência      →  o que os jornais afirmam
+handles   →  RADAR    →  é o que se checa   →  o que alguém alegou
+```
+
+Post nunca entra no acervo. Confirmar boato com boato quebra o critério do
+AC1, que exige duas fontes jornalísticas independentes.
+
+E por isso o critério de seleção é o INVERSO do dos feeds: no RSS entram os
+veículos em que se confia; nos handles entram os que **produzem alegação**.
+Colocar `@g1` e `@folha` na lista devolveria o acervo conversando consigo
+mesmo.
+
+### Análise não é notícia, e a premissa dela é verificável
+
+Direção registrada, não implementada. Depende do radar existir.
+
+Comentário econômico — o material dos perfis que se acompanha por interesse
+real — é opinião e previsão, que o `extract.py` descarta de propósito. Mas
+opinião se apoia em fato:
+
+```
+"o BC vai ter que subir juros, a inflação de julho veio em 5,2%"
+  │
+  ├─ previsão:  BC vai subir juros     ← não verificável, e nem deve ser
+  └─ premissa:  IPCA de julho = 5,2%   ← verificável
+```
+
+Descartar a frase inteira joga fora o número junto com o palpite.
+
+**O modo de falha do comentário não é mentir, é raciocinar bem a partir de um
+número errado** — citado de memória, de dado velho, ou arredondado torto. É o
+que este acervo pega bem, porque guarda valor com unidade, contexto e data. O
+próprio acervo já mostrou o risco existindo: o G1 publicou 56 bi e 59 bi para
+a mesma dívida da Braskem no mesmo dia, e um analista que pegasse o número
+errado herdaria o erro no argumento inteiro.
+
+Custa pouco: um prompt que extrai PREMISSAS de um texto argumentativo, e o
+`check.py` inalterado julgando cada uma. Índice, grafo e digest reaproveitados.
+
+**A armadilha de enquadramento**, e é a séria. A saída não pode virar placar:
+
+```
+✗ "@fulano: 2 premissas confirmadas, 1 sem evidência"   ← nota de credibilidade
+✓ "o número citado bate com G1 e Agência Brasil"        ← conferência
+```
+
+Premissa sem evidência não significa que o analista errou — significa que o
+acervo não cobre. Confundir os dois transforma a ferramenta em máquina de
+acusar, que é outro produto e não é este.
 
 A entrada é uma CLI:
 
