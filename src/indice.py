@@ -135,6 +135,25 @@ def _vetores(textos: list[str]) -> list[list[float]]:
     return _modelo().encode(textos, show_progress_bar=False).tolist()
 
 
+def texto_da_tripla(sujeito: str, relacao: str, objeto: str | None,
+                    valor: float | None, unidade: str | None,
+                    contexto: str | None) -> str:
+    """A frase legivel de uma tripla, como ela entra no indice.
+
+    Existe como funcao unica porque duas partes do sistema precisam produzir a
+    MESMA string: a indexacao, e a recuperacao por chave exata, que monta o
+    texto a partir do grafo em vez do indice. Duas renderizacoes que divergem
+    fariam a mesma tripla aparecer com dois textos diferentes na mesma resposta.
+    """
+    partes = [sujeito, relacao.replace("_", " ")]
+    if objeto:
+        partes.append(objeto)
+    if valor is not None:
+        medida = f"{valor:g} {unidade or ''}".strip()
+        partes.append(medida + (f" ({contexto})" if contexto else ""))
+    return " ".join(partes)
+
+
 # ------------------------------------------------------------------ indexação
 
 def indexa_entidades(conexao: sqlite3.Connection) -> int:
@@ -221,13 +240,8 @@ def indexa_afirmacoes(conexao: sqlite3.Connection) -> int:
 
     textos, ids, metas = [], [], []
     for l in linhas:
-        partes = [l["s"], l["r"].replace("_", " ")]
-        if l["o"]:
-            partes.append(l["o"])
-        if l["vn"] is not None:
-            valor = f"{l['vn']:g} {l['vu'] or ''}".strip()
-            partes.append(valor + (f" ({l['vc']})" if l["vc"] else ""))
-        textos.append(" ".join(partes))
+        textos.append(texto_da_tripla(l["s"], l["r"], l["o"], l["vn"],
+                                      l["vu"], l["vc"]))
         ids.append(str(l["id"]))
         metas.append({
             "artigo_id": l["artigo_id"], "veiculo": l["veiculo"],

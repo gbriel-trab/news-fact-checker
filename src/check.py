@@ -135,24 +135,69 @@ def estrutura(texto: str) -> tuple[AfirmacaoRecebida, llm.Uso]:
     return r.dados, r.uso
 
 
-def recupera(afirmacao: AfirmacaoRecebida) -> list[indice.Achado]:
-    """Junta candidatas por proximidade semântica e por identidade no grafo.
+def _por_chave(afirmacao: AfirmacaoRecebida,
+               acervo: list[grafo.Afirmacao]) -> list[indice.Achado]:
+    """Tudo que o acervo afirma sobre (sujeito, relação), por identidade exata.
 
-    As duas rotas são complementares e cobrem falhas uma da outra: a busca
-    vetorial encontra o fato descrito com outras palavras, e a chave exata
-    encontra o que a paráfrase não alcançaria por estar escrito de forma
-    técnica demais.
+    Esta rota existia no docstring e não no código: a "chave exata" era, na
+    verdade, uma segunda busca vetorial pelo nome da entidade. Vetorial de novo
+    não cobre a falha da vetorial.
+
+    E a falha é específica de afirmação NUMÉRICA. O número quase não pesa no
+    embedding — "38 %" são dois tokens numa frase de vinte dominada pelo nome
+    do instituto —, então a busca semântica vira casamento de entidade e o
+    valor, que é justamente o que se quer verificar, fica invisível. Medido:
+    ao checar "Juliana Brizola tem 38%", a tripla dos 38% saiu em 8º de 10,
+    atrás de uma sobre o capital votante da Petrobras. Com um teto de 7
+    candidatas o veredito teria saído errado.
+
+    Aqui o casamento é por igualdade de string, sem ranking: se o acervo afirma
+    algo sobre aquele par, entra. É barato — o grafo já está em memória — e é
+    determinístico.
     """
-    achados = [
-        a for a in indice.busca("afirmacoes", afirmacao.busca, QUANTAS_CANDIDATAS)
-        if a.proximidade >= MIN_PROXIMIDADE
-    ]
+    achados = []
+    for a in acervo:
+        if (a.sujeito == afirmacao.sujeito_canonico
+                and a.relacao == afirmacao.relacao.value):
+            achados.append(indice.Achado(
+                texto=indice.texto_da_tripla(a.sujeito, a.relacao, a.objeto,
+                                             a.valor, a.unidade, a.contexto),
+                # Identidade exata não tem distância semântica a reportar. O
+                # 0.0 nunca é exibido como porcentagem: a rota vai no metadado
+                # e a tela mostra "chave", para não parecer 100% de semelhança.
+                distancia=0.0,
+                meta={
+                    "veiculo": a.veiculo, "titulo": a.titulo, "url": a.url,
+                    "sujeito": a.sujeito, "relacao": a.relacao,
+                    "objeto": a.objeto or "", "data_fato": a.data_fato or "",
+                    "origem": a.origem, "sentenca": -1, "rota": "chave",
+                    "valor": a.valor if a.valor is not None else "",
+                    "unidade": a.unidade or "", "contexto": a.contexto or "",
+                },
+            ))
+    return achados
+
+
+def recupera(afirmacao: AfirmacaoRecebida,
+             acervo: list[grafo.Afirmacao] | None = None) -> list[indice.Achado]:
+    """Junta candidatas por proximidade semântica e por identidade exata.
+
+    As duas rotas são complementares e cobrem falhas uma da outra: a vetorial
+    encontra o fato descrito com outras palavras, e a chave exata garante que
+    tudo que o acervo afirma sobre aquele par (sujeito, relação) chegue ao
+    julgamento, independente de como ficou o ranking.
+
+    A chave exata entra PRIMEIRO. A ordem importa porque o modelo lê a lista em
+    ordem, e porque um teto de candidatas cortaria o fim — que era exatamente
+    onde a evidência certa estava caindo.
+    """
+    achados = _por_chave(afirmacao, acervo or [])
     vistos = {a.meta.get("sujeito", "") + a.texto for a in achados}
 
-    por_entidade = indice.busca("afirmacoes", afirmacao.sujeito_canonico, 6)
-    for a in por_entidade:
+    for a in indice.busca("afirmacoes", afirmacao.busca, QUANTAS_CANDIDATAS):
         chave = a.meta.get("sujeito", "") + a.texto
-        if chave not in vistos and a.meta.get("relacao") == afirmacao.relacao.value:
+        if a.proximidade >= MIN_PROXIMIDADE and chave not in vistos:
+            a.meta.setdefault("rota", "semantica")
             achados.append(a)
             vistos.add(chave)
 
@@ -179,7 +224,7 @@ def julga(texto: str, evidencias: list[indice.Achado]) -> tuple[Julgamento, llm.
 
 
 def verifica(texto: str, verboso: bool = False,
-             conexao=None) -> None:
+             conexao=None, acervo=None) -> None:
     print(f'AFIRMAÇÃO\n  "{texto}"\n')
 
     afirmacao, uso1 = estrutura(texto)
@@ -188,7 +233,21 @@ def verifica(texto: str, verboso: bool = False,
               f"{afirmacao.relacao.value}, {afirmacao.objeto_canonico or '—'})")
         print(f"  busca: \"{afirmacao.busca}\"\n")
 
-    evidencias = recupera(afirmacao)
+    evidencias = recupera(afirmacao, acervo)
+
+    if verboso and evidencias:
+        # As candidatas que o modelo VAI ver, antes de ele escolher.
+        # Sem isto so da para conferir o que foi citado, e o defeito mais
+        # provavel do sistema e o contrario: a evidencia certa nao subir no
+        # ranking e nunca chegar ao julgamento. Erro que nao aparece em
+        # lugar nenhum, porque o modelo julga bem o material errado.
+        print(f"  {len(evidencias)} candidatas recuperadas:")
+        for i, e in enumerate(evidencias, 1):
+            rota = ("chave" if e.meta.get("rota") == "chave"
+                    else f"{e.proximidade:.0%}")
+            print(f"    [{i:>2}] {rota:>5}  {e.texto[:74]}")
+            print(f"          [{e.meta['veiculo']}] {e.meta['titulo'][:60]}")
+        print()
 
     if not evidencias:
         print("VEREDITO\n  SEM EVIDÊNCIA · 0 veículos\n")
@@ -259,11 +318,15 @@ def main() -> None:
         sys.exit(1)
 
     conexao = conecta(config.BANCO)
-    if not grafo.carrega(conexao):
+    # Carregado uma vez e passado adiante: a rota por chave exata precisa do
+    # acervo em memoria, e le-lo duas vezes so gastaria tempo.
+    acervo = grafo.carrega(conexao)
+    if not acervo:
         print("Acervo sem afirmações. Rode a coleta, a extração e o índice.")
         sys.exit(1)
     try:
-        verifica(" ".join(args), verboso="-v" in sys.argv, conexao=conexao)
+        verifica(" ".join(args), verboso="-v" in sys.argv,
+                 conexao=conexao, acervo=acervo)
     finally:
         conexao.close()
 
