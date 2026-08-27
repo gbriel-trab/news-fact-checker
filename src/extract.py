@@ -267,6 +267,20 @@ Regras que importam mais que as outras:
    Marque EXTRACTED e não trate Z como fato do mundo: o verificável ali é que
    Fulano disse, não que Z seja verdade.
 
+   QUEM FALOU É QUEM O TEXTO DIZ QUE FALOU. Antes de escolher o sujeito de uma
+   relação de fala, ache o verbo de dizer e o sujeito DELE — "escreveu o
+   magistrado", "disse a ministra", "segundo o relator", "afirmou o advogado".
+   O falante é esse. Nunca é uma pessoa que aparece apenas DENTRO da citação.
+
+   Frase:  "a prova amealhada nos autos não autoriza a condenação do
+            recorrente", escreveu o magistrado.
+   Errado: (Recorrente, afirmou, a prova não autoriza a condenação)
+   Certo:  (Magistrado, afirmou, a prova não autoriza a condenação do recorrente)
+
+   O recorrente é sobre quem se fala; o magistrado é quem fala. Trocar os dois
+   põe na boca de alguém a frase que o condena, e sai do sistema com fonte
+   citada ao lado. É o erro mais grave que esta extração pode cometer.
+
 Exemplo:
 
   Matéria publicada em 2026-08-20, sentenças numeradas:
@@ -595,7 +609,11 @@ def main() -> None:
         print(f"\nAcervo de triplas: {t['triplas']} triplas de {t['materias']} "
               f"matérias · {t['relacoes']} relações distintas · "
               f"{t['entidades']} entidades")
-        print(f"Custo acumulado: US$ {t['custo']:.4f} · "
+        # "Gravado", nao "total": o banco so registra extracao que deu certo.
+        # Chamada truncada e cobrada e nao grava nada -- a do Braskem queimou
+        # ~US$ 0,20 sozinha --, e o check.py nao persiste uso nenhum. Este
+        # numero e piso. A fatura esta no console.
+        print(f"Custo gravado (so extracao): US$ {t['custo']:.4f} · "
               f"prompt {PROMPT_VERSAO} · vocabulário v{VOCAB_VERSAO}")
         if no_vocab:
             print(f"Em 'outro': {fora} de {no_vocab} "
