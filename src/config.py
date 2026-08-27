@@ -59,7 +59,35 @@ FEEDS: tuple[Feed, ...] = (
     Feed("Folha", "Mundo", "https://feeds.folha.uol.com.br/mundo/rss091.xml"),
     Feed("BBC Brasil", "Geral", "https://feeds.bbci.co.uk/portuguese/rss.xml"),
     Feed("UOL", "Notícias", "https://rss.uol.com.br/feed/noticias.xml"),
+    # --- Fontes primárias: a instituição publicando sobre o próprio ato ---
+    #
+    # Não são imprensa e não entram na contagem de corroboração como se
+    # fossem: quando o Banco do Japão afirma algo sobre o Banco do Japão, isso
+    # não é uma segunda fonte concordando com o G1 — é a fonte do fato.
+    #
+    # Existem para dois usos que a imprensa brasileira não cobre:
+    #
+    #   1. assunto estrangeiro que só aparece aqui de segunda mão
+    #   2. AUSÊNCIA de registro, que é evidência: se circula que o BoJ mexeu
+    #      nos juros e o feed oficial não registra comunicado na data, isso
+    #      diz algo — não prova, mas pesa
+    #
+    # LIMITAÇÃO MEDIDA (27/08/2026): os três publicam só título, sem resumo
+    # nem corpo (BoJ 0c, BCE 0c, Fed ~80c). Não sustentam extração de triplas
+    # pelo caminho atual, que exige texto. Entram como sinal de cobertura até
+    # existir extração a partir do título. E publicam em inglês, contra um
+    # acervo em português — o casamento depende do modelo de embedding ser
+    # multilíngue, o que ele é, mas isso não foi medido ainda.
+    Feed("Banco do Japão", "Comunicados", "https://www.boj.or.jp/en/rss/whatsnew.xml"),
+    Feed("Federal Reserve", "Comunicados", "https://www.federalreserve.gov/feeds/press_all.xml"),
+    Feed("BCE", "Comunicados", "https://www.ecb.europa.eu/rss/press.html"),
 )
+
+# O Banco Central do Brasil, o TSE, o STF, o Senado e a Câmara foram testados
+# na mesma data e ficaram de fora: TSE e STF respondem 403 a requisição
+# programática, Senado e Câmara não devolvem RSS válido, e o feed do BCB
+# declara `encoding="pt-br"`, que não é codificação existente e derruba o
+# parser. Nenhum é impossível — todos exigem trabalho que não é ler RSS.
 
 # O feed geral do G1 (g1.globo.com/rss/g1/) foi descartado deliberadamente.
 # Ele é dominado por conteúdo das afiliadas regionais — acidente de trânsito

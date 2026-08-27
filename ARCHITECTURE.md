@@ -125,7 +125,7 @@ O sistema entrega por dois caminhos, e eles resolvem problemas diferentes.
 
 | | Gatilho | Entrada | O que produz |
 |-|-|-|-|
-| **Digest diário** | relógio | o acervo do dia | onde os veículos divergem |
+| **Digest diário** (`digest.py`) | relógio | o acervo do dia | o que se sustenta e onde divergem |
 | **Consulta** (`check.py`) | uma pessoa | afirmação vinda de fora | veredito sobre aquela afirmação |
 
 ### Digest diário

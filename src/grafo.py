@@ -47,6 +47,7 @@ class Afirmacao:
     veiculo: str
     titulo: str
     url: str
+    data_publicacao: str | None = None
 
     @property
     def chave(self) -> tuple[str, str, str, str]:
@@ -122,28 +123,39 @@ class Corroboracao:
         return bool(self.divergencias)
 
 
-def carrega(conexao: sqlite3.Connection) -> list[Afirmacao]:
+def carrega(conexao: sqlite3.Connection,
+            desde: str | None = None) -> list[Afirmacao]:
     """Lê as afirmações do vocabulário mais recente.
 
     Versões antigas ficam de fora: relações de vocabulários diferentes não são
     comparáveis, e misturá-las produziria corroboração inexistente entre nomes
     que só por acaso coincidem.
+
+    `desde` recorta por data de PUBLICAÇÃO, não pela data do fato. São coisas
+    diferentes e a distinção importa: o digest reporta o que a imprensa
+    publicou na janela, e uma matéria de hoje pode tratar de fato de semana
+    passada. Recortar por `data_fato` esconderia justamente a matéria nova
+    sobre fato antigo — que é quando a corroboração costuma aparecer.
     """
+    filtro = "AND a.data_publicacao >= ?" if desde else ""
     linhas = conexao.execute(
-        """
+        f"""
         SELECT t.sujeito_canonico s, t.relacao r, t.objeto_canonico o,
                t.valor_numero vn, t.valor_unidade vu, t.valor_contexto vc,
                t.data_fato df, t.origem og,
-               a.veiculo, a.titulo, a.url_norm
+               a.veiculo, a.titulo, a.url_norm, a.data_publicacao dp
         FROM triplas t
         JOIN extracoes e ON e.id = t.extracao_id
         JOIN artigos   a ON a.id = e.artigo_id
         WHERE e.vocab_versao = (SELECT MAX(vocab_versao) FROM extracoes)
-        """
+        {filtro}
+        """,
+        (desde,) if desde else (),
     ).fetchall()
     return [
         Afirmacao(l["s"], l["r"], l["o"], l["vn"], l["vu"], l["vc"],
-                  l["df"], l["og"], l["veiculo"], l["titulo"], l["url_norm"])
+                  l["df"], l["og"], l["veiculo"], l["titulo"], l["url_norm"],
+                  l["dp"])
         for l in linhas
     ]
 
