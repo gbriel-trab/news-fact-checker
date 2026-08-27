@@ -53,7 +53,14 @@ FEEDS: tuple[Feed, ...] = (
     Feed("Agência Brasil", "Economia", "https://agenciabrasil.ebc.com.br/rss/economia/feed.xml"),
     Feed("Poder360", "Geral", "https://www.poder360.com.br/feed/"),
     Feed("InfoMoney", "Mercados", "https://www.infomoney.com.br/feed/"),
+    Feed("Estadão", "Política", "https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/politica/?outputType=xml"),
+    Feed("Estadão", "Economia", "https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/economia/?outputType=xml"),
+    Feed("Valor", "Brasil", "https://pox.globo.com/rss/valor/brasil/"),
+    Feed("Valor", "Política", "https://pox.globo.com/rss/valor/politica/"),
+    Feed("Metrópoles", "Política", "https://www.metropoles.com/feed"),
     # --- Só manchete e linha fina (~150 a 300 caracteres): sinal de cobertura ---
+    Feed("Exame", "Economia", "https://exame.com/feed/"),
+    Feed("Carta Capital", "Geral", "https://www.cartacapital.com.br/feed/"),
     Feed("Folha", "Poder", "https://feeds.folha.uol.com.br/poder/rss091.xml"),
     Feed("Folha", "Mercado", "https://feeds.folha.uol.com.br/mercado/rss091.xml"),
     Feed("Folha", "Mundo", "https://feeds.folha.uol.com.br/mundo/rss091.xml"),
@@ -88,6 +95,25 @@ FEEDS: tuple[Feed, ...] = (
 # programática, Senado e Câmara não devolvem RSS válido, e o feed do BCB
 # declara `encoding="pt-br"`, que não é codificação existente e derruba o
 # parser. Nenhum é impossível — todos exigem trabalho que não é ler RSS.
+
+# ADIÇÃO DE VEÍCULO É O QUE MOVE CORROBORAÇÃO. Com 8 veículos, uma história
+# precisa que 2 dos 8 a cubram; com 13, a chance de qualquer história ter par
+# sobe muito — e a taxa de confirmação do acervo era 5%, com o gargalo do lado
+# da cobertura, não da extração.
+#
+# Estadão, Valor e Metrópoles entram por cobrirem as MESMAS histórias que os
+# demais. É isso que corrobora: veículo que cobre outro assunto amplia o
+# acervo e não confirma nada.
+#
+# Testados na mesma rodada e deixados de fora, por motivo:
+#
+#   O Globo       RSS responde 200 e vem vazio
+#   Reuters BR    404
+#   Nexo          análise e explicador, não notícia direta — outro gênero
+#   Intercept     investigação, exclusiva por natureza. É o caso do "furo":
+#                 publicaria sozinho e nunca teria par, então entraria no
+#                 acervo permanentemente como não confirmado. Não é defeito
+#                 dele nem nosso — é o que este sistema não consegue verificar
 
 # O feed geral do G1 (g1.globo.com/rss/g1/) foi descartado deliberadamente.
 # Ele é dominado por conteúdo das afiliadas regionais — acidente de trânsito
