@@ -51,7 +51,18 @@ CREATE TABLE IF NOT EXISTS extracoes (
     modelo          TEXT    NOT NULL,
     prompt_versao   TEXT    NOT NULL,
     vocab_versao    INTEGER NOT NULL,
+    -- Total que entrou: fresco + cache lido + cache escrito. Mantido como
+    -- soma para as linhas antigas continuarem significando a mesma coisa.
     tokens_entrada  INTEGER NOT NULL,
+    -- A repartição. NULL nas linhas gravadas antes destas colunas existirem --
+    -- que é a resposta honesta: para aquelas o dado nao foi guardado.
+    --
+    -- Precisa ficar separado porque os tres tem precos DIFERENTES: cache lido
+    -- custa 0,1x da entrada e cache escrito custa 1,25x. Somados num campo so,
+    -- o acervo registra o custo mas nao consegue mais dizer de onde ele veio,
+    -- e a pergunta "o cache esta valendo a pena?" fica sem resposta.
+    tokens_cache_leitura INTEGER,
+    tokens_cache_escrita INTEGER,
     tokens_saida    INTEGER NOT NULL,
     custo_usd       REAL    NOT NULL,
     extraido_em     TEXT    NOT NULL,
@@ -120,12 +131,37 @@ CREATE INDEX IF NOT EXISTS idx_consultas_data ON consultas (consultado_em);
 """
 
 
+# Colunas acrescentadas depois de o banco existir. CREATE TABLE IF NOT EXISTS
+# nao altera tabela ja criada -- sem isto, um banco antigo continuaria sem elas
+# e a gravacao falharia com "no such column", que nao parece migracao faltando.
+MIGRACOES: tuple[tuple[str, str], ...] = (
+    ("extracoes", "tokens_cache_leitura INTEGER"),
+    ("extracoes", "tokens_cache_escrita INTEGER"),
+)
+
+
+def _migra(conexao: sqlite3.Connection) -> None:
+    """Acrescenta colunas que faltam. Nao remove nem renomeia nada.
+
+    Só ADD COLUMN de propósito: é a operação que o SQLite faz sem reescrever a
+    tabela e sem poder destruir dado. Migração que apaga fica para quando
+    houver motivo e backup.
+    """
+    for tabela, definicao in MIGRACOES:
+        coluna = definicao.split()[0]
+        existentes = {linha[1] for linha
+                      in conexao.execute(f"PRAGMA table_info({tabela})")}
+        if coluna not in existentes:
+            conexao.execute(f"ALTER TABLE {tabela} ADD COLUMN {definicao}")
+
+
 def conecta(caminho: Path) -> sqlite3.Connection:
     """Abre o banco, criando arquivo e esquema se ainda não existirem."""
     caminho.parent.mkdir(parents=True, exist_ok=True)
     conexao = sqlite3.connect(caminho)
     conexao.row_factory = sqlite3.Row
     conexao.executescript(ESQUEMA)
+    _migra(conexao)
     conexao.commit()
     return conexao
 
@@ -225,11 +261,13 @@ def salva_extracao(conexao: sqlite3.Connection, artigo_id: int, triplas,
             """
             INSERT INTO extracoes (
                 artigo_id, modelo, prompt_versao, vocab_versao,
-                tokens_entrada, tokens_saida, custo_usd, extraido_em
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                tokens_entrada, tokens_cache_leitura, tokens_cache_escrita,
+                tokens_saida, custo_usd, extraido_em
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (artigo_id, modelo, prompt_versao, vocab_versao,
              uso.entrada + uso.cache_leitura + uso.cache_escrita,
+             uso.cache_leitura, uso.cache_escrita,
              uso.saida, uso.custo, datetime.now(timezone.utc).isoformat()),
         )
         extracao_id = cursor.lastrowid

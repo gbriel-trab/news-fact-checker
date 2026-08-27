@@ -208,3 +208,73 @@ class TestConsultas:
         with pytest.raises(sqlite3.IntegrityError):
             salva_consulta(conexao, "x", "provavelmente", "y", 1, 1, 1, "m", 0.0)
         conexao.close()
+
+
+class TestCacheNasExtracoes:
+    """Cache lido custa 0,1x da entrada e cache escrito custa 1,25x. Somados
+    num campo só, o acervo registra o custo mas não sabe mais de onde veio."""
+
+    def test_grava_a_reparticao(self, tmp_path):
+        from src import llm
+        from src.llm import Uso
+        from src.storage import conecta, salva, salva_extracao
+
+        conexao = conecta(tmp_path / "t.db")
+        salva(conexao, artigo(url="https://x/1"))
+        artigo_id = conexao.execute("SELECT id FROM artigos").fetchone()["id"]
+        salva_extracao(conexao, artigo_id, [], llm.EXTRACAO.id, "v1", 1,
+                       Uso(modelo=llm.EXTRACAO, entrada=200, saida=900,
+                           cache_leitura=2400, cache_escrita=0))
+
+        linha = conexao.execute(
+            "SELECT tokens_entrada e, tokens_cache_leitura r, "
+            "tokens_cache_escrita w FROM extracoes").fetchone()
+        assert linha["e"] == 2600  # total, como sempre foi
+        assert (linha["r"], linha["w"]) == (2400, 0)
+        conexao.close()
+
+    def test_migracao_e_idempotente(self, tmp_path):
+        """`conecta` roda a migração toda vez. Rodar duas vezes não pode
+        falhar — ADD COLUMN de coluna existente é erro no SQLite."""
+        from src.storage import conecta
+
+        caminho = tmp_path / "t.db"
+        conecta(caminho).close()
+        conexao = conecta(caminho)
+        colunas = {l[1] for l in conexao.execute("PRAGMA table_info(extracoes)")}
+        assert {"tokens_cache_leitura", "tokens_cache_escrita"} <= colunas
+        conexao.close()
+
+    def test_banco_antigo_ganha_as_colunas(self, tmp_path):
+        """Linhas gravadas antes ficam NULL — que é a resposta honesta: para
+        aquelas o dado não foi guardado.
+
+        O banco "antigo" é o esquema REAL com as duas colunas novas removidas,
+        e não um esboço à mão: assim o teste continua valendo quando o resto do
+        esquema mudar.
+        """
+        import re
+        import sqlite3
+
+        from src.storage import ESQUEMA, conecta
+
+        antes = re.sub(r"\s*tokens_cache_(leitura|escrita) INTEGER,", "",
+                       ESQUEMA)
+        assert "tokens_cache_leitura" not in antes
+
+        caminho = tmp_path / "velho.db"
+        antigo = sqlite3.connect(caminho)
+        antigo.executescript(antes)
+        antigo.execute(
+            "INSERT INTO extracoes (artigo_id, modelo, prompt_versao, "
+            "vocab_versao, tokens_entrada, tokens_saida, custo_usd, "
+            "extraido_em) VALUES (1, 'm', 'v', 1, 5000, 1000, 0.1, 'x')")
+        antigo.commit()
+        antigo.close()
+
+        conexao = conecta(caminho)
+        linha = conexao.execute(
+            "SELECT tokens_entrada e, tokens_cache_leitura r FROM extracoes"
+        ).fetchone()
+        assert linha["e"] == 5000 and linha["r"] is None
+        conexao.close()
