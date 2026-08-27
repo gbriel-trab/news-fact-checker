@@ -77,24 +77,35 @@ SONNET = Modelo("claude-sonnet-5", entrada=3.00, saida=15.00, esforco="medium")
 OPUS = Modelo("claude-opus-5", entrada=5.00, saida=25.00, esforco="medium")
 
 
-EXTRACAO = HAIKU
+EXTRACAO = OPUS
 """O modelo do volume. Uma chamada por matéria, e é onde o acervo cresce.
 
-Haiku porque o que segura a qualidade aqui não é o modelo, é o schema: o
-vocabulário de relações é imposto pela API, os campos são obrigatórios e a
-sentença de origem é indexada. É leitura estruturada, não raciocínio aberto —
-onde modelo menor menos degrada.
+DECIDIDO POR MEDIÇÃO, na matéria 448 (TRE-SP nega recurso de Marçal), com o
+mesmo prompt e o mesmo texto. Não é n suficiente para lei geral; é suficiente
+para não trocar às cegas.
 
-O risco que sobra não é errar a relação, é canonizar entidade de forma
-instável: "Braskem" numa matéria e "Braskem S.A." noutra faz a corroboração
-não contar. Isso é falso negativo — o acervo perde uma confirmação que existia.
-Ruim, mas do lado seguro: o erro que este projeto considera o pior é o
-contrário, confirmar o que não foi confirmado.
+                 saída    custo    chave igual ao Opus    erro grave
+    Opus 5        1813  $0,0515          10/10            nenhum
+    Haiku 4.5     1235  $0,0132           2/8             2 de 8
+    Sonnet 5      3229  $0,0751           3/9             1 de 9 + 1 duplicada
 
-NÃO DECIDIDO POR MEDIÇÃO. Trocar isto exige rodar `compare.py` sobre a mesma
-matéria extraída pelos dois. E o piso de ruído já medido nesta base é 40 a 48%
-de triplas idênticas entre DUAS RODADAS DO MESMO OPUS — abaixo disso não se
-conclui nada sobre modelo nenhum."""
+O Haiku pendurou a multa de R$ 420 mil no tribunal em vez de em quem foi
+multado, e inverteu `abriu_processo_contra` — pôs o condenado como autor do
+processo. Erro de SUJEITO, que é a categoria que este acervo não pode ter:
+sua única mercadoria é quem disse e quem fez o quê.
+
+O Sonnet acertou o falante e errou o objeto da fala — devolveu
+(Manfré, afirmou, Pablo Marçal), que é o exemplo textual do que a regra 10
+proíbe. E gerou a mesma tripla duas vezes.
+
+SOBRE O CUSTO DO SONNET: ele é mais barato por token que o Opus e saiu MAIS
+CARO na mesma matéria, porque gerou 78% mais saída. Preço por token não prevê
+custo por matéria — o que prevê é quantos tokens o modelo decide gastar.
+
+O caminho de economia que sobra não é trocar de modelo: é o Batch API, 50% de
+desconto sem custo de qualidade, e o cache. Estas três medições pagaram
+escrita de cache (0r/5233w) por rodarem uma matéria de cada vez; num lote de
+40, só a primeira paga escrita e o resto lê a 0,1x."""
 
 VERIFICACAO = OPUS
 """O modelo do julgamento. Uma chamada por consulta, custo desprezível.
