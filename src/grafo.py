@@ -131,6 +131,16 @@ def carrega(conexao: sqlite3.Connection,
     comparáveis, e misturá-las produziria corroboração inexistente entre nomes
     que só por acaso coincidem.
 
+    E UMA extração por matéria, a mais recente. Filtrar só por vocabulário não
+    basta: a mesma matéria extraída duas vezes — que é justamente o que
+    `compare.py` exige para avaliar modelo ou prompt — entrava com as duas, e
+    as duas leituras do mesmo texto viravam duas afirmações. A contagem por
+    veículo sobrevive a isso, porque é um conjunto; a detecção de divergência
+    numérica não, porque dois números ligeiramente diferentes tirados do mesmo
+    texto pelo mesmo veículo passam a parecer contradição interna. Falso
+    positivo produzido por artefato de avaliação — o pior tipo, porque some
+    quando se para de avaliar.
+
     `desde` recorta por data de PUBLICAÇÃO, não pela data do fato. São coisas
     diferentes e a distinção importa: o digest reporta o que a imprensa
     publicou na janela, e uma matéria de hoje pode tratar de fato de semana
@@ -147,7 +157,11 @@ def carrega(conexao: sqlite3.Connection,
         FROM triplas t
         JOIN extracoes e ON e.id = t.extracao_id
         JOIN artigos   a ON a.id = e.artigo_id
-        WHERE e.vocab_versao = (SELECT MAX(vocab_versao) FROM extracoes)
+        WHERE e.id IN (
+                  SELECT MAX(id) FROM extracoes
+                  WHERE vocab_versao = (SELECT MAX(vocab_versao) FROM extracoes)
+                  GROUP BY artigo_id
+              )
         {filtro}
         """,
         (desde,) if desde else (),

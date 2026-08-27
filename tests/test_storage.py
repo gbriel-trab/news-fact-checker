@@ -121,3 +121,44 @@ class TestEstatisticas:
         salva(conexao, artigo(url="https://g1.com/a", veiculo="G1", editoria="Política"))
         salva(conexao, artigo(url="https://g1.com/b", veiculo="G1", editoria="Economia"))
         assert estatisticas(conexao)["veiculos"] == 1
+
+
+class TestCarregaUmaExtracaoPorMateria:
+    """A mesma matéria extraída duas vezes não pode virar duas afirmações.
+
+    É o que `compare.py` exige para avaliar modelo ou prompt, e sem este
+    recorte a avaliação contaminava o grafo: duas leituras do mesmo texto pelo
+    mesmo veículo viravam divergência interna inventada.
+    """
+
+    def test_so_a_extracao_mais_recente_entra(self, tmp_path):
+        import sqlite3
+
+        from src import grafo, llm
+        from src.extract import Tripla
+        from src.storage import conecta, salva, salva_extracao
+        from src.llm import Uso
+        from tests.test_storage import artigo
+
+        conexao = conecta(tmp_path / "t.db")
+        salva(conexao, artigo(url="https://x/1", titulo="T"))
+        artigo_id = conexao.execute("SELECT id FROM artigos").fetchone()["id"]
+
+        def tripla(objeto):
+            return Tripla(
+                sujeito="A", sujeito_canonico="A", relacao="outro",
+                objeto=objeto, objeto_canonico=objeto, tipo_relacao="evento",
+                origem="EXTRACTED", valor_numero=None, valor_unidade=None,
+                valor_contexto=None, data_fato=None, sentenca=0,
+            )
+
+        uso = Uso(modelo=llm.EXTRACAO, entrada=1, saida=1,
+                  cache_leitura=0, cache_escrita=0)
+        salva_extracao(conexao, artigo_id, [tripla("velha")],
+                       "modelo-a", "v1", 1, uso)
+        salva_extracao(conexao, artigo_id, [tripla("nova")],
+                       "modelo-b", "v2", 1, uso)
+
+        afirmacoes = grafo.carrega(conexao)
+        assert [a.objeto for a in afirmacoes] == ["nova"]
+        conexao.close()
