@@ -61,6 +61,11 @@ FEEDS: tuple[Feed, ...] = (
     # --- Só manchete e linha fina (~150 a 300 caracteres): sinal de cobertura ---
     Feed("Exame", "Economia", "https://exame.com/feed/"),
     Feed("Carta Capital", "Geral", "https://www.cartacapital.com.br/feed/"),
+    # Cripto. O endereco antigo (br.cointelegraph.com) responde 410 Gone -- a
+    # edicao brasileira mudou de dominio. Vale registrar porque 410 nao e
+    # falha temporaria: e o servidor dizendo que o recurso saiu de proposito,
+    # e insistir nele nunca voltaria a funcionar.
+    Feed("Cointelegraph", "Cripto", "https://cointelegraph.com.br/rss"),
     Feed("Folha", "Poder", "https://feeds.folha.uol.com.br/poder/rss091.xml"),
     Feed("Folha", "Mercado", "https://feeds.folha.uol.com.br/mercado/rss091.xml"),
     Feed("Folha", "Mundo", "https://feeds.folha.uol.com.br/mundo/rss091.xml"),
