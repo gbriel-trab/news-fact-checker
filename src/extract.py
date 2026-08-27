@@ -469,6 +469,30 @@ def _por_id(conexao: sqlite3.Connection, ids: list[int]) -> list[sqlite3.Row]:
     return [por_id[i] for i in ids if i in por_id]
 
 
+EDITORIAS_DURAS: frozenset[str] = frozenset(
+    {"Política", "Economia", "Poder", "Mercado", "Mercados", "Comunicados"})
+"""Editorias cujo material sustenta verificação, para `--editorias duras`.
+
+A editoria é o único rótulo de assunto que o acervo já tem, e ele vem da
+própria redação — melhor que qualquer heurística nossa. Medido nas 113
+histórias corroboradas do acervo:
+
+    sem filtro                    113
+    só editoria dura               84  (74%)
+    por palavra-chave no título    30  (27%)
+
+O filtro por palavra-chave foi testado e DESCARTADO: derruba 73% e leva junto
+o que interessa — "JHC e Renan Filho empatam em Alagoas", "MPT processa Uber
+por R$ 321 milhões", "Meta paga US$ 18 bi". Título de notícia é feito de nome
+próprio, não de palavra de categoria.
+
+O que a editoria descarta é notícia mole de verdade: Dolly Parton, Neymar,
+Harry e Meghan, Trump querendo renomear o Lago Ontário.
+
+LIMITAÇÃO: `Mundo` e `Geral` são sacos de gato — carregam a guerra tarifária
+junto com celebridade. Ficam de fora inteiras, e com elas cai notícia dura de
+exterior. É corte grosseiro, e por isso opcional em vez de padrão."""
+
 MIN_SIMILARIDADE = 0.70
 """Proximidade semântica mínima entre dois títulos para valer o par.
 
@@ -484,7 +508,8 @@ tripla, e a chamada seria desperdício.
 
 
 def _por_historia(conexao: sqlite3.Connection, quantas: int,
-                  por_historia: int = 2) -> list[sqlite3.Row]:
+                  por_historia: int = 2,
+                  editorias: frozenset[str] | None = None) -> list[sqlite3.Row]:
     """Matérias escolhidas aos PARES, um veículo diferente em cada.
 
     É a seleção que faz o dinheiro render. `_materias` pega as mais recentes,
@@ -514,6 +539,14 @@ def _por_historia(conexao: sqlite3.Connection, quantas: int,
 
     escolhidas: list[int] = []
     for historia in agrupa.agrupa(agrupa.carrega(conexao)):
+        # A história inteira precisa ter ao menos UMA matéria da editoria
+        # pedida. Basta uma: se a Folha cobriu em Mercado e a CNN no feed
+        # Geral, é o mesmo assunto — exigir das duas descartaria o par por
+        # causa de como a outra redação organiza o site dela.
+        if editorias and not any(m["editoria"] in editorias
+                                 for m in historia.materias):
+            continue
+
         com_texto = [m for m in sorted(historia.materias,
                                        key=lambda x: -x["tamanho"])
                      if m["tamanho"] > MIN_TEXTO]
@@ -620,6 +653,14 @@ def main() -> None:
              f"MAX_SENTENCAS no codigo para a medicao",
     )
     parser.add_argument(
+        "--editorias",
+        metavar="LISTA",
+        help="filtra por editoria: 'duras' usa "
+             + ", ".join(sorted(EDITORIAS_DURAS))
+             + "; ou passe a sua lista separada por virgula. Sem isto, nao "
+               "filtra. So vale com --historias",
+    )
+    parser.add_argument(
         "--historias",
         type=int,
         metavar="N",
@@ -641,7 +682,15 @@ def main() -> None:
     if args.ids:
         linhas = _por_id(conexao, [int(x) for x in args.ids.split(",")])
     elif args.historias:
-        linhas = _por_historia(conexao, args.historias)
+        if not args.editorias:
+            editorias = None
+        elif args.editorias == "duras":
+            editorias = EDITORIAS_DURAS
+        else:
+            editorias = frozenset(e.strip() for e in
+                                  args.editorias.split(",") if e.strip())
+        linhas = _por_historia(conexao, args.historias,
+                               editorias=editorias)
     else:
         linhas = _materias(conexao, args.n)
     if not linhas:
