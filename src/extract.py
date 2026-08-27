@@ -217,7 +217,7 @@ Regras que importam mais que as outras:
   abriu_processo_contra  iniciou processo, investigação ou ação contra
   participou_de          esteve em entrevista, sabatina, sessão ou evento
   divulgou               publicou ou tornou público um dado, estudo ou documento
-  tem_atributo           propriedade com valor numérico — custo, margem de erro, amostra. Objeto null, e o nome da propriedade vai em valor_contexto
+  tem_atributo           QUALQUER propriedade com valor numérico: lucro, receita, dívida, prazo, percentual, custo, margem de erro, amostra. Objeto null, e o nome da propriedade vai em valor_contexto. Toda tripla com número e sem objeto usa esta relação — nunca `outro`
   outro                  afirmação verificável que não cabe em nenhuma acima. Use sem hesitar: forçar uma relação que não serve é pior
 
    Prefira a relação específica quando ela couber. `outro` existe para
@@ -267,6 +267,11 @@ Regras que importam mais que as outras:
 
    Regra geral: toda tripla precisa carregar OU um objeto OU um valor
    numérico. Sem nenhum dos dois, ela não afirma nada e não deve existir.
+
+   E a recíproca fecha a regra: VALOR SEM OBJETO É SEMPRE `tem_atributo`.
+   Nunca `outro`. Dois veículos publicaram o mesmo lucro da Caixa, um recebeu
+   `tem_atributo` e o outro `outro`, e o fato deixou de ser o mesmo fato — a
+   confirmação sumiu sem erro nenhum aparecer.
 
 7. PROPOSTA NÃO É FATO CONSUMADO. Projeto de lei, plano, promessa e proposta
    descrevem o que ACONTECERIA, não o que aconteceu.

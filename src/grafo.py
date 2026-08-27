@@ -16,12 +16,27 @@ fontes independentes, e contá-las como duas fabricaria confirmação.
 """
 
 import collections
+import re
 import sqlite3
 import sys
 from dataclasses import dataclass
 
 from . import config, llm
+from .vocabulario import Relacao
 from .storage import conecta
+
+MIN_CONTEXTO_IGUAL = 0.95
+"""Proximidade entre dois contextos para serem considerados a MESMA medida.
+
+Alto de propósito, e ainda assim insuficiente sozinho — ver `_mesma_medida`.
+Medido em 8 pares reais do acervo: os que descrevem a mesma medida ficaram em
+0,97-1,00, e os que descrevem medidas diferentes chegaram a 0,93. A margem é
+de 0,04. Amostra pequena e limiar frágil.
+
+Erra para o lado seguro: contexto rejeitado por engano vira fato separado, que
+deixa de confirmar. Contexto aceito por engano funde duas medidas e inventa
+uma divergência — o falso positivo que o princípio 5 chama de pior erro.
+"""
 
 TOLERANCIA_RELATIVA = 0.02
 """Diferença relativa abaixo da qual dois números são considerados o mesmo.
@@ -50,21 +65,26 @@ class Afirmacao:
     data_publicacao: str | None = None
 
     @property
-    def chave(self) -> tuple[str, str, str, str]:
-        """O que precisa coincidir para duas afirmações serem 'a mesma'.
+    def chave(self) -> tuple[str, str, str]:
+        """O que precisa coincidir para duas afirmações serem candidatas a
+        "a mesma".
 
-        O contexto entra sempre que há valor, mesmo havendo objeto. Sem ele,
-        "Petrobras detém 47% do capital votante" e "Petrobras detém 36,1% do
-        capital total" viram o mesmo fato — mesmo sujeito, mesma relação, mesmo
-        objeto — e o sistema os reportaria como dois veículos divergindo sobre
-        um número quando são duas medidas diferentes.
+        O contexto NÃO entra aqui, e já entrou. Entrou para separar
+        "Petrobras detém 47% do capital votante" de "36,1% do capital total",
+        que são duas medidas e não um número em disputa. Mas `contexto` é texto
+        livre escrito pelo modelo, e igualdade exata sobre texto gerado nunca
+        casa: dois veículos escreveram "lucro recorrente NO 2º trimestre" e
+        "...DO 2º trimestre", uma preposição de diferença, e o fato deixou de
+        existir duas vezes.
 
-        O custo é perder o encontro quando dois veículos descrevem a mesma
-        medida com palavras diferentes. Esse caso é do índice vetorial: chave
-        exata aqui, proximidade lá.
+        O efeito foi medido e é total: 126 fatos com número no acervo, ZERO
+        confirmados. Nenhum número jamais corroborou, e a detecção de
+        divergência entre veículos — que é o produto — nunca funcionou.
+
+        A separação por medida continua existindo, em `agrupa`, por
+        proximidade semântica em vez de igualdade de string.
         """
-        return (self.sujeito, self.relacao, self.objeto or "",
-                self.contexto or "" if self.valor is not None else "")
+        return (self.sujeito, self.relacao, self.objeto or "")
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +141,29 @@ class Corroboracao:
     @property
     def diverge(self) -> bool:
         return bool(self.divergencias)
+
+
+def _relacao_normalizada(relacao: str, objeto: str | None,
+                         valor: float | None) -> str:
+    """Tripla com número e sem objeto é `tem_atributo`, diga o modelo o que
+    disser.
+
+    Não é conserto de prompt disfarçado: pelas próprias regras da extração,
+    toda tripla carrega OU objeto OU valor, e a que carrega valor sem objeto É
+    uma propriedade do sujeito. `outro` ali é o modelo deixando de aplicar a
+    regra 6, não uma distinção que exista.
+
+    Sem isto, dois veículos que publicam o MESMO número sobre o MESMO fato não
+    se encontram porque um recebeu `tem_atributo` e o outro `outro` — foi o que
+    aconteceu com o lucro da Caixa, quatro números idênticos e zero
+    confirmações.
+
+    Normalizado na LEITURA, não na gravação: assim vale também para o que já
+    está no banco, e nenhuma extração paga é reescrita.
+    """
+    if valor is not None and not objeto:
+        return Relacao.TEM_ATRIBUTO.value
+    return relacao
 
 
 def carrega(conexao: sqlite3.Connection,
@@ -180,7 +223,8 @@ def carrega(conexao: sqlite3.Connection,
         (llm.EXTRACAO.id, desde) if desde else (llm.EXTRACAO.id,),
     ).fetchall()
     return [
-        Afirmacao(l["s"], l["r"], l["o"], l["vn"], l["vu"], l["vc"],
+        Afirmacao(l["s"], _relacao_normalizada(l["r"], l["o"], l["vn"]),
+                  l["o"], l["vn"], l["vu"], l["vc"],
                   l["df"], l["og"], l["veiculo"], l["titulo"], l["url_norm"],
                   l["dp"])
         for l in linhas
@@ -206,12 +250,81 @@ def constroi(afirmacoes: list[Afirmacao]):
     return g
 
 
+def _digitos(texto: str | None) -> frozenset[str]:
+    return frozenset(re.findall(r"\d+", texto or ""))
+
+
+def _mesma_medida(a: Afirmacao, b: Afirmacao, proximidade: float) -> bool:
+    """Se duas afirmações com número medem a mesma coisa.
+
+    Duas travas, porque nenhuma sozinha basta.
+
+    A SEMÂNTICA erra em período. "lucro do 1º semestre de 2026" e "lucro do 2º
+    trimestre de 2026" dão 0,93 — mais alto que pares que de fato são iguais.
+    Fundi-los inventaria uma divergência entre 7,4 bi e 3,9 bi, que são dois
+    fatos corretos sobre janelas diferentes.
+
+    Os DÍGITOS pegam exatamente isso, e só isso: {1, 2026} contra {2, 2026} não
+    é compatível. A comparação é por subconjunto, não igualdade, porque um
+    veículo escreve "ante o 2º trimestre de 2025" e o outro "do 2º trimestre de
+    2026 ante 2025" — o segundo diz mais, não diz outra coisa.
+
+    E os dígitos sozinhos não veem "capital votante" contra "capital total",
+    onde não há número nenhum. Por isso as duas.
+    """
+    da, db = _digitos(a.contexto), _digitos(b.contexto)
+    if not (da <= db or db <= da):
+        return False
+    return proximidade >= MIN_CONTEXTO_IGUAL
+
+
+def _separa_por_medida(membros: list[Afirmacao]) -> list[list[Afirmacao]]:
+    """Divide afirmações de mesma chave em grupos que medem a mesma coisa.
+
+    Só roda quando há mais de uma afirmação COM número. Fato sem valor não tem
+    medida a separar, e chamar o modelo de embedding para eles seria custo de
+    latência sem pergunta a responder.
+    """
+    com_valor = [m for m in membros if m.valor is not None]
+    if len(com_valor) < 2:
+        return [membros]
+
+    from . import indice
+
+    contextos = [m.contexto or "" for m in com_valor]
+    vetores = indice.vetoriza(contextos)
+
+    grupos: list[list[Afirmacao]] = []
+    indices: list[list[int]] = []
+    for i, atual in enumerate(com_valor):
+        for grupo, idxs in zip(grupos, indices):
+            # Compara com o primeiro do grupo, não com todos: agrupamento
+            # transitivo por representante. Aproximação deliberada — comparar
+            # todos contra todos mudaria o resultado conforme a ordem de
+            # leitura, que é pior que ser aproximado de forma previsível.
+            if _mesma_medida(atual, grupo[0],
+                             float(vetores[i] @ vetores[idxs[0]])):
+                grupo.append(atual)
+                idxs.append(i)
+                break
+        else:
+            grupos.append([atual])
+            indices.append([i])
+
+    sem_valor = [m for m in membros if m.valor is None]
+    if sem_valor:
+        grupos.append(sem_valor)
+    return grupos
+
+
 def agrupa(afirmacoes: list[Afirmacao]) -> list[Corroboracao]:
     """Junta afirmações idênticas em fato, para contar quem afirma o quê."""
     por_chave: dict[tuple, list[Afirmacao]] = collections.defaultdict(list)
     for a in afirmacoes:
         por_chave[a.chave].append(a)
-    return [Corroboracao(k, tuple(v)) for k, v in por_chave.items()]
+    return [Corroboracao(chave, tuple(grupo))
+            for chave, membros in por_chave.items()
+            for grupo in _separa_por_medida(membros)]
 
 
 def sobre(afirmacoes: list[Afirmacao], entidade: str) -> list[Afirmacao]:

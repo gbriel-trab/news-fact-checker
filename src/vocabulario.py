@@ -85,8 +85,10 @@ DEFINICOES: dict[Relacao, str] = {
     Relacao.PARTICIPOU_DE: "esteve em entrevista, sabatina, sessão ou evento",
     Relacao.DIVULGOU: "publicou ou tornou público um dado, estudo ou documento",
     Relacao.TEM_ATRIBUTO: (
-        "propriedade com valor numérico — custo, margem de erro, amostra. "
-        "Objeto null, e o nome da propriedade vai em valor_contexto"
+        "QUALQUER propriedade com valor numérico: lucro, receita, dívida, "
+        "prazo, percentual, custo, margem de erro, amostra. Objeto null, e o "
+        "nome da propriedade vai em valor_contexto. Toda tripla com número e "
+        "sem objeto usa esta relação — nunca `outro`"
     ),
     Relacao.OUTRO: (
         "afirmação verificável que não cabe em nenhuma acima. "

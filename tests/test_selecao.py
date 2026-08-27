@@ -130,3 +130,75 @@ class TestCortaLide:
             assert len(versoes) == 3
         finally:
             extract.MAX_SENTENCAS = original
+
+
+class TestAgrupamentoPorMedida:
+    """A correção do defeito que impedia qualquer número de corroborar.
+
+    Antes, `contexto` entrava na chave por igualdade exata. Dois veículos
+    escreveram "lucro recorrente NO 2º trimestre" e "...DO 2º trimestre" e o
+    fato deixou de ser o mesmo. Medido no acervo: 126 fatos com número, ZERO
+    confirmados.
+    """
+
+    def af(self, veiculo, valor, contexto, relacao="tem_atributo",
+           unidade="BRL", objeto=None):
+        from src.grafo import Afirmacao
+
+        return Afirmacao(
+            sujeito="Caixa", relacao=relacao, objeto=objeto, valor=valor,
+            unidade=unidade, contexto=contexto, data_fato="2026-08-26",
+            origem="EXTRACTED", veiculo=veiculo, titulo="t",
+            url=f"https://x/{veiculo}",
+        )
+
+    def test_mesma_medida_escrita_diferente_confirma(self):
+        from src import grafo
+
+        grupos = grafo.agrupa([
+            self.af("Poder360", 3.9e9, "lucro líquido recorrente do 2º trimestre de 2026"),
+            self.af("Agência Brasil", 3.9e9, "lucro líquido recorrente no 2º trimestre de 2026"),
+        ])
+        assert len(grupos) == 1 and grupos[0].confirmada
+
+    def test_periodos_diferentes_nao_se_fundem(self):
+        """A trava de dígitos. A semântica sozinha dá 0,93 para estes dois, e
+        fundi-los inventaria uma divergência entre dois fatos corretos."""
+        from src import grafo
+
+        grupos = grafo.agrupa([
+            self.af("Poder360", 7.4e9, "lucro do 1º semestre de 2026"),
+            self.af("Agência Brasil", 3.9e9, "lucro do 2º trimestre de 2026"),
+        ])
+        assert len(grupos) == 2
+        assert not any(g.confirmada for g in grupos)
+
+    def test_medidas_diferentes_sem_numero_no_texto_nao_se_fundem(self):
+        """A trava semântica. Aqui não há dígito que separe — "capital votante"
+        e "capital total" são duas medidas e 47% contra 36,1% não é divergência.
+        """
+        from src import grafo
+
+        grupos = grafo.agrupa([
+            self.af("G1", 47.0, "participação no capital votante", unidade="%"),
+            self.af("Folha", 36.1, "participação no capital total", unidade="%"),
+        ])
+        assert len(grupos) == 2
+
+    def test_mesma_medida_numeros_diferentes_e_divergencia(self):
+        from src import grafo
+
+        grupos = grafo.agrupa([
+            self.af("G1", 56e9, "dívidas a reestruturar"),
+            self.af("Folha", 59e9, "dívidas a reestruturar"),
+        ])
+        assert len(grupos) == 1 and grupos[0].diverge
+
+    def test_valor_sem_objeto_vira_tem_atributo_na_leitura(self):
+        """`outro` com número e sem objeto é o modelo deixando de aplicar a
+        regra 6, não uma distinção real."""
+        from src.grafo import _relacao_normalizada
+
+        assert _relacao_normalizada("outro", None, 3.9e9) == "tem_atributo"
+        assert _relacao_normalizada("outro", "Braskem", None) == "outro"
+        assert _relacao_normalizada("afirmou", "algo", None) == "afirmou"

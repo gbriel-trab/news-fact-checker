@@ -227,6 +227,18 @@ def busca(colecao_nome: str, texto: str, quantos: int = 8) -> list[Achado]:
     ]
 
 
+def vetoriza(textos: list[str]):
+    """Vetores normalizados, para comparar muitos textos entre si.
+
+    Normalizados na saida para o produto interno JA SER o cosseno -- quem chama
+    compara com `v[i] @ v[j]` e nao precisa saber disso.
+    """
+    import numpy as np
+
+    v = np.array(_vetores(textos))
+    return v / np.linalg.norm(v, axis=1, keepdims=True)
+
+
 def similaridade(a: str, b: str) -> float:
     """Cosseno entre dois textos, de 0 a 1. Não consulta a coleção.
 
