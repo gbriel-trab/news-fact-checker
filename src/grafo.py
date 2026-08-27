@@ -20,7 +20,7 @@ import sqlite3
 import sys
 from dataclasses import dataclass
 
-from . import config
+from . import config, llm
 from .storage import conecta
 
 TOLERANCIA_RELATIVA = 0.02
@@ -131,7 +131,19 @@ def carrega(conexao: sqlite3.Connection,
     comparáveis, e misturá-las produziria corroboração inexistente entre nomes
     que só por acaso coincidem.
 
-    E UMA extração por matéria, a mais recente. Filtrar só por vocabulário não
+    E UMA extração por matéria, do MODELO DE EXTRAÇÃO ATIVO. Não basta pegar a
+    mais recente: medir modelo exige extrair a mesma matéria com outro, e a
+    medição passava a ser o que o acervo lia. Foi o que aconteceu ao testar
+    Haiku e Sonnet — a matéria 448 passou a entrar pelas triplas do teste, com
+    os erros do teste, sem nada indicar isso.
+
+    Prender ao modelo ativo é o comportamento certo por um motivo maior que
+    limpeza de teste: a corroboração casa por string canônica exata, e modelos
+    diferentes canonizam diferente ("Presidência da República" contra
+    "Presidência da República do Brasil"). Acervo lido por dois modelos perde
+    confirmações sem produzir erro nenhum — só um número menor.
+
+    Filtrar só por vocabulário não
     basta: a mesma matéria extraída duas vezes — que é justamente o que
     `compare.py` exige para avaliar modelo ou prompt — entrava com as duas, e
     as duas leituras do mesmo texto viravam duas afirmações. A contagem por
@@ -160,11 +172,12 @@ def carrega(conexao: sqlite3.Connection,
         WHERE e.id IN (
                   SELECT MAX(id) FROM extracoes
                   WHERE vocab_versao = (SELECT MAX(vocab_versao) FROM extracoes)
+                    AND modelo = ?
                   GROUP BY artigo_id
               )
         {filtro}
         """,
-        (desde,) if desde else (),
+        (llm.EXTRACAO.id, desde) if desde else (llm.EXTRACAO.id,),
     ).fetchall()
     return [
         Afirmacao(l["s"], l["r"], l["o"], l["vn"], l["vu"], l["vc"],

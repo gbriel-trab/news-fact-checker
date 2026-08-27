@@ -126,19 +126,16 @@ class TestEstatisticas:
 class TestCarregaUmaExtracaoPorMateria:
     """A mesma matéria extraída duas vezes não pode virar duas afirmações.
 
-    É o que `compare.py` exige para avaliar modelo ou prompt, e sem este
-    recorte a avaliação contaminava o grafo: duas leituras do mesmo texto pelo
-    mesmo veículo viravam divergência interna inventada.
+    Extrair a mesma matéria com outro modelo é o que `compare.py` exige para
+    avaliar. Sem este recorte a avaliação virava o que o acervo lia: as triplas
+    do teste, com os erros do teste, sem nada indicar isso.
     """
 
-    def test_so_a_extracao_mais_recente_entra(self, tmp_path):
-        import sqlite3
-
-        from src import grafo, llm
+    def _monta(self, tmp_path):
+        from src import llm
         from src.extract import Tripla
-        from src.storage import conecta, salva, salva_extracao
         from src.llm import Uso
-        from tests.test_storage import artigo
+        from src.storage import conecta, salva, salva_extracao
 
         conexao = conecta(tmp_path / "t.db")
         salva(conexao, artigo(url="https://x/1", titulo="T"))
@@ -154,11 +151,27 @@ class TestCarregaUmaExtracaoPorMateria:
 
         uso = Uso(modelo=llm.EXTRACAO, entrada=1, saida=1,
                   cache_leitura=0, cache_escrita=0)
-        salva_extracao(conexao, artigo_id, [tripla("velha")],
-                       "modelo-a", "v1", 1, uso)
-        salva_extracao(conexao, artigo_id, [tripla("nova")],
-                       "modelo-b", "v2", 1, uso)
+        salva_extracao(conexao, artigo_id, [tripla("do modelo ativo")],
+                       llm.EXTRACAO.id, "v1", 1, uso)
+        salva_extracao(conexao, artigo_id, [tripla("de outro modelo")],
+                       "modelo-de-teste", "v2", 1, uso)
+        return conexao
 
+    def test_so_a_extracao_do_modelo_ativo_entra(self, tmp_path):
+        """Mais recente não basta: a do teste foi gravada depois."""
+        from src import grafo
+
+        conexao = self._monta(tmp_path)
         afirmacoes = grafo.carrega(conexao)
-        assert [a.objeto for a in afirmacoes] == ["nova"]
+        assert [a.objeto for a in afirmacoes] == ["do modelo ativo"]
+        conexao.close()
+
+    def test_janela_de_data_nao_desfaz_o_recorte(self, tmp_path):
+        """A janela é um segundo parâmetro na mesma consulta — fácil de trocar
+        de posição e passar a filtrar pelo modelo errado sem erro nenhum."""
+        from src import grafo
+
+        conexao = self._monta(tmp_path)
+        afirmacoes = grafo.carrega(conexao, desde="2000-01-01")
+        assert [a.objeto for a in afirmacoes] == ["do modelo ativo"]
         conexao.close()
