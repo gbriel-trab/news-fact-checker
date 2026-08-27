@@ -29,19 +29,20 @@ from .storage import (
 
 VOCAB_VERSAO = vocabulario.VERSAO
 
-MAX_TRIPLAS: int | None = 30
-"""Teto de triplas por matéria.
+MAX_TRIPLAS: int | None = None
+"""Teto de triplas por matéria, ou None para não limitar.
 
-Esteve em None durante a medição, de propósito: capar antes de olhar o dado
-cortaria a cauda que revela quais relações a realidade produz.
+None durante a medição. Cheguei a repor em 30 junto com a correção do
+truncamento, e era conserto a mais: o que causou a falha foi o teto de TOKENS,
+já corrigido. O teto de triplas resolve custo, não truncamento.
 
-Medido e reposto. Matérias de 18 a 23 sentenças renderam 24 a 33 triplas, e a
-concentração de fato verificável está nas primeiras. 30 acomoda a matéria
-típica inteira e limita a cauda de uma longa.
+E ele custa caro aqui. Se uma matéria rende 45 fatos e o modelo entrega 30, os
+15 restantes somem sem aviso — e se a divergência entre veículos estiver entre
+eles, a medição conclui "não há contradição" quando a verdade é "não olhei".
+Perda silenciosa no experimento que decide o projeto.
 
-O teto também protege de truncamento: uma matéria de 51 sentenças estourou o
-limite de tokens de saída, cortou o JSON no meio e a chamada foi cobrada sem
-devolver nada."""
+Repor quando o custo passar a mandar, isto é, quando a extração rodar sobre
+centenas de matérias por dia em vez de dezenas escolhidas a dedo."""
 
 _LINHA_TETO = (
     f"- No máximo {MAX_TRIPLAS} por matéria, priorizando as centrais"
