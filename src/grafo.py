@@ -103,6 +103,22 @@ class Corroboracao:
         return len(self.veiculos) >= 2
 
     @property
+    def contexto(self) -> str:
+        """Como este grupo descreve a medida que ele mede.
+
+        Saiu da chave (ver `Afirmacao.chave`) mas continua sendo a unica coisa
+        que diz O QUE o numero mede. Sem ele na tela, "Caixa tem 3,9e9 BRL" nao
+        informa se e lucro, receita ou divida.
+
+        Vem do primeiro membro: dentro do grupo todos medem a mesma coisa, e a
+        redacao de qualquer um serve.
+        """
+        for a in self.afirmacoes:
+            if a.contexto:
+                return a.contexto
+        return ""
+
+    @property
     def por_unidade(self) -> dict[str, list["Afirmacao"]]:
         """Afirmações com número, separadas por unidade.
 
@@ -375,7 +391,8 @@ def main() -> None:
     if confirmados:
         print("=== CONFIRMADOS POR FONTES INDEPENDENTES ===")
         for c in sorted(confirmados, key=lambda x: -len(x.veiculos))[:12]:
-            suj, rel, obj, ctx = c.chave
+            suj, rel, obj = c.chave
+            ctx = c.contexto
             rotulo = f"({suj}, {rel}, {obj or '—'})" + (f" · {ctx}" if ctx else "")
             print(f"  {len(c.veiculos)} veículos · {rotulo}")
             for a in c.afirmacoes:
@@ -385,7 +402,8 @@ def main() -> None:
     if divergentes:
         print("\n=== NÚMEROS QUE NÃO BATEM ===")
         for c in divergentes:
-            suj, rel, obj, ctx = c.chave
+            suj, rel, obj = c.chave
+            ctx = c.contexto
             print(f"  ({suj}, {rel}, {obj or '—'})" + (f" · {ctx}" if ctx else ""))
             for unidade, grupo in c.divergencias:
                 veics = {a.veiculo for a in grupo}
