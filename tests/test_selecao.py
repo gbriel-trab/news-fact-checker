@@ -94,3 +94,39 @@ class TestTextoInsuficiente:
         ])
         assert extract._por_historia(conexao, 5) == []
         conexao.close()
+
+
+class TestCortaLide:
+    """O corte é o maior lever de custo do sistema. Ver `MAX_SENTENCAS`."""
+
+    def test_mantem_as_primeiras(self):
+        assert extract.corta_lide(list("abcdefg"), 3) == ["a", "b", "c"]
+
+    def test_materia_curta_passa_inteira(self):
+        assert extract.corta_lide(["a", "b"], 5) == ["a", "b"]
+
+    def test_none_desliga_o_corte(self):
+        assert extract.corta_lide(list("abcdefg"), None) == list("abcdefg")
+
+    def test_corta_do_fim_para_o_indice_continuar_valendo(self):
+        """O índice da sentença é gravado junto da tripla e é como a evidência
+        volta ao texto de origem. Cortar do meio renumeraria o que vem depois e
+        faria cada tripla apontar para a frase errada — sem erro nenhum, só
+        citação trocada."""
+        sentencas = ["lide", "segunda", "terceira", "detalhe", "rodapé"]
+        cortadas = extract.corta_lide(sentencas, 3)
+        for i, frase in enumerate(cortadas):
+            assert sentencas[i] == frase
+
+    def test_o_corte_entra_na_versao_do_prompt(self):
+        """Fora do hash, extrações com cortes diferentes ficariam comparáveis
+        entre si sem serem comparáveis de fato."""
+        original = extract.MAX_SENTENCAS
+        try:
+            versoes = set()
+            for valor in (3, 5, None):
+                extract.MAX_SENTENCAS = valor
+                versoes.add(extract.versao_prompt())
+            assert len(versoes) == 3
+        finally:
+            extract.MAX_SENTENCAS = original

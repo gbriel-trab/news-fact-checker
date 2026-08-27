@@ -29,6 +29,35 @@ from .storage import (
 
 VOCAB_VERSAO = vocabulario.VERSAO
 
+MAX_SENTENCAS: int | None = 5
+"""Quantas sentenças da matéria chegam ao modelo. `None` manda a matéria toda.
+
+MEDIDO no acervo de 14 matérias, 282 triplas, 9 fatos confirmados:
+
+    corte    confirmações mantidas    triplas pagas
+      2          16 de 19  (84%)      103 de 382  (27%)
+      4          17 de 19  (89%)      134 de 382  (35%)
+     10          18 de 19  (95%)      210 de 382  (55%)
+    sem          19 de 19 (100%)      382 de 382 (100%)
+
+Só 7% das triplas pagas participam de alguma confirmação. Os outros 93% são
+detalhe que um veículo só publicou — as 43 triplas sobre dívidas de
+subsidiárias da Braskem nunca serão corroboradas, porque nenhum outro jornal
+desceu àquele nível.
+
+O motivo é a pirâmide invertida: o fato principal vai no primeiro parágrafo, e
+é ele que dois veículos publicam igual. O corpo é exclusivo por natureza, e
+exclusivo não corrobora.
+
+É o princípio 6 do ARCHITECTURE — filtro barato antes de chamada cara.
+
+O QUE SE PERDE: o acervo fica mais raso. Afirmação sobre detalhe do oitavo
+parágrafo passa a receber "sem evidência", corretamente, porque o detalhe não
+foi extraído. Troca deliberada de profundidade por confirmação  por dólar.
+
+Amostra pequena. Este número tem que ser refeito quando o acervo crescer.
+"""
+
 MAX_TRIPLAS: int | None = None
 """Teto de triplas por matéria, ou None para não limitar.
 
@@ -344,6 +373,10 @@ def versao_prompt() -> str:
                 "min_ocorrencias": boilerplate.MIN_OCORRENCIAS,
                 "min_dias": boilerplate.MIN_DIAS_DISTINTOS,
                 "min_materias": boilerplate.MIN_MATERIAS,
+                # Muda quantas sentenças o modelo vê, logo muda o resultado.
+                # Fora do hash, extrações com corte diferente ficariam
+                # comparáveis entre si sem serem comparáveis de fato.
+                "max_sentencas": MAX_SENTENCAS,
             },
             # O esforco vem do modelo de extracao. Trocar de modelo muda a
             # versao do prompt junto, e isso esta certo: a configuracao que
@@ -355,6 +388,20 @@ def versao_prompt() -> str:
 
 
 PROMPT_VERSAO = versao_prompt()
+
+
+def corta_lide(sentencas: list[str],
+               limite: int | None = MAX_SENTENCAS) -> list[str]:
+    """Fica com as primeiras `limite` sentenças. Ver `MAX_SENTENCAS`.
+
+    Corta do FIM, nunca do meio: o índice de cada sentença é gravado junto da
+    tripla e é como a evidência volta ao texto de origem. Remover do meio
+    renumeraria tudo o que vem depois e faria cada tripla apontar para a frase
+    errada — sem erro nenhum, só citação trocada.
+    """
+    if limite is None:
+        return sentencas
+    return sentencas[:limite]
 
 
 def monta_conteudo(titulo: str, veiculo: str, data_pub: str | None,
@@ -554,6 +601,16 @@ def main() -> None:
              "história inteira em vez das mais recentes",
     )
     parser.add_argument(
+        "--sentencas",
+        type=int,
+        metavar="N",
+        default=MAX_SENTENCAS,
+        help=f"quantas sentencas de cada materia chegam ao modelo "
+             f"(padrao: {MAX_SENTENCAS}; 0 manda a materia inteira). "
+             f"O corte e o maior lever de custo que existe aqui -- ver "
+             f"MAX_SENTENCAS no codigo para a medicao",
+    )
+    parser.add_argument(
         "--historias",
         type=int,
         metavar="N",
@@ -603,12 +660,18 @@ def main() -> None:
 
         sentencas, removidas = boilerplate.filtra(
             em_sentencas(texto), repetidas[veiculo])
+        inteiro = len(sentencas)
+        sentencas = corta_lide(sentencas, args.sentencas or None)
 
         print(f"\n{'=' * 78}")
         print(f"[{i}/{len(linhas)}] {linha['veiculo']} / {linha['editoria']}")
         print(f"  {linha['titulo'][:70]}")
+        cortadas = inteiro - len(sentencas)
         print(f"  {len(texto)} caracteres → {len(sentencas)} sentenças"
-              + (f" ({len(removidas)} institucionais fora)" if removidas else ""))
+              + (f" ({len(removidas)} institucionais fora)" if removidas else "")
+              # Impresso porque o corte muda o que o modelo pode achar, e filtro
+              # que corta em silêncio não pode ser conferido.
+              + (f" · {cortadas} depois do lide não enviadas" if cortadas else ""))
         # Impresso porque filtro que corta em silêncio não pode ser conferido,
         # e este corta antes de o texto chegar ao modelo.
         for r in removidas:

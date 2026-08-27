@@ -625,7 +625,14 @@ revisar o princípio de forma explícita — nunca por acidente.
 5. **Falso positivo é o pior erro.** Na dúvida entre acusar contradição
    inexistente e deixar passar, o sistema deixa passar.
 
-6. **Filtro barato antes de chamada cara.**
+6. **Filtro barato antes de chamada cara.** Aplicado em três lugares: o
+   descarte de matéria de fonte única, a remoção de texto institucional, e o
+   corte no lide. Este último é o de maior efeito — medido no acervo de 14
+   matérias, só **7% das triplas pagas participam de alguma confirmação**, e
+   as primeiras 5 sentenças guardam 89% delas por 35% do custo. É a pirâmide
+   invertida: o fato principal vai no primeiro parágrafo e é ele que dois
+   veículos publicam igual; o corpo é exclusivo por natureza, e exclusivo não
+   corrobora.
 
 7. **O ciclo serve para tentar outra query, não para insistir até inventar.**
 
