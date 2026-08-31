@@ -194,11 +194,14 @@ function fatoHTML(c, classe) {
   const vistos = new Set();
   const itens = c.itens.filter(i =>
     i.valor != null || (!vistos.has(i.veiculo) && vistos.add(i.veiculo)));
+  // url_norm já carrega o esquema (http://...); prefixar de novo produzia
+  // "https://https//..." — só completa quando faltar.
+  const href = u => u.startsWith("http") ? u : "https://" + u;
   return `<div class="fato ${classe}">
     (${esc(c.sujeito)}, ${esc(c.relacao).replaceAll("_"," ")}, ${esc(c.objeto ?? "—")})
     ${c.contexto ? `· <span class="dim">${esc(c.contexto)}</span>` : ""}
     <small>${c.veiculos.length} veículo(s): ${itens.map(i =>
-      `<a href="https://${esc(i.url)}" target="_blank">${esc(i.veiculo)}</a>${val(i)}`).join(" · ")}</small>
+      `<a href="${esc(href(i.url))}" target="_blank">${esc(i.veiculo)}</a>${val(i)}`).join(" · ")}</small>
   </div>`;
 }
 

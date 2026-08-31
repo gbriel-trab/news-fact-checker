@@ -1,5 +1,6 @@
 """Configuração da coleta: feeds, caminhos e parâmetros de rede."""
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -147,13 +148,15 @@ FEEDS: tuple[Feed, ...] = (
 #
 # Duas condições por handle, ambas medidas em 30/08/2026:
 #   1. conta PÚBLICA — post protegido é invisível a qualquer busca, por
-#      desenho do X (@OutsiderPapini, que motivou o radar, é privado e fica
-#      no fluxo manual: copiar o post e colar no premissas)
+#      desenho do X; conta privada fica no fluxo manual (colar no premissas)
 #   2. TESTADO no x_search antes de entrar (~US$ 0,03 a chamada) — o índice
 #      não cobre tudo, e handle cego aqui falharia em silêncio
-HANDLES_RADAR: tuple[str, ...] = (
-    "mentalhedgebr",   # testado 30/08/2026: visível, transcrição íntegra
-)
+#
+# A lista vem do .env, não daqui: quem alguém acompanha é dado pessoal, e o
+# repositório é público. Ver .env.example.
+HANDLES_RADAR: tuple[str, ...] = tuple(
+    h.strip().lstrip("@") for h in
+    os.environ.get("HANDLES_RADAR", "").split(",") if h.strip())
 
 TIMEOUT_SEGUNDOS = 15
 
