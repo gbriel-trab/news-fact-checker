@@ -101,6 +101,25 @@ Se devolver apenas um resumo do modelo sobre o que está circulando, não serve
 — afirmação sem fonte rastreável quebra o princípio 2 já na entrada, e o
 sistema passaria a confiar na paráfrase de um modelo como se fosse registro.
 
+**Testado ao vivo em 30/08/2026** (4 chamadas, ~US$ 0,10, grok-4.6): a
+condição é cumprível — pedindo transcrição, o post volta na íntegra com data
+e citação inline para o status individual. Mas apareceu uma condição nova,
+que agora governa a adoção: **visibilidade por handle.** @VitalikButerin
+retorna; o handle que motivou o radar (@OutsiderPapini) retornou zero em três
+formulações — causa confirmada depois: **a conta é privada**, e post
+protegido é invisível para qualquer busca, por desenho do X, não por
+limitação do índice. A chave da xAI não herda o grafo de seguidos de
+ninguém; ler conta protegida exigiria OAuth na API oficial do X, já
+descartada — e post que só o seguidor consegue abrir quebra o princípio 2
+(fonte rastreável) de qualquer forma. Consequência: o radar cobre apenas
+handles PÚBLICOS, testados um a um antes de entrar na lista (~US$ 0,03 a
+chamada); conta privada fica no fluxo manual (copiar e colar no premissas),
+que é o validado.
+
+Duas notas de mecânica para o módulo futuro: `allowed_x_handles` restringe a
+busca mas o modelo não vê a lista — o prompt precisa nomear os handles; e a
+citação vem inline (`[[N]](url)`), não no campo `citations` da resposta.
+
 Fica para depois de a extração estar validada.
 
 #### Não existe trending topic
@@ -446,7 +465,13 @@ pior tipo de falha porque parece funcionamento normal.
   couber desaparece sem rastro.
 * A lista é **derivada de dado real**: começar com 5–8 relações, rodar sobre
   notícia de verdade, inspecionar o que caiu em `outro` e promover o frequente.
-  Alvo de convergência: 10–15.
+  O alvo original de convergência (10–15) valia para um domínio; a v2 —
+  derivada das 121 triplas em `outro` quando a extração alcançou economia
+  corporativa e cripto/regulação, em 29/08/2026 — levou a lista a 22, e o
+  alvo revisto é ~20–25 com três domínios cobertos. Nem tudo que é frequente
+  promove: rótulo que funde desfechos opostos ("decidiu sobre") confirmaria
+  decisões contrárias entre si e ficou de fora — o porquê está registrado no
+  docstring de `vocabulario`.
 * Cada tripla grava a **versão do vocabulário**. Como a lista cresce, sem isso é
   impossível distinguir "não cabia" de "essa relação ainda não existia".
 
@@ -501,14 +526,33 @@ exatamente o mesmo sintoma que ausência de contradição — grafo sem conflito
 detectados. Concluir "contradição entre veículos é rara" quando a causa real é
 normalização quebrada mataria a metade autônoma do projeto por um bug.
 
-Dois problemas distintos, com dificuldades distintas:
+Três problemas distintos, com dificuldades distintas:
 
 | Caso | Exemplo | Situação |
 |-|-|-|
 | **Apelido** | `Lula` = `Luiz Inácio Lula da Silva` = `o presidente` | Resolvido na extração |
+| **Variação de grafia** | `Braskem` = `Braskem S.A.` · `Petrobras` = `Petrobrás` | Resolvido na **leitura** — ver abaixo |
 | **Hierarquia** | `Ministério da Saúde` ⊂ `governo federal` | **Em aberto** — não é normalização, é inferência |
 
-O segundo caso fica assumido como limitação. Uma afirmação atribuída ao
+O prompt pede canônico "idêntico caractere por caractere entre matérias" e não
+tem como cumprir: cada chamada é isolada. Medido no acervo em 29/08/2026,
+`Braskem` e `Braskem S.A.` somavam 100 triplas como duas entidades — o caso
+mais denso do grafo, invisível para a corroboração.
+
+A correção é `chave_canonica` (`src/canonico.py`), aplicada na COMPARAÇÃO —
+chave do grafo e rota por chave exata do check — nunca no registro. Mesmo
+precedente da normalização de relação na leitura. Duas camadas:
+
+1. **Determinística** (caixa, acento, sufixo societário) — medida antes de
+   entrar: sobre 269 formas do acervo, funde só o caso Braskem, zero fusões
+   indevidas.
+2. **Apelidos curados** (`APELIDOS`, versionada) — só entra par cujas duas
+   formas existem no acervo e nomeiam o mesmo referente. Embedding apenas
+   PROPÕE candidatos; fusão automática por similaridade fundiria `Braskem`
+   com `Braskem Idesa` (subsidiária) e fabricaria corroboração — o falso
+   positivo do princípio 5.
+
+O caso da hierarquia fica assumido como limitação. Uma afirmação atribuída ao
 "governo" pode não encontrar a matéria que atribui o ato a um ministério
 específico.
 
