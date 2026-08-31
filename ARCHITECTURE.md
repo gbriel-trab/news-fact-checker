@@ -843,6 +843,29 @@ unificadas — resultado perto de zero pode significar "contradição é rara" o
 Se o rendimento for real, o projeto tem uma metade que roda sem ninguém
 perguntar. Se for perto de zero, o grafo não se justifica e sai.
 
+**RODADA EM 30/08/2026**, sobre 880 afirmações de 99 matérias (vocab v2,
+acervo de ~5 dias, US$ 3,12 de extração):
+
+* **Corroboração validada**: 726 fatos distintos, **71 confirmados por 2+
+  veículos** (~10%). A metade autônoma tem conteúdo real para o digest.
+* **Entidades unificadas**: 598 formas → 593 chaves; os 5 grupos fundidos
+  pela `chave_canonica` são todos legítimos (EUA, variação de caixa). A
+  explicação "fragmentou" está afastada — o número de divergência abaixo
+  é real, não artefato.
+* **Divergência entre veículos: 1 — e é falsa.** Cotação do Bitcoin em
+  `data_fato` distintas (25 vs 27/08): preço em dias diferentes, não
+  contradição, e preço é observável, fora do escopo de verificação.
+
+A leitura honesta: isto é um PISO, não o rendimento. O detector atual só
+enxerga divergência NUMÉRICA na mesma chave — as duas regras já escritas
+neste documento e ainda não implementadas (janela temporal por `data_fato`
+e contradição evento/estado não-numérica, "aprovado" vs "rejeitado") são
+exatamente as que pegariam os casos do AC1. Decisão registrada: o grafo NÃO
+sai ainda; a régua é implementar as duas regras (custo zero — o dado está
+pago e gravado) e repetir esta medição com acervo maior. Se continuar perto
+de zero com o detector completo, aí vale a sentença acima e o digest assume
+o papel de corroboração, não de divergência.
+
 **2. Acurácia contra checador profissional.** Rodar ~50 afirmações já julgadas
 por Lupa, Aos Fatos ou Comprova, sem mostrar o veredito delas, e comparar.
 
