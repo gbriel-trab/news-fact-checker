@@ -128,6 +128,15 @@ CREATE TABLE IF NOT EXISTS consultas (
 );
 
 CREATE INDEX IF NOT EXISTS idx_consultas_data ON consultas (consultado_em);
+
+-- Posts que o boletim diario ja entregou. E o estado que impede repeticao:
+-- sem ele, toda rodada na mesma janela reenviaria os mesmos posts. A chave
+-- e o hash do texto transcrito (o link nem sempre vem pareado ao post).
+CREATE TABLE IF NOT EXISTS boletim_posts (
+    hash         TEXT PRIMARY KEY,
+    resumo       TEXT NOT NULL,
+    entregue_em  TEXT NOT NULL
+);
 """
 
 

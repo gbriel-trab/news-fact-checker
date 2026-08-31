@@ -25,6 +25,7 @@ passo — por isso não há ciclo, e por isso não há agente.
 """
 
 import sys
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -236,9 +237,54 @@ def julga(texto: str, evidencias: list[indice.Achado]) -> tuple[Julgamento, llm.
     return r.dados, r.uso
 
 
+HORAS_REUSO = 24
+"""Janela em que a mesma afirmação reusa o veredito gravado em vez de pagar.
+
+Medido no livro-caixa em 31/08/2026: das 29 consultas gravadas, 7 eram
+repetições da mesma afirmação — 29% do gasto de consulta pagando de novo
+pela mesma resposta. A janela é curta de propósito: "sem evidência" muda
+conforme o acervo cresce, e um dia depois a repetição volta a valer a pena.
+`--forcar` ignora a janela.
+"""
+
+
+def consulta_recente(conexao, texto: str,
+                     horas: int = HORAS_REUSO):
+    """Veredito já gravado para esta afirmação dentro da janela, ou None.
+
+    O casamento é por texto normalizado (minúsculas, espaços colapsados) em
+    Python — o lower() do SQLite ignora acento e mentiria em "É falso que".
+    """
+    if conexao is None:
+        return None
+    alvo = " ".join(texto.lower().split())
+    limite = (datetime.now(timezone.utc)
+              - timedelta(hours=horas)).isoformat()
+    for linha in conexao.execute(
+            "SELECT * FROM consultas WHERE consultado_em >= ? "
+            "ORDER BY id DESC", (limite,)):
+        if " ".join(linha["afirmacao"].lower().split()) == alvo:
+            return linha
+    return None
+
+
 def verifica(texto: str, verboso: bool = False,
-             conexao=None, acervo=None) -> None:
+             conexao=None, acervo=None, forcar: bool = False) -> None:
     print(f'AFIRMAÇÃO\n  "{texto}"\n')
+
+    if not forcar:
+        anterior = consulta_recente(conexao, texto)
+        if anterior is not None:
+            rotulo = {"confirmado": "CONFIRMADO", "contradito": "CONTRADITO",
+                      "sem_evidencia": "SEM EVIDÊNCIA"}[anterior["veredito"]]
+            quando = anterior["consultado_em"][:16].replace("T", " ")
+            print(f"VEREDITO (reusado — verificada em {quando} UTC)\n"
+                  f"  {rotulo} · {anterior['veiculos']} veículo(s)\n")
+            print(f"POR QUE\n  {anterior['justificativa']}\n")
+            print("  Sem custo: veredito gravado nas últimas "
+                  f"{HORAS_REUSO}h. Use --forcar para re-verificar "
+                  "(o acervo pode ter crescido desde então).")
+            return
 
     afirmacao, uso1 = estrutura(texto)
     if verboso:
@@ -325,9 +371,9 @@ def main() -> None:
         if hasattr(fluxo, "reconfigure"):
             fluxo.reconfigure(encoding="utf-8", errors="replace")
 
-    args = [a for a in sys.argv[1:] if a != "-v"]
+    args = [a for a in sys.argv[1:] if a not in ("-v", "--forcar")]
     if not args:
-        print('Uso: python -m src.check "afirmação a verificar" [-v]')
+        print('Uso: python -m src.check "afirmação" [-v] [--forcar]')
         sys.exit(1)
 
     conexao = conecta(config.BANCO)
@@ -339,7 +385,8 @@ def main() -> None:
         sys.exit(1)
     try:
         verifica(" ".join(args), verboso="-v" in sys.argv,
-                 conexao=conexao, acervo=acervo)
+                 conexao=conexao, acervo=acervo,
+                 forcar="--forcar" in sys.argv)
     finally:
         conexao.close()
 
