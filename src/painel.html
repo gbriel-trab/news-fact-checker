@@ -166,7 +166,7 @@ async function carregaResumo() {
     $("kpis").innerHTML = `
       <div class="kpi"><b>${r.acervo.materias.toLocaleString("pt-BR")}</b><span>matérias no acervo</span></div>
       <div class="kpi"><b class="${cls}">${quando}</b><span>última coleta</span></div>
-      <div class="kpi"><b>${e.materias_extraidas}</b><span>matérias extraídas</span></div>
+      <div class="kpi"><b>${e.materias_extraidas}</b><span>matérias no grafo (v${e.vocab_versao})</span></div>
       <div class="kpi"><b>${e.triplas}</b><span>triplas (vocab v${e.vocab_versao})</span></div>
       <div class="kpi"><b>${e.triplas ? Math.round(100*e.outro/e.triplas) : 0}%</b><span>em "outro"</span></div>
       <div class="kpi"><b>US$ ${e.custo_usd.toFixed(2)}</b><span>gasto total em extração</span></div>`;

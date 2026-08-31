@@ -60,9 +60,13 @@ def resumo() -> dict:
         "SELECT veiculo, COUNT(DISTINCT url_norm) materias FROM artigos "
         "GROUP BY veiculo ORDER BY materias DESC")]
 
-    extraidas = um("SELECT COUNT(DISTINCT artigo_id) FROM extracoes")
     custo = um("SELECT COALESCE(SUM(custo_usd),0) FROM extracoes")
     vocab = um("SELECT COALESCE(MAX(vocab_versao),0) FROM extracoes")
+    # Só o vocabulário corrente: é o recorte que o grafo lê. O total de
+    # todas as gerações (testes de modelo, vocabulários antigos) descreve
+    # gasto histórico, não o sistema de hoje — e induzia leitura errada.
+    extraidas = um("SELECT COUNT(DISTINCT artigo_id) FROM extracoes "
+                   "WHERE vocab_versao = ?", vocab)
     triplas_v = um(
         "SELECT COUNT(*) FROM triplas t JOIN extracoes e "
         "ON e.id=t.extracao_id WHERE e.vocab_versao=?", vocab)
