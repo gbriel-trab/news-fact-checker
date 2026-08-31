@@ -34,7 +34,10 @@ o contrário: raciocínio impecável partindo de um número que não bate.
 """
 
 import argparse
+import hashlib
+import json
 import sys
+from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -46,12 +49,14 @@ from .storage import conecta
 class Premissa(BaseModel):
     """Uma afirmação isolada extraída de um texto argumentativo."""
 
-    tipo: Literal["fato", "previsao", "opiniao"] = Field(
+    tipo: Literal["fato", "previsao", "opiniao", "relato"] = Field(
         description=(
-            "fato: afirma algo já ocorrido ou um estado presente, que outra "
-            "fonte poderia confirmar ou desmentir. "
+            "fato: afirma algo já ocorrido ou um estado presente NO MUNDO, "
+            "que outra fonte poderia confirmar ou desmentir. "
             "previsao: afirma sobre o futuro. "
-            "opiniao: juízo, avaliação ou recomendação."
+            "opiniao: juízo, avaliação ou recomendação. "
+            "relato: o assunto é o próprio autor do texto — o que ele diz, "
+            "fez, costuma fazer ou postou; a prova é o próprio texto."
         )
     )
     afirmacao: str = Field(
@@ -73,10 +78,12 @@ INSTRUCOES = """\
 Você separa as afirmações de um texto que argumenta — análise, comentário,
 opinião — em três tipos, para que só o verificável seja conferido depois.
 
-  fato       algo já ocorrido, ou um estado presente. Outra fonte poderia
-             confirmar ou desmentir. É o único tipo que será verificado.
+  fato       algo já ocorrido, ou um estado presente NO MUNDO. Outra fonte
+             poderia confirmar ou desmentir. É o único tipo que será
+             verificado.
   previsao   afirma sobre o futuro
   opiniao    juízo, avaliação, recomendação, valoração
+  relato     o assunto é o próprio autor do texto — ver a regra 7
 
 Regras que importam mais que as outras:
 
@@ -105,12 +112,89 @@ Regras que importam mais que as outras:
 
 6. O QUE NÃO É AFIRMAÇÃO FICA DE FORA. Pergunta retórica, saudação, chamada
    para seguir o perfil, emoji solto.
+
+7. RELATO DO PRÓPRIO AUTOR NÃO É FATO VERIFICÁVEL. Frase cujo assunto é o
+   autor do texto — o que ele diz, fez, costuma fazer, postou, como opera —
+   é `relato`: a prova de que ele afirma é o próprio texto, e hábito pessoal
+   não sai em veículo de imprensa. Mandar isso para verificação garante
+   "sem evidência" pago, para sempre.
+
+   MAS DESEMBRULHE ANTES: quando o "eu afirmo / eu disse" carrega um fato
+   sobre o MUNDO, o fato interno é a premissa — extraia-o sem o embrulho.
+
+   Texto:   "Na onda 4 sempre fico fora, no máximo trades curtos."
+   relato:  o autor fica fora do mercado na onda 4 do ciclo
+
+   Texto:   "Eu disse ontem: o IPCA de julho veio em 5,2%."
+   fato:    o IPCA de julho de 2026 foi de 5,2%
 """
 
 
-def separa(texto: str) -> tuple[Analise, llm.Uso]:
+def versao_prompt() -> str:
+    """Identidade do que determina a separação, como hash curto.
+
+    Mesmo mecanismo (e mesmo motivo) do `extract.versao_prompt`: separações
+    de prompts diferentes não são comparáveis, e versão que depende de
+    alguém lembrar de incrementar fica errada exatamente quando importa.
+    O hash carimba cada separação gravada em `separacoes` — é o que torna
+    medível, depois, se uma regra nova reduziu desperdício.
+    """
+    material = INSTRUCOES + json.dumps(
+        {"schema": Analise.model_json_schema(),
+         "esforco": llm.VERIFICACAO.esforco},
+        sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
+
+
+PROMPT_VERSAO = versao_prompt()
+
+
+def _hash_texto(texto: str) -> str:
+    normalizado = " ".join(texto.lower().split())
+    return hashlib.sha256(normalizado.encode("utf-8")).hexdigest()[:16]
+
+
+def _separacao_gravada(conexao, hash_texto: str):
+    return conexao.execute(
+        "SELECT * FROM separacoes WHERE texto_hash = ? AND prompt_versao = ?",
+        (hash_texto, PROMPT_VERSAO)).fetchone()
+
+
+def _grava_separacao(conexao, hash_texto: str, analise: "Analise",
+                     custo: float) -> None:
+    conexao.execute(
+        "INSERT OR IGNORE INTO separacoes "
+        "(texto_hash, prompt_versao, premissas_json, custo_usd, separado_em) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (hash_texto, PROMPT_VERSAO, analise.model_dump_json(), custo,
+         datetime.now(timezone.utc).isoformat()))
+    conexao.commit()
+
+
+def separa(texto: str, conexao=None,
+           forcar: bool = False) -> tuple[Analise, llm.Uso]:
+    """Separa as premissas, reusando a separação gravada quando existir.
+
+    Mesmo texto sob a MESMA versão de prompt produz a mesma separação —
+    pagar de novo é desperdício puro (uma demo repetida custou US$ 0,17
+    antes desta guarda). Com `conexao`, a separação é gravada em
+    `separacoes` com o carimbo de versão; reuso devolve custo zero.
+    `forcar` re-separa e regrava.
+    """
+    if conexao is not None and not forcar:
+        gravada = _separacao_gravada(conexao, _hash_texto(texto))
+        if gravada is not None:
+            return (Analise.model_validate_json(gravada["premissas_json"]),
+                    llm.Uso(modelo=llm.VERIFICACAO, entrada=0, saida=0,
+                            cache_leitura=0, cache_escrita=0))
     r = llm.gera(INSTRUCOES, f"Texto:\n{texto}", Analise,
                  modelo=llm.VERIFICACAO)
+    if conexao is not None:
+        if forcar:
+            conexao.execute(
+                "DELETE FROM separacoes WHERE texto_hash = ? "
+                "AND prompt_versao = ?", (_hash_texto(texto), PROMPT_VERSAO))
+        _grava_separacao(conexao, _hash_texto(texto), r.dados, r.uso.custo)
     return r.dados, r.uso
 
 
@@ -129,6 +213,9 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true",
                         help="mostra o que seria enviado, sem chamar a API")
     parser.add_argument("-v", action="store_true", help="mostra as candidatas")
+    parser.add_argument("--forcar", action="store_true",
+                        help="re-separa mesmo com separação gravada desta "
+                             "versão de prompt")
     args = parser.parse_args()
 
     texto = " ".join(args.texto).strip() or sys.stdin.read().strip()
@@ -145,7 +232,11 @@ def main() -> None:
 
     print(f"TEXTO\n  {texto[:300]}{'...' if len(texto) > 300 else ''}\n")
 
-    analise, uso = separa(texto)
+    conexao = conecta(config.BANCO)
+    analise, uso = separa(texto, conexao=conexao, forcar=args.forcar)
+    if uso.custo == 0:
+        print("(separação reusada — já paga nesta versão de prompt; "
+              "--forcar re-separa)\n")
     fatos = [p for p in analise.premissas if p.tipo == "fato"]
     resto = [p for p in analise.premissas if p.tipo != "fato"]
 
@@ -165,9 +256,9 @@ def main() -> None:
     if not fatos:
         print("Nenhuma afirmação factual. Nada a conferir.")
         print(f"\n  custo: US$ {uso.custo:.4f}")
+        conexao.close()
         return
 
-    conexao = conecta(config.BANCO)
     acervo = grafo.carrega(conexao)
     if not acervo:
         print("Acervo vazio. Rode a coleta, a extração e o índice.")
@@ -190,7 +281,8 @@ def main() -> None:
     print("Premissa sem evidência significa que os veículos coletados não")
     print("cobrem o assunto — não que a afirmação seja falsa.")
     print(f"\n  separação das premissas: US$ {uso.custo:.4f}"
-          f" · mais uma verificação por premissa")
+          f" · mais uma verificação por premissa"
+          f" · prompt {PROMPT_VERSAO}")
 
 
 if __name__ == "__main__":

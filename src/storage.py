@@ -137,6 +137,20 @@ CREATE TABLE IF NOT EXISTS boletim_posts (
     resumo       TEXT NOT NULL,
     entregue_em  TEXT NOT NULL
 );
+
+-- Separacoes de premissas ja pagas, carimbadas com a versao do prompt do
+-- premissas.py. Duas funcoes: reuso (mesmo texto + mesma versao = mesma
+-- separacao, nao se paga duas vezes) e medicao (comparar o comportamento
+-- do prompt entre versoes exige saber qual versao produziu o que).
+CREATE TABLE IF NOT EXISTS separacoes (
+    id             INTEGER PRIMARY KEY,
+    texto_hash     TEXT NOT NULL,
+    prompt_versao  TEXT NOT NULL,
+    premissas_json TEXT NOT NULL,
+    custo_usd      REAL NOT NULL,
+    separado_em    TEXT NOT NULL,
+    UNIQUE (texto_hash, prompt_versao)
+);
 """
 
 

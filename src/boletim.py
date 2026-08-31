@@ -91,7 +91,7 @@ def _confere_post(post: str, conexao, acervo) -> tuple[str, float]:
     marco = conexao.execute(
         "SELECT COALESCE(MAX(id), 0) FROM consultas").fetchone()[0]
 
-    analise, uso = premissas.separa(post)
+    analise, uso = premissas.separa(post, conexao=conexao)
     partes: list[str] = []
 
     resto = [p for p in analise.premissas if p.tipo != "fato"]

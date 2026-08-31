@@ -60,3 +60,5 @@ logs/
 Thumbs.db
 Desktop.ini
 .DS_Store
+# Boletins do radar: conteudo pessoal (o que voce acompanha), nao artefato
+data/boletins/

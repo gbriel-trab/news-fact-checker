@@ -223,7 +223,7 @@ def _confere(post: str, custo_busca: float) -> None:
         conexao.close()
         sys.exit(1)
 
-    analise, uso = premissas.separa(post)
+    analise, uso = premissas.separa(post, conexao=conexao)
     fatos = [p for p in analise.premissas if p.tipo == "fato"]
     resto = [p for p in analise.premissas if p.tipo != "fato"]
 

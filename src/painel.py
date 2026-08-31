@@ -170,7 +170,7 @@ def conferir_post(texto: str) -> dict:
         if not acervo:
             con.close()
             return {"erro": "Acervo vazio — rode coleta, extração e índice."}
-        analise, uso = premissas.separa(texto)
+        analise, uso = premissas.separa(texto, conexao=con)
         conferencias = []
         for p in analise.premissas:
             if p.tipo != "fato":
