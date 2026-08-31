@@ -101,12 +101,26 @@ def _confere_post(post: str, conexao, acervo) -> tuple[str, float]:
         partes.append(f"  [{p.tipo}] {p.afirmacao} — nada a conferir")
 
     for p in fatos:
+        marco_fato = conexao.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM consultas").fetchone()[0]
         saida = io.StringIO()
         with contextlib.redirect_stdout(saida):
             check.verifica(p.afirmacao, conexao=conexao, acervo=acervo)
         partes.append(f'  premissa: "{p.afirmacao}"')
-        partes.append("    " + "\n    ".join(
-            linha for linha in saida.getvalue().splitlines() if linha))
+        nova = conexao.execute(
+            "SELECT veredito, custo_usd FROM consultas WHERE id > ? "
+            "ORDER BY id DESC LIMIT 1", (marco_fato,)).fetchone()
+        # Sem evidência vira UMA linha no boletim: a enumeração do que foi
+        # olhado e rejeitado é trilha de auditoria — fica gravada em
+        # `consultas` e visível no painel/CLI, não no celular. Exibir menos
+        # não economiza nada (o texto já foi pago ao ser gerado); isto é
+        # legibilidade, e a economia real é a premissa nem existir.
+        if nova and nova["veredito"] == "sem_evidencia":
+            partes.append(f"    → SEM EVIDÊNCIA — o acervo não cobre · "
+                          f"US$ {nova['custo_usd']:.4f}")
+        else:
+            partes.append("    " + "\n    ".join(
+                linha for linha in saida.getvalue().splitlines() if linha))
 
     if not analise.premissas:
         partes.append("  (nenhuma afirmação separável)")
