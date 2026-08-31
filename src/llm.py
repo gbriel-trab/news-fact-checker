@@ -115,7 +115,19 @@ de agradar: `sem_evidencia` é a resposta certa com frequência, e devolvê-la
 contraria o hábito de completar o que foi pedido. Economizar aqui rende
 centavos e arrisca a única coisa que o sistema vende.
 
-Também não medido — é prior, não resultado."""
+MEDIDO em 31/08/2026, preliminar: as 25 afirmações distintas do livro-caixa
+re-julgadas no Sonnet 5 (US$ 0,0096/consulta contra 0,0188 do Opus — metade).
+Concordância 23/25. Das duas divergências, uma favorece o Sonnet
+(consistência entre grafias da mesma afirmação, onde o Opus flip-flopou) e a
+que DECIDE favorece o Opus: no "pump iniciado em 19 de agosto", o Sonnet
+confirmou citando a alta do mês — mas a afirmação específica é a DATA de
+início, que a evidência não estabelece. Confirmar além da evidência é o
+falso positivo do princípio 5, no único ponto onde ele é fatal.
+
+Decisão: fica no Opus. Amostra pequena (16 das 25 eram sem_evidencia, onde
+concordar é fácil); a revisão definitiva é a Medição 2, cujo gabarito tem
+vereditos balanceados. As linhas do experimento estão em `consultas` com
+modelo=claude-sonnet-5."""
 
 
 @dataclass(frozen=True, slots=True)
