@@ -115,7 +115,10 @@ def separa(texto: str) -> tuple[Analise, llm.Uso]:
 
 
 def main() -> None:
-    for fluxo in (sys.stdout, sys.stderr):
+    # stdin entra na lista porque este módulo LÊ da entrada padrão: sem o
+    # reconfigure, arquivo UTF-8 redirecionado no Windows chega em cp1252 e
+    # o texto vai mojibake para o modelo ("cÃºpula") — visto em 30/08/2026.
+    for fluxo in (sys.stdin, sys.stdout, sys.stderr):
         if hasattr(fluxo, "reconfigure"):
             fluxo.reconfigure(encoding="utf-8", errors="replace")
 
