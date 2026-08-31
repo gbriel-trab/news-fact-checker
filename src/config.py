@@ -138,6 +138,23 @@ FEEDS: tuple[Feed, ...] = (
 # porque só um veículo cobre, e afirmação de fonte única nunca pode ser
 # corroborada por fonte independente.
 
+# ---- Radar de rede social (ver src/radar.py e a seção da xAI no
+# ARCHITECTURE.md) ----
+#
+# O critério de seleção é o INVERSO do dos feeds: aqui entram os perfis que
+# PRODUZEM alegação, nunca os veículos em que se confia — @g1 na lista
+# devolveria o acervo conversando consigo mesmo. Post não entra no acervo.
+#
+# Duas condições por handle, ambas medidas em 30/08/2026:
+#   1. conta PÚBLICA — post protegido é invisível a qualquer busca, por
+#      desenho do X (@OutsiderPapini, que motivou o radar, é privado e fica
+#      no fluxo manual: copiar o post e colar no premissas)
+#   2. TESTADO no x_search antes de entrar (~US$ 0,03 a chamada) — o índice
+#      não cobre tudo, e handle cego aqui falharia em silêncio
+HANDLES_RADAR: tuple[str, ...] = (
+    "mentalhedgebr",   # testado 30/08/2026: visível, transcrição íntegra
+)
+
 TIMEOUT_SEGUNDOS = 15
 
 USER_AGENT = (

@@ -1,0 +1,315 @@
+"""Radar de rede social: o que os handles acompanhados estão alegando.
+
+    python -m src.radar                     # posts recentes dos handles
+    python -m src.radar --dias 5            # janela maior
+    python -m src.radar --conferir 2        # captura e confere o post 2
+    python -m src.radar --dry-run           # mostra o que seria enviado
+
+O papel está fixado no ARCHITECTURE.md: rede social é RADAR, nunca evidência.
+O post indica onde olhar; a evidência vem sempre da imprensa ou da
+instituição. Nada do que este módulo captura entra no acervo.
+
+Duas honestidades que a saída carrega sempre:
+
+* O texto exibido é TRANSCRIÇÃO DE MODELO (o Grok busca e transcreve), não
+  registro primário — cada post sai com o link do status para conferência.
+  Testado em 30/08/2026: pedindo transcrição, o post volta na íntegra; mas
+  a fidelidade é auditável no link, não garantida pela API.
+* Conferir premissas de um post é CONFERÊNCIA, nunca placar do autor.
+  Premissa sem evidência = o acervo não cobre, não "o autor errou".
+
+Custo: uma busca custa centavos (~US$ 0,03 medido). O preço vem no rodapé
+de toda rodada, convertido de `cost_in_usd_ticks` (tick = 1e-10 USD,
+conferido contra o console da xAI em 30/08/2026).
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+
+import requests
+
+from . import config
+
+URL_API = "https://api.x.ai/v1/responses"
+MODELO = "grok-4.6"
+TICK_USD = 1e-10
+TIMEOUT = 180
+
+_DELIM = re.compile(r"^POST\s+(\d+)", re.MULTILINE)
+
+
+class FalhaNoRadar(Exception):
+    """A busca não pôde ser feita ou a resposta não pôde ser lida."""
+
+
+@dataclass(frozen=True, slots=True)
+class Rodada:
+    """O que uma busca devolveu: posts, avisos do modelo, links e custo."""
+
+    posts: tuple[str, ...]
+    notas: tuple[str, ...]
+    links: tuple[str, ...]
+    custo_usd: float
+    bruto: str
+
+
+def _prompt(handles: tuple[str, ...], dias: int) -> str:
+    # Os handles vão NOMEADOS no texto, além do filtro allowed_x_handles:
+    # medido em 30/08/2026, o modelo não enxerga a configuração da
+    # ferramenta — só o filtro restringe, só o prompt direciona.
+    nomes = ", ".join(f"@{h}" for h in handles)
+    return (
+        f"Busque os posts dos últimos {dias} dias de: {nomes}. "
+        "TRANSCREVA cada um na ÍNTEGRA, sem resumir, sem parafrasear e sem "
+        "comentar. Formato obrigatório, um bloco por post:\n"
+        "POST N (@handle, data):\n<texto literal>\n---\n"
+        "Se um handle não retornar nada, diga qual, numa linha à parte."
+    )
+
+
+def _corpo(handles: tuple[str, ...], dias: int) -> dict:
+    hoje = datetime.now(timezone.utc).date()
+    return {
+        "model": MODELO,
+        "tools": [{
+            "type": "x_search",
+            "allowed_x_handles": list(handles),
+            "from_date": (hoje - timedelta(days=dias)).isoformat(),
+            "to_date": hoje.isoformat(),
+        }],
+        "input": _prompt(handles, dias),
+    }
+
+
+def _handles_de(argumento: str) -> tuple[str, ...]:
+    """Normaliza ANTES de filtrar: '@' sozinho vira vazio e cai fora.
+
+    Na ordem inversa, '@' sobrevivia ao filtro, virava handle vazio depois
+    do lstrip, e disparava uma busca paga com `allowed_x_handles=[""]` —
+    o guard de lista vazia via um tuple de um elemento e não protegia nada.
+    """
+    return tuple(x for x in
+                 (h.strip().lstrip("@").strip()
+                  for h in argumento.split(","))
+                 if x)
+
+
+def _textos_de(objeto) -> list[str]:
+    """Todo output_text da resposta, em qualquer nível do aninhamento."""
+    achados: list[str] = []
+    if isinstance(objeto, dict):
+        if objeto.get("type") == "output_text" and "text" in objeto:
+            achados.append(objeto["text"])
+        for valor in objeto.values():
+            achados.extend(_textos_de(valor))
+    elif isinstance(objeto, list):
+        for valor in objeto:
+            achados.extend(_textos_de(valor))
+    return achados
+
+
+def _links_de(bruto: str) -> tuple[str, ...]:
+    """URLs de status individuais citadas na resposta, deduplicadas.
+
+    Vêm nas anotações inline, não num campo `citations` — medido em
+    30/08/2026. Regex sobre o JSON serializado é deliberado: o formato das
+    anotações não é documentado, e campo que muda de lugar não pode
+    derrubar a captura.
+    """
+    urls = re.findall(r"https://x\.com/[\w./]*status/\d+", bruto)
+    vistos: dict[str, None] = dict.fromkeys(urls)
+    return tuple(vistos)
+
+
+def _limpa(pedaco: str) -> str:
+    return pedaco.strip().strip("-").strip()
+
+
+def _posts_de(texto: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Separa os blocos POST N do resto. Devolve (posts, notas).
+
+    NOTAS são o que o modelo escreveu fora dos blocos — tipicamente o
+    aviso "handle X não retornou nada", que o próprio prompt pede numa
+    linha à parte. Descartá-las faria um handle sumir da rodada em
+    silêncio; fundi-las ao último post mandaria comentário de modelo para
+    o `premissas` como se fosse texto do autor. Nenhum caractere da
+    resposta é jogado fora sem aparecer.
+
+    Sem marcador nenhum, o texto inteiro vira um post único — resposta
+    fora do formato não é descartada, é mostrada como veio.
+    """
+    if not _DELIM.search(texto):
+        limpo = texto.strip()
+        return ((limpo,) if limpo else ()), ()
+
+    posicoes = [m.start() for m in _DELIM.finditer(texto)]
+    notas: list[str] = []
+    preambulo = _limpa(texto[:posicoes[0]])
+    if preambulo:
+        notas.append(preambulo)
+
+    posts: list[str] = []
+    for inicio, fim in zip(posicoes, posicoes[1:] + [len(texto)]):
+        corpo, _, resto = texto[inicio:fim].partition("---")
+        if bloco := _limpa(corpo):
+            posts.append(bloco)
+        # O que sobra depois do delimitador e antes do próximo POST é
+        # comentário do modelo, não texto do autor.
+        if sobra := _limpa(resto):
+            notas.append(sobra)
+    return tuple(posts), tuple(notas)
+
+
+def busca(handles: tuple[str, ...], dias: int = 2) -> Rodada:
+    chave = os.environ.get("XAI_API_KEY", "")
+    if not chave:
+        raise FalhaNoRadar(
+            "XAI_API_KEY ausente no .env — o radar é o único módulo que "
+            "usa a xAI, e é opcional. Ver .env.example.")
+    try:
+        resposta = requests.post(
+            URL_API,
+            headers={"Authorization": f"Bearer {chave}",
+                     "Content-Type": "application/json"},
+            json=_corpo(handles, dias), timeout=TIMEOUT)
+        if resposta.status_code >= 400:
+            # O corpo carrega o motivo real (modelo inexistente, sem
+            # crédito, parâmetro inválido); só o código não diz nada.
+            raise FalhaNoRadar(
+                f"xAI respondeu {resposta.status_code}: "
+                f"{resposta.text[:300]}")
+        # Dentro do try: JSONDecodeError do requests é RequestException,
+        # e corpo 200 que não é JSON também é "resposta ilegível".
+        dados = resposta.json()
+    except requests.RequestException as erro:
+        raise FalhaNoRadar(f"busca na xAI falhou: {erro}") from erro
+
+    bruto = json.dumps(dados, ensure_ascii=False)
+    texto = "\n".join(_textos_de(dados.get("output", dados)))
+    posts, notas = _posts_de(texto)
+    ticks = dados.get("usage", {}).get("cost_in_usd_ticks", 0)
+    return Rodada(
+        posts=posts,
+        notas=notas,
+        links=_links_de(bruto),
+        custo_usd=ticks * TICK_USD,
+        bruto=bruto,
+    )
+
+
+def _confere(post: str, custo_busca: float) -> None:
+    """Separa as premissas do post e julga cada uma, no rito do premissas.
+
+    O rito importa tanto quanto o resultado, e é o mesmo do
+    `premissas.main`: acervo vazio aborta ANTES de pagar verificação;
+    previsão e opinião saem nomeadas pelo que são, nunca como descarte; o
+    trecho literal aparece antes de cada veredito (é o elo auditável entre
+    o que o autor escreveu e o que foi conferido); e o fecho impede a
+    leitura de placar.
+    """
+    from . import check, grafo, premissas
+    from .storage import conecta
+
+    conexao = conecta(config.BANCO)
+    acervo = grafo.carrega(conexao)
+    if not acervo:
+        print("Acervo vazio. Rode a coleta, a extração e o índice antes "
+              "de conferir — verificar contra o nada só gasta.")
+        conexao.close()
+        sys.exit(1)
+
+    analise, uso = premissas.separa(post)
+    fatos = [p for p in analise.premissas if p.tipo == "fato"]
+    resto = [p for p in analise.premissas if p.tipo != "fato"]
+
+    if resto:
+        print("NÃO VERIFICÁVEL — e não deve ser")
+        for p in resto:
+            print(f"  [{p.tipo}] {p.afirmacao}")
+        print()
+
+    if not fatos:
+        print("Nenhuma premissa verificável no post.")
+    else:
+        for i, p in enumerate(fatos, 1):
+            print(f"[{i}/{len(fatos)}] no post: \"{p.trecho[:110]}\"")
+            check.verifica(p.afirmacao, conexao=conexao, acervo=acervo)
+    conexao.close()
+
+    print("\nIsto confere premissas contra o acervo, não avalia o autor.")
+    print("Premissa sem evidência significa que os veículos coletados não")
+    print("cobrem o assunto — não que a afirmação seja falsa.")
+    print(f"\n  separação: US$ {uso.custo:.4f} · mais uma verificação por "
+          f"premissa · busca: US$ {custo_busca:.4f}")
+
+
+def main() -> None:
+    for fluxo in (sys.stdout, sys.stderr):
+        if hasattr(fluxo, "reconfigure"):
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
+
+    parser = argparse.ArgumentParser(
+        description="Radar: o que os handles acompanhados estão alegando.")
+    parser.add_argument("--handles",
+                        help="lista separada por vírgula; sem isto, usa "
+                             "config.HANDLES_RADAR")
+    parser.add_argument("--dias", type=int, default=2,
+                        help="janela da busca (padrão: 2)")
+    parser.add_argument("--conferir", type=int, metavar="N",
+                        help="separa as premissas do post N e confere cada "
+                             "uma contra o acervo (mais chamadas pagas)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="mostra a requisição, sem chamar a API")
+    args = parser.parse_args()
+
+    handles = (_handles_de(args.handles) if args.handles
+               else config.HANDLES_RADAR)
+    if not handles:
+        print("Nenhum handle válido. Ver HANDLES_RADAR em config.py.")
+        sys.exit(1)
+
+    if args.dry_run:
+        print(json.dumps(_corpo(handles, args.dias), indent=2,
+                         ensure_ascii=False))
+        print("\nNada foi enviado. Remova --dry-run para rodar.")
+        return
+
+    try:
+        rodada = busca(handles, args.dias)
+    except FalhaNoRadar as erro:
+        print(f"FALHOU: {erro}")
+        sys.exit(1)
+
+    print(f"RADAR · {', '.join('@' + h for h in handles)} · "
+          f"últimos {args.dias} dias")
+    print("  transcrição de modelo — o registro é o post, no link\n")
+
+    if not rodada.posts:
+        print("Nenhum post na janela.")
+    for i, post in enumerate(rodada.posts, 1):
+        print(f"[{i}] {post}\n")
+    for nota in rodada.notas:
+        print(f"  aviso da busca: {nota}")
+    if rodada.links:
+        print("Links citados:")
+        for link in rodada.links:
+            print(f"  {link}")
+    print(f"\n  busca: US$ {rodada.custo_usd:.4f}")
+
+    if args.conferir is not None:
+        if not (1 <= args.conferir <= len(rodada.posts)):
+            print(f"\nNão existe post {args.conferir} nesta rodada.")
+            sys.exit(1)
+        print("\n" + "=" * 78)
+        print(f"CONFERINDO O POST {args.conferir}")
+        print("=" * 78)
+        _confere(rodada.posts[args.conferir - 1], rodada.custo_usd)
+
+
+if __name__ == "__main__":
+    main()
