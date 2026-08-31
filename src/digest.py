@@ -106,9 +106,11 @@ def recorta(afirmacoes: list[grafo.Afirmacao]) -> Recorte:
 
 
 def _rotulo(c: grafo.Corroboracao) -> str:
-    sujeito, relacao, objeto = c.chave
+    # Exibição usa as formas originais (c.sujeito/c.objeto); a chave é
+    # normalizada para comparação e não serve para tela — ver `canonico`.
+    relacao = c.chave[1]
     contexto = c.contexto
-    texto = f"({sujeito}, {relacao.replace('_', ' ')}, {objeto or '—'})"
+    texto = f"({c.sujeito}, {relacao.replace('_', ' ')}, {c.objeto or '—'})"
     return texto + (f" · {contexto}" if contexto else "")
 
 

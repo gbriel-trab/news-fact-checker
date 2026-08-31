@@ -22,6 +22,7 @@ import sys
 from dataclasses import dataclass
 
 from . import config, llm
+from .canonico import chave_canonica
 from .vocabulario import Relacao
 from .storage import conecta
 
@@ -83,8 +84,15 @@ class Afirmacao:
 
         A separação por medida continua existindo, em `agrupa`, por
         proximidade semântica em vez de igualdade de string.
+
+        As entidades entram pela `chave_canonica`, não pela string crua:
+        "Braskem" e "Braskem S.A." eram duas entidades no acervo (100
+        triplas), e igualdade crua fazia o caso mais denso do grafo nunca
+        se encontrar. A exibição continua usando o texto original — quem
+        normaliza é a comparação, nunca o registro. Ver `canonico`.
         """
-        return (self.sujeito, self.relacao, self.objeto or "")
+        return (chave_canonica(self.sujeito), self.relacao,
+                chave_canonica(self.objeto) if self.objeto else "")
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +101,21 @@ class Corroboracao:
 
     chave: tuple[str, str, str]
     afirmacoes: tuple[Afirmacao, ...]
+
+    @property
+    def sujeito(self) -> str:
+        """Forma de exibição do sujeito.
+
+        A chave é normalizada (minúscula, sem acento — ver `canonico`) e não
+        serve para tela. A primeira afirmação do grupo empresta o texto
+        original; as demais são, por construção da chave, a mesma entidade.
+        """
+        return self.afirmacoes[0].sujeito
+
+    @property
+    def objeto(self) -> str | None:
+        """Forma de exibição do objeto. Mesmo critério de `sujeito`."""
+        return self.afirmacoes[0].objeto
 
     @property
     def veiculos(self) -> set[str]:
@@ -391,9 +414,10 @@ def main() -> None:
     if confirmados:
         print("=== CONFIRMADOS POR FONTES INDEPENDENTES ===")
         for c in sorted(confirmados, key=lambda x: -len(x.veiculos))[:12]:
-            suj, rel, obj = c.chave
+            rel = c.chave[1]
             ctx = c.contexto
-            rotulo = f"({suj}, {rel}, {obj or '—'})" + (f" · {ctx}" if ctx else "")
+            rotulo = (f"({c.sujeito}, {rel}, {c.objeto or '—'})"
+                      + (f" · {ctx}" if ctx else ""))
             print(f"  {len(c.veiculos)} veículos · {rotulo}")
             for a in c.afirmacoes:
                 valor = f" = {a.valor:g} {a.unidade or ''}" if a.valor is not None else ""
@@ -402,9 +426,10 @@ def main() -> None:
     if divergentes:
         print("\n=== NÚMEROS QUE NÃO BATEM ===")
         for c in divergentes:
-            suj, rel, obj = c.chave
+            rel = c.chave[1]
             ctx = c.contexto
-            print(f"  ({suj}, {rel}, {obj or '—'})" + (f" · {ctx}" if ctx else ""))
+            print(f"  ({c.sujeito}, {rel}, {c.objeto or '—'})"
+                  + (f" · {ctx}" if ctx else ""))
             for unidade, grupo in c.divergencias:
                 veics = {a.veiculo for a in grupo}
                 escopo = "entre veículos" if len(veics) > 1 else f"dentro de {list(veics)[0]}"
