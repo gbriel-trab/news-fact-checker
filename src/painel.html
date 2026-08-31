@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Painel — verificador de notícias</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #101418; color: #d7dde3;
+         font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+  header { padding: 14px 22px; border-bottom: 1px solid #232a31;
+           display: flex; align-items: baseline; gap: 14px; }
+  h1 { font-size: 17px; margin: 0; }
+  header small { color: #7d8894; }
+  main { max-width: 1180px; margin: 0 auto; padding: 18px 22px 60px;
+         display: grid; gap: 18px; }
+  section { background: #171c22; border: 1px solid #232a31;
+            border-radius: 8px; padding: 16px 18px; }
+  h2 { font-size: 13px; letter-spacing: .8px; text-transform: uppercase;
+       color: #8fa1b3; margin: 0 0 12px; }
+  .grid { display: grid; gap: 18px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .kpis { display: flex; flex-wrap: wrap; gap: 22px; }
+  .kpi b { display: block; font-size: 21px; }
+  .kpi span { color: #7d8894; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { padding: 3px 8px 3px 0; text-align: left; vertical-align: top; }
+  th { color: #7d8894; font-weight: 500; }
+  tr + tr td { border-top: 1px solid #20262d; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ok    { color: #7fd18a; } .warn { color: #e8c268; }
+  .err   { color: #e07a7a; } .dim  { color: #7d8894; }
+  pre { background: #0d1114; border: 1px solid #20262d; border-radius: 6px;
+        padding: 12px; white-space: pre-wrap; word-break: break-word;
+        font: 12px/1.5 Consolas, monospace; margin: 8px 0 0; }
+  input[type=text], textarea, input[type=number] {
+        width: 100%; background: #0d1114; color: #d7dde3;
+        border: 1px solid #2b333c; border-radius: 6px; padding: 9px 11px;
+        font: inherit; }
+  textarea { min-height: 110px; resize: vertical; }
+  button { background: #2b6cb0; color: #fff; border: 0; border-radius: 6px;
+           padding: 9px 16px; font: inherit; cursor: pointer; }
+  button:hover { background: #3182ce; }
+  button:disabled { background: #2b333c; cursor: wait; }
+  button.gratis { background: #2f855a; }
+  button.gratis:hover { background: #38a169; }
+  .custo { color: #e8c268; font-size: 12px; margin-left: 10px; }
+  .linha { display: flex; gap: 10px; align-items: center; margin-top: 10px;
+           flex-wrap: wrap; }
+  .fato { border-left: 3px solid #2f855a; padding: 6px 10px; margin: 8px 0;
+          background: #13181d; border-radius: 0 6px 6px 0; }
+  .fato.div { border-color: #e8c268; }
+  .fato.uni { border-color: #4a5561; }
+  .fato small { color: #7d8894; display: block; }
+  a { color: #63a4d8; text-decoration: none; }
+  .aviso { font-size: 12px; color: #7d8894; margin-top: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Painel do verificador</h1>
+  <small>local · leituras grátis · ações pagas pedem confirmação com o preço</small>
+</header>
+<main>
+
+<section>
+  <h2>Saúde</h2>
+  <div class="kpis" id="kpis">carregando…</div>
+</section>
+
+<div class="grid">
+  <section>
+    <h2>Acervo por veículo</h2>
+    <div id="veiculos"></div>
+  </section>
+  <section>
+    <h2>Extração e custo</h2>
+    <div id="extracao"></div>
+  </section>
+</div>
+
+<section>
+  <h2>Digest — o que se sustenta</h2>
+  <div class="linha">
+    janela <input type="number" id="dgHoras" value="72" min="1" style="width:80px">h
+    tópicos <input type="text" id="dgTopicos" placeholder="cripto, braskem (vazio = tudo)" style="width:280px">
+    <button class="gratis" onclick="carregaDigest()">Atualizar (grátis)</button>
+  </div>
+  <div id="digest"></div>
+</section>
+
+<section>
+  <h2>Verificar uma afirmação</h2>
+  <input type="text" id="afirmacao" placeholder='ex.: "a Braskem pediu recuperação extrajudicial"'>
+  <div class="linha">
+    <button onclick="checar()">Verificar</button>
+    <span class="custo">~US$ 0,03–0,05 por consulta (2 chamadas ao Opus)</span>
+  </div>
+  <div id="checkSaida"></div>
+</section>
+
+<section>
+  <h2>Conferir um post (premissas)</h2>
+  <textarea id="post" placeholder="Cole aqui o texto de um post/análise. O sistema separa previsão e opinião do que é verificável, e confere cada premissa contra o acervo."></textarea>
+  <div class="linha">
+    <button onclick="conferir()">Separar e conferir</button>
+    <span class="custo">~US$ 0,05 + ~US$ 0,03 por premissa verificável</span>
+  </div>
+  <div id="premSaida"></div>
+</section>
+
+<section>
+  <h2>Radar</h2>
+  <div class="linha">
+    últimos <input type="number" id="rdDias" value="2" min="1" style="width:70px"> dias
+    <button onclick="radar()">Buscar posts dos handles</button>
+    <span class="custo">~US$ 0,03–0,05 por busca (xAI)</span>
+  </div>
+  <p class="aviso">Transcrição de modelo — o registro é o post, no link. Handles em config.HANDLES_RADAR.</p>
+  <div id="radarSaida"></div>
+</section>
+
+<section>
+  <h2>Últimas verificações</h2>
+  <div id="consultas"></div>
+</section>
+
+<p class="aviso">Isto confere afirmações contra o acervo, não avalia autores.
+"Sem evidência" significa que os veículos coletados não cobrem o assunto —
+não que a afirmação seja falsa.</p>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = t => (t ?? "").toString().replace(/[&<>"]/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function getJSON(url) {
+  const r = await fetch(url);
+  const j = await r.json();
+  if (j.erro) throw new Error(j.erro);
+  return j;
+}
+async function postJSON(url, corpo) {
+  const r = await fetch(url, {method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(corpo)});
+  const j = await r.json();
+  if (j.erro) throw new Error(j.erro);
+  return j;
+}
+
+function idade(iso) {
+  if (!iso) return ["nunca", "err"];
+  const min = (Date.now() - new Date(iso)) / 60000;
+  if (min < 30) return [`há ${Math.round(min)} min`, "ok"];
+  if (min < 60 * 12) return [`há ${(min/60).toFixed(1)} h`, "warn"];
+  return [`há ${(min/1440).toFixed(1)} dias`, "err"];
+}
+
+async function carregaResumo() {
+  try {
+    const r = await getJSON("/api/resumo");
+    const [quando, cls] = idade(r.acervo.ultima_coleta);
+    const e = r.extracao;
+    $("kpis").innerHTML = `
+      <div class="kpi"><b>${r.acervo.materias.toLocaleString("pt-BR")}</b><span>matérias no acervo</span></div>
+      <div class="kpi"><b class="${cls}">${quando}</b><span>última coleta</span></div>
+      <div class="kpi"><b>${e.materias_extraidas}</b><span>matérias extraídas</span></div>
+      <div class="kpi"><b>${e.triplas}</b><span>triplas (vocab v${e.vocab_versao})</span></div>
+      <div class="kpi"><b>${e.triplas ? Math.round(100*e.outro/e.triplas) : 0}%</b><span>em "outro"</span></div>
+      <div class="kpi"><b>US$ ${e.custo_usd.toFixed(2)}</b><span>gasto total em extração</span></div>`;
+    $("veiculos").innerHTML = "<table>" + r.acervo.por_veiculo.map(v =>
+      `<tr><td>${esc(v.veiculo)}</td><td class="num">${v.materias}</td></tr>`
+    ).join("") + "</table>";
+    $("extracao").innerHTML = "<table><tr><th>relação</th><th class='num'>triplas</th></tr>" +
+      e.relacoes.map(x => `<tr><td>${esc(x.relacao)}</td><td class="num">${x.n}</td></tr>`).join("") +
+      "</table>";
+    $("consultas").innerHTML = r.consultas.length
+      ? "<table><tr><th>afirmação</th><th>veredito</th><th class='num'>veíc.</th><th class='num'>US$</th></tr>" +
+        r.consultas.map(c => {
+          const cor = {confirmado:"ok", contradito:"warn", sem_evidencia:"dim"}[c.veredito] || "";
+          return `<tr><td>${esc(c.afirmacao)}</td><td class="${cor}">${esc(c.veredito)}</td>
+            <td class="num">${c.veiculos}</td><td class="num">${(c.custo_usd??0).toFixed(3)}</td></tr>`;
+        }).join("") + "</table>"
+      : "<p class='dim'>nenhuma ainda</p>";
+  } catch (err) { $("kpis").innerHTML = `<span class="err">${esc(err.message)}</span>`; }
+}
+
+function fatoHTML(c, classe) {
+  const val = i => i.valor != null ? ` = ${i.valor.toLocaleString("pt-BR")} ${esc(i.unidade||"")}` : "";
+  // Sem valor numérico, uma menção por veículo basta; com valor, cada
+  // afirmação importa (é o número que se compara).
+  const vistos = new Set();
+  const itens = c.itens.filter(i =>
+    i.valor != null || (!vistos.has(i.veiculo) && vistos.add(i.veiculo)));
+  return `<div class="fato ${classe}">
+    (${esc(c.sujeito)}, ${esc(c.relacao).replaceAll("_"," ")}, ${esc(c.objeto ?? "—")})
+    ${c.contexto ? `· <span class="dim">${esc(c.contexto)}</span>` : ""}
+    <small>${c.veiculos.length} veículo(s): ${itens.map(i =>
+      `<a href="https://${esc(i.url)}" target="_blank">${esc(i.veiculo)}</a>${val(i)}`).join(" · ")}</small>
+  </div>`;
+}
+
+async function carregaDigest() {
+  $("digest").innerHTML = "<p class='dim'>calculando… (primeira vez carrega o modelo de embedding)</p>";
+  try {
+    const horas = $("dgHoras").value, topicos = $("dgTopicos").value;
+    const d = await getJSON(`/api/digest?horas=${horas}&topicos=${encodeURIComponent(topicos)}`);
+    let html = `<p class="dim">${d.materias} matérias · ${d.veiculos} veículos ·
+      ${d.afirmacoes} afirmações · taxa de confirmação ${(100*d.taxa_confirmacao).toFixed(0)}%</p>`;
+    if (d.confirmados.length) {
+      html += "<h3 class='ok'>Confirmado por fontes independentes</h3>" +
+        d.confirmados.map(c => fatoHTML(c, "")).join("");
+    }
+    if (d.divergentes.length) {
+      html += "<h3 class='warn'>Números que não batem (mesmo instante)</h3>" +
+        d.divergentes.map(c => fatoHTML(c, "div") + c.disputas.map(u =>
+          `<pre>${u.valores.map(v =>
+            `${v.valor.toLocaleString("pt-BR").padStart(18)} ${esc(u.unidade)}  [${esc(v.veiculo)}] fato=${esc(v.data_fato??"?")}`
+          ).join("\n")}</pre>`).join("")).join("");
+    }
+    html += `<h3 class="dim">Apurado por um veículo só — não confirmado (${d.unicos_total})</h3>` +
+      d.unicos.map(c => fatoHTML(c, "uni")).join("");
+    $("digest").innerHTML = html;
+  } catch (err) { $("digest").innerHTML = `<p class="err">${esc(err.message)}</p>`; }
+}
+
+async function acaoPaga(botao, estimativa, destino, corpo) {
+  if (!confirm(`Esta ação chama API paga (estimativa: ${estimativa}). Continuar?`)) return null;
+  const b = event.target; b.disabled = true;
+  $(destino).innerHTML = "<p class='dim'>rodando… (pode levar de 20 s a 2 min)</p>";
+  try { return await postJSON(botao, corpo); }
+  finally { b.disabled = false; }
+}
+
+async function checar() {
+  const afirmacao = $("afirmacao").value.trim();
+  if (!afirmacao) return alert("Escreva a afirmação.");
+  try {
+    const r = await acaoPaga("/api/checar", "~US$ 0,03–0,05", "checkSaida", {afirmacao});
+    if (r) $("checkSaida").innerHTML =
+      `<pre>${esc(r.saida)}</pre><p class="custo">custo real: US$ ${(r.custo_usd??0).toFixed(4)}</p>`;
+    carregaResumo();
+  } catch (err) { $("checkSaida").innerHTML = `<p class="err">${esc(err.message)}</p>`; }
+}
+
+async function conferir() {
+  const texto = $("post").value.trim();
+  if (!texto) return alert("Cole o texto do post.");
+  try {
+    const r = await acaoPaga("/api/premissas", "~US$ 0,10–0,40 conforme as premissas", "premSaida", {texto});
+    if (!r) return;
+    let html = "";
+    if (r.nao_verificaveis.length) {
+      html += "<h3 class='dim'>Não verificável — e não deve ser</h3><pre>" +
+        r.nao_verificaveis.map(p => `[${esc(p.tipo)}] ${esc(p.afirmacao)}`).join("\n") + "</pre>";
+    }
+    html += r.conferencias.map((c, i) =>
+      `<h3>Premissa ${i+1} <small class="dim">no texto: "${esc(c.trecho)}"</small></h3><pre>${esc(c.saida)}</pre>`
+    ).join("") || "<p class='dim'>nenhuma premissa verificável</p>";
+    html += `<p class="custo">separação: US$ ${r.custo_separacao_usd.toFixed(4)} + verificações acima</p>`;
+    $("premSaida").innerHTML = html;
+    carregaResumo();
+  } catch (err) { $("premSaida").innerHTML = `<p class="err">${esc(err.message)}</p>`; }
+}
+
+async function radar() {
+  try {
+    const r = await acaoPaga("/api/radar", "~US$ 0,03–0,05", "radarSaida", {dias: +$("rdDias").value});
+    if (!r) return;
+    $("radarSaida").innerHTML =
+      (r.posts.map((p, i) => `<div class="fato">[${i+1}] ${esc(p)}</div>`).join("") ||
+        "<p class='dim'>nenhum post na janela</p>") +
+      r.notas.map(n => `<p class="warn">aviso da busca: ${esc(n)}</p>`).join("") +
+      (r.links.length ? "<p class='dim'>links: " +
+        r.links.map(l => `<a href="${esc(l)}" target="_blank">${esc(l.split("/").pop())}</a>`).join(" · ") + "</p>" : "") +
+      `<p class="custo">busca: US$ ${r.custo_usd.toFixed(4)}</p>`;
+  } catch (err) { $("radarSaida").innerHTML = `<p class="err">${esc(err.message)}</p>`; }
+}
+
+carregaResumo();
+</script>
+</body>
+</html>
