@@ -17,26 +17,38 @@ Como evoluir: rodar, medir a fração que caiu em `outro`, e promover o que for
 frequente. Cada promoção incrementa VERSAO — sem isso é impossível distinguir
 "não cabia em nenhuma" de "essa relação ainda não existia".
 
-LIMITAÇÃO CONHECIDA DA v1: a amostra que gerou esta lista foram quatro matérias,
-todas de política eleitoral brasileira. Economia, mercado e cobertura
-internacional não estão representados. Uma matéria sobre decisão de banco
-central — "elevou juros para 0,75%", "sinalizou corte" — cairia quase toda em
-`outro`.
+A v1 veio de quatro matérias, todas de política eleitoral brasileira — e a
+limitação prevista se confirmou: quando a extração alcançou economia
+corporativa e cripto/regulação, `outro` chegou a 33% do acervo.
 
-Isso é o mecanismo funcionando, não falha: `outro` alto num domínio é
-exatamente o sinal de que faltam relações para ele. A correção é ampliar a
-AMOSTRA antes de ampliar a lista. Inventar relações de macroeconomia sem ter
-lido uma matéria de macroeconomia seria projetar no papel, que é o que este
-desenho recusa.
+A v2 foi derivada como o desenho manda: inspeção das 121 triplas em `outro`
+do lote vocab-1/Opus, em 29/08/2026. Os padrões dominantes, por frequência:
+participação societária (Petrobras/Novonor/IG4 × Braskem, ~12 ocorrências),
+pedido formal (recuperação extrajudicial — o fato mais corroborável do acervo
+estava caindo em `outro`), listagem em bolsa, imposição de tarifa, envio para
+análise de outra instância, e os verbos do noticiário de produto em cripto
+(lançar, recomendar). Cada um virou relação; o que apareceu uma vez só —
+"testou", "adiou" — ficou em `outro` esperando frequência.
 
-Antes de fechar a v2: extrair matérias espalhadas por editoria — economia,
-mundo, ciência — e deixar o `outro` dizer o que falta.
+DECISÃO JUDICIAL FICOU DE FORA, apesar de frequente (~5), e o motivo vai
+registrado para a v3 não repetir o erro: um rótulo neutro de desfecho
+("decidiu sobre o caso") faz "homologou" e "negou" caírem na MESMA chave —
+duas decisões opostas virariam fato confirmado por dois veículos, corroboração
+fabricada sem número para a divergência pegar. É o falso positivo do
+princípio 5, dentro do enum. Desfecho judicial precisa ou de relações por
+polaridade ou da reificação da atribuição; até lá, fica em `outro`.
+
+O alvo original de convergência (10-15 relações) era uma previsão feita com a
+amostra de um domínio só; com três domínios a lista foi a 23 e o alvo revisto
+é ~20-25. O mecanismo continua o mesmo: `outro` alto num domínio novo é sinal
+de relação faltando, e a correção é ampliar a amostra antes da lista.
 """
 
 from enum import StrEnum
 
-VERSAO = 1
-"""Versão do vocabulário. Zero era a fase de relação livre."""
+VERSAO = 2
+"""Versão do vocabulário. Zero era a fase de relação livre; 1, a lista de
+política eleitoral; 2 somou economia corporativa e cripto/regulação."""
 
 
 class Relacao(StrEnum):
@@ -56,8 +68,17 @@ class Relacao(StrEnum):
 
     # Ação institucional
     SUBMETEU_A_VOTACAO = "submeteu_a_votacao"
+    SUBMETEU_A = "submeteu_a"
     PREVE = "preve"
     ABRIU_PROCESSO_CONTRA = "abriu_processo_contra"
+    SOLICITOU = "solicitou"
+    IMPOS = "impos"
+    RECOMENDOU = "recomendou"
+
+    # Corporativo e mercado (v2)
+    TEM_PARTICIPACAO_EM = "tem_participacao_em"
+    NEGOCIADA_EM = "negociada_em"
+    LANCOU = "lancou"
 
     # Evento e publicação
     PARTICIPOU_DE = "participou_de"
@@ -80,8 +101,30 @@ DEFINICOES: dict[Relacao, str] = {
     Relacao.CANDIDATOU_SE_A: "é candidato a um cargo",
     Relacao.OBTEVE_PERCENTUAL_EM: "resultado em pesquisa ou votação; número no valor",
     Relacao.SUBMETEU_A_VOTACAO: "pôs proposta em votação, ou ela foi votada num órgão",
+    Relacao.SUBMETEU_A: (
+        "entregou formalmente a outra instância para ANÁLISE ou revisão — "
+        "revisão de regra à Casa Branca. Se foi posto em votação, é "
+        "submeteu_a_votacao; se pede algo para si, é solicitou"
+    ),
     Relacao.PREVE: "projeto ou proposta prevê algo; nunca fato consumado",
     Relacao.ABRIU_PROCESSO_CONTRA: "iniciou processo, investigação ou ação contra",
+    Relacao.SOLICITOU: (
+        "pediu formalmente algo PARA SI a quem pode conceder — recuperação "
+        "judicial, registro, isenção, moção"
+    ),
+    Relacao.IMPOS: "impôs tarifa, sanção, multa ou medida a alguém",
+    Relacao.RECOMENDOU: (
+        "emitiu recomendação formal ou alerta técnico — atualização de "
+        "software, conduta, política. Apoio declarado em fala é defendeu; "
+        "isto é ATO de órgão ou equipe técnica"
+    ),
+    Relacao.TEM_PARTICIPACAO_EM: (
+        "é acionista, controladora ou dona de parte de empresa ou fundo. O "
+        "DONO é sempre o sujeito: 'X, subsidiária de Y' vira (Y, "
+        "tem_participacao_em, X). O percentual vai nos campos de valor"
+    ),
+    Relacao.NEGOCIADA_EM: "papel ou ativo listado ou negociado em bolsa ou índice",
+    Relacao.LANCOU: "lançou produto, serviço, rede, ativo ou programa",
     Relacao.PARTICIPOU_DE: "esteve em entrevista, sabatina, sessão ou evento",
     Relacao.DIVULGOU: "publicou ou tornou público um dado, estudo ou documento",
     Relacao.TEM_ATRIBUTO: (

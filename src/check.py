@@ -29,7 +29,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import config, grafo, indice, llm
+from . import config, grafo, indice, llm, vocabulario
+from .canonico import chave_canonica
 from .storage import conecta, salva_consulta
 from .vocabulario import Relacao
 
@@ -82,7 +83,7 @@ class Julgamento(BaseModel):
     )
 
 
-INSTRUCOES_ESTRUTURA = """\
+INSTRUCOES_ESTRUTURA = f"""\
 Você converte uma afirmação em forma estruturada para ser procurada num acervo
 de notícias.
 
@@ -92,7 +93,12 @@ Se a afirmação for negativa ("X não fez Y"), estruture o fato POSITIVO ("X fe
 Y") — o acervo guarda o que aconteceu, e a negação é justamente o que a
 verificação vai decidir. O campo `busca` também vai no positivo.
 
-A relação vem de uma lista fechada. Use `outro` quando nenhuma servir.
+A relação vem da lista fechada abaixo. Use `outro` quando nenhuma servir.
+As definições são as MESMAS que a extração usa — a rota por chave exata só
+encontra o acervo se os dois lados escolherem a mesma relação para o mesmo
+fato:
+
+{vocabulario.resumo_para_prompt()}
 """
 
 
@@ -154,10 +160,17 @@ def _por_chave(afirmacao: AfirmacaoRecebida,
     Aqui o casamento é por igualdade de string, sem ranking: se o acervo afirma
     algo sobre aquele par, entra. É barato — o grafo já está em memória — e é
     determinístico.
+
+    A igualdade passa pela `chave_canonica` dos DOIS lados: o estruturador e a
+    extração são chamadas isoladas e canonizam com variações ("Petrobras" ×
+    "Petrobrás", "Braskem" × "Braskem S.A."). Igualdade crua fazia a rota que
+    existe para cobrir a falha da vetorial falhar em silêncio sob variação de
+    grafia — evidência que não chega, sem erro nenhum.
     """
     achados = []
+    alvo = chave_canonica(afirmacao.sujeito_canonico)
     for a in acervo:
-        if (a.sujeito == afirmacao.sujeito_canonico
+        if (chave_canonica(a.sujeito) == alvo
                 and a.relacao == afirmacao.relacao.value):
             achados.append(indice.Achado(
                 texto=indice.texto_da_tripla(a.sujeito, a.relacao, a.objeto,

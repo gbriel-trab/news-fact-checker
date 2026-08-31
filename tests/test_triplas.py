@@ -182,3 +182,40 @@ class TestDescartaVazias:
                    tripla(relacao="criticou", objeto=None), tripla()]
         boas, vazias = descarta_vazias(entrada)
         assert len(boas) == 2 and vazias == 2
+
+
+class TestObjetoECanonicoAndamJuntos:
+    """O schema não impõe os dois campos em conjunto, e o modelo às vezes
+    preenche um só. `descarta_vazias` olha apenas o canônico — a tripla com
+    objeto e sem canônico morria em silêncio, levando o fato principal da
+    matéria junto (medido em 29/08/2026, nos pares de cripto)."""
+
+    def test_canonico_vazio_herda_o_objeto(self):
+        t = Tripla(
+            sujeito="Core Lightning", sujeito_canonico="Core Lightning",
+            relacao="recomendou",
+            objeto="atualização de segurança", objeto_canonico=None,
+            tipo_relacao="evento", origem="EXTRACTED",
+            valor_numero=None, valor_unidade=None, valor_contexto=None,
+            data_fato=None, sentenca=0,
+        )
+        assert t.objeto_canonico == "atualização de segurança"
+
+    def test_atributo_sem_objeto_continua_sem_canonico(self):
+        t = tripla(relacao="tem_atributo", objeto=None, valor=71,
+                   unidade="investidores")
+        assert t.objeto is None and t.objeto_canonico is None
+
+    def test_meia_tripla_deixa_de_ser_descartada(self):
+        from src.extract import descarta_vazias
+        t = Tripla(
+            sujeito="StarkWare", sujeito_canonico="StarkWare",
+            relacao="lancou",
+            objeto="transação resistente a ataque quântico",
+            objeto_canonico=None,
+            tipo_relacao="evento", origem="EXTRACTED",
+            valor_numero=None, valor_unidade=None, valor_contexto=None,
+            data_fato=None, sentenca=0,
+        )
+        boas, vazias = descarta_vazias([t])
+        assert len(boas) == 1 and vazias == 0

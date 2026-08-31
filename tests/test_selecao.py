@@ -37,8 +37,11 @@ def _base(tmp_path, materias):
             linha = conexao.execute(
                 "SELECT id FROM artigos WHERE url_norm LIKE ?",
                 (f"%/{i}",)).fetchone()
+            # A versão corrente, não um número fixo: extração de vocabulário
+            # antigo VOLTA para a fila por regra do seletor, e um fixture
+            # preso à v1 testaria esse retorno em vez do "já extraída".
             salva_extracao(conexao, linha["id"], [], llm.EXTRACAO.id,
-                           "v1", 1, uso)
+                           "v1", extract.VOCAB_VERSAO, uso)
     return conexao
 
 
@@ -135,16 +138,18 @@ class TestCortaLide:
 
     def test_o_corte_entra_na_versao_do_prompt(self):
         """Fora do hash, extrações com cortes diferentes ficariam comparáveis
-        entre si sem serem comparáveis de fato."""
-        original = extract.MAX_SENTENCAS
-        try:
-            versoes = set()
-            for valor in (3, 5, None):
-                extract.MAX_SENTENCAS = valor
-                versoes.add(extract.versao_prompt())
-            assert len(versoes) == 3
-        finally:
-            extract.MAX_SENTENCAS = original
+        entre si sem serem comparáveis de fato.
+
+        O corte é PARÂMETRO de `versao_prompt` porque o CLI muda o corte por
+        rodada (`--sentencas`): hashear só a constante gravava corte diferente
+        sob a mesma versão — o main recalcula com o valor efetivo."""
+        versoes = {extract.versao_prompt(valor) for valor in (3, 5, None)}
+        assert len(versoes) == 3
+
+    def test_sem_argumento_a_versao_e_a_do_padrao(self):
+        assert extract.versao_prompt() == extract.versao_prompt(
+            extract.MAX_SENTENCAS)
+        assert extract.PROMPT_VERSAO == extract.versao_prompt()
 
 
 class TestAgrupamentoPorMedida:

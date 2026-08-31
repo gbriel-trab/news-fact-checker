@@ -6,10 +6,9 @@ e devolve as afirmações que ela faz, estruturadas.
     python -m src.extract --dry-run -n 5     # mostra o que seria enviado
     python -m src.extract -n 5               # roda de verdade (exige chave)
 
-Nesta primeira passada a **relação é texto livre**, de propósito. O documento
-manda derivar o vocabulário de dado real em vez de inventá-lo no papel: roda-se
-solto, olha-se o que a realidade produziu, e só então a lista fechada é escrita
-e imposta como enum. O resto do schema já é estrito.
+A relação vem da lista fechada de `vocabulario`, imposta como enum no schema.
+A fase de relação livre (vocabulário zero) existiu só para derivar a lista de
+dado real — o histórico está no docstring de `vocabulario`.
 """
 
 import argparse
@@ -19,7 +18,7 @@ import sqlite3
 import sys
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from . import agrupa, boilerplate, config, indice, llm, vocabulario
 from .vocabulario import Relacao
@@ -151,6 +150,27 @@ class Tripla(BaseModel):
         description="Índice da sentença numerada de onde a afirmação saiu."
     )
 
+    @model_validator(mode="after")
+    def _objeto_e_canonico_andam_juntos(self) -> "Tripla":
+        """Preenche `objeto_canonico` quando o modelo mandou só `objeto`.
+
+        O schema não tem como impor os dois campos em conjunto, e o modelo às
+        vezes preenche um só. `descarta_vazias` olha apenas o canônico, então
+        a tripla com objeto e sem canônico morria em silêncio — medido em
+        29/08/2026: o fato principal de duas matérias parceiras de par caiu
+        como "vazia" exatamente assim. Completar preserva a afirmação paga;
+        descartar jogava fora o que o sistema existe para guardar.
+
+        Tensão assumida com "normalização é na leitura, nunca no registro"
+        (ver `canonico`): isto grava no registro. A diferença que a torna
+        aceitável é que nada é interpretado — o campo ausente recebe o TEXTO
+        que o próprio modelo devolveu no campo irmão, na mesma resposta. A
+        alternativa, medida, era perder o fato.
+        """
+        if self.objeto and not self.objeto_canonico:
+            self.objeto_canonico = self.objeto
+        return self
+
 
 class Extracao(BaseModel):
     triplas: list[Tripla]
@@ -204,21 +224,7 @@ Regras que importam mais que as outras:
 3. RELAÇÃO. Escolha uma da lista fechada abaixo. Não existem outros
    valores: o schema recusa qualquer coisa fora dela.
 
-  afirmou                declarou algo, sem valoração explícita
-  criticou               declarou com valoração negativa, ou atacou alguém ou algo
-  defendeu               declarou apoio a algo, ou propôs que algo seja feito
-  integra                faz parte de partido, chapa, comissão ou organização
-  exerce_cargo_em        ocupa cargo numa instituição, sem dirigi-la
-  preside                dirige uma instituição, comissão ou órgão
-  candidatou_se_a        é candidato a um cargo
-  obteve_percentual_em   resultado em pesquisa ou votação; número no valor
-  submeteu_a_votacao     pôs proposta em votação, ou ela foi votada num órgão
-  preve                  projeto ou proposta prevê algo; nunca fato consumado
-  abriu_processo_contra  iniciou processo, investigação ou ação contra
-  participou_de          esteve em entrevista, sabatina, sessão ou evento
-  divulgou               publicou ou tornou público um dado, estudo ou documento
-  tem_atributo           QUALQUER propriedade com valor numérico: lucro, receita, dívida, prazo, percentual, custo, margem de erro, amostra. Objeto null, e o nome da propriedade vai em valor_contexto. Toda tripla com número e sem objeto usa esta relação — nunca `outro`
-  outro                  afirmação verificável que não cabe em nenhuma acima. Use sem hesitar: forçar uma relação que não serve é pior
+{vocabulario.resumo_para_prompt()}
 
    Prefira a relação específica quando ela couber. `outro` existe para
    afirmação verificável que nenhuma descreve — usá-la é melhor que
@@ -356,7 +362,7 @@ Exemplo:
 """
 
 
-def versao_prompt() -> str:
+def versao_prompt(max_sentencas: int | None = MAX_SENTENCAS) -> str:
     """Identidade de tudo que determina o resultado, como hash curto.
 
     Serve para saber qual versão produziu cada tripla. Durante a calibração o
@@ -366,6 +372,12 @@ def versao_prompt() -> str:
 
     Calculado em vez de mantido à mão porque versão que depende de alguém
     lembrar de incrementar fica errada exatamente quando importa.
+
+    O corte efetivo entra como PARÂMETRO porque o CLI pode mudá-lo por rodada
+    (`--sentencas`). Hashear só a constante gravava corte diferente sob a
+    mesma versão — exatamente a incomparabilidade silenciosa que este hash
+    existe para impedir. O `main` recalcula a versão quando o argumento
+    diverge do padrão.
     """
     material = INSTRUCOES + json.dumps(
         {
@@ -381,7 +393,7 @@ def versao_prompt() -> str:
                 # Muda quantas sentenças o modelo vê, logo muda o resultado.
                 # Fora do hash, extrações com corte diferente ficariam
                 # comparáveis entre si sem serem comparáveis de fato.
-                "max_sentencas": MAX_SENTENCAS,
+                "max_sentencas": max_sentencas,
             },
             # O esforco vem do modelo de extracao. Trocar de modelo muda a
             # versao do prompt junto, e isso esta certo: a configuracao que
@@ -634,7 +646,8 @@ def _por_historia(conexao: sqlite3.Connection, quantas: int,
     return _por_id(conexao, escolhidas)
 
 
-def _materias(conexao: sqlite3.Connection, limite: int) -> list[sqlite3.Row]:
+def _materias(conexao: sqlite3.Connection, limite: int,
+              prompt_versao: str = PROMPT_VERSAO) -> list[sqlite3.Row]:
     """Pega matérias com texto suficiente para sustentar extração, por recência.
 
     Ver `_por_historia` para a seleção que rende mais por dólar.
@@ -657,7 +670,7 @@ def _materias(conexao: sqlite3.Connection, limite: int) -> list[sqlite3.Row]:
         ORDER BY a.data_publicacao DESC
         LIMIT ?
         """,
-        (150, llm.EXTRACAO.id, PROMPT_VERSAO, limite),
+        (150, llm.EXTRACAO.id, prompt_versao, limite),
     ).fetchall()
 
 
@@ -710,6 +723,14 @@ def main() -> None:
     total_uso: list[llm.Uso] = []
     falhas: list[tuple[int, str]] = []
 
+    # O corte efetivo desta rodada define a versão do prompt gravada. Com o
+    # padrão, é a constante já calculada; com --sentencas, recalcula — gravar
+    # corte diferente sob a mesma versão tornaria as triplas incomparáveis
+    # sem nenhum sinal disso no banco.
+    limite_lide = args.sentencas or None
+    prompt_versao = (PROMPT_VERSAO if limite_lide == MAX_SENTENCAS
+                     else versao_prompt(limite_lide))
+
     conexao = conecta(config.BANCO)
     if args.ids:
         linhas = _por_id(conexao, [int(x) for x in args.ids.split(",")])
@@ -724,11 +745,11 @@ def main() -> None:
         linhas = _por_historia(conexao, args.historias,
                                editorias=editorias)
     else:
-        linhas = _materias(conexao, args.n)
+        linhas = _materias(conexao, args.n, prompt_versao)
     if not linhas:
         print("Nenhuma matéria nova para extrair.")
         print(f"Tudo o que tem texto suficiente já foi processado por "
-              f"{llm.EXTRACAO.id} com o prompt {PROMPT_VERSAO}.")
+              f"{llm.EXTRACAO.id} com o prompt {prompt_versao}.")
         print("Colete mais, ou mude o prompt — a versão muda junto e libera "
               "reprocessamento.")
         sys.exit(0)
@@ -751,7 +772,7 @@ def main() -> None:
         sentencas, removidas = boilerplate.filtra(
             em_sentencas(texto), repetidas[veiculo])
         inteiro = len(sentencas)
-        sentencas = corta_lide(sentencas, args.sentencas or None)
+        sentencas = corta_lide(sentencas, limite_lide)
 
         print(f"\n{'=' * 78}")
         print(f"[{i}/{len(linhas)}] {linha['veiculo']} / {linha['editoria']}")
@@ -813,7 +834,7 @@ def main() -> None:
         # Grava antes de imprimir: chamada paga que nao persiste e dinheiro perdido.
         salva_extracao(
             conexao, linha["id"], resultado.dados.triplas,
-            llm.EXTRACAO.id, PROMPT_VERSAO, VOCAB_VERSAO, resultado.uso,
+            llm.EXTRACAO.id, prompt_versao, VOCAB_VERSAO, resultado.uso,
         )
 
         por_sentenca: dict[int, list[Tripla]] = {}
@@ -881,11 +902,13 @@ def main() -> None:
               f"matérias · {t['relacoes']} relações distintas · "
               f"{t['entidades']} entidades")
         # "Gravado", nao "total": o banco so registra extracao que deu certo.
-        # Chamada truncada e cobrada e nao grava nada -- a do Braskem queimou
-        # ~US$ 0,20 sozinha --, e o check.py nao persiste uso nenhum. Este
-        # numero e piso. A fatura esta no console.
+        # Chamada truncada e cobrada nao grava nada -- a do Braskem queimou
+        # ~US$ 0,20 sozinha -- e este total soma so extracoes; o custo das
+        # consultas fica na tabela `consultas`. Este numero e piso. A versao
+        # impressa e a EFETIVA da rodada: com --sentencas, a constante do
+        # modulo nao e a versao sob a qual nada aqui foi gravado.
         print(f"Custo gravado (so extracao): US$ {t['custo']:.4f} · "
-              f"prompt {PROMPT_VERSAO} · vocabulário v{VOCAB_VERSAO}")
+              f"prompt {prompt_versao} · vocabulário v{VOCAB_VERSAO}")
         if no_vocab:
             print(f"Em 'outro': {fora} de {no_vocab} "
                   f"({100 * fora / no_vocab:.0f}%) — se subir, a lista precisa "
