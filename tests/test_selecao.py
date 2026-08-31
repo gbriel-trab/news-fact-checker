@@ -152,6 +152,67 @@ class TestCortaLide:
         assert extract.PROMPT_VERSAO == extract.versao_prompt()
 
 
+class TestJanelaTemporal:
+    """Número só disputa com número quando afirma o mesmo instante.
+
+    A Medição 1 derrubou a janela em dias: cotação do Bitcoin em dias
+    diferentes era a única 'divergência' do acervo, e era falsa — o preço
+    subiu 20% na semana e cada veículo estava certo no seu dia."""
+
+    @staticmethod
+    def _cotacao(valor, veiculo, data_fato):
+        from src.grafo import Afirmacao
+        return Afirmacao(
+            sujeito="Bitcoin", relacao="tem_atributo", objeto=None,
+            valor=valor, unidade="USD", contexto="cotação",
+            data_fato=data_fato, origem="EXTRACTED", veiculo=veiculo,
+            titulo="t", url=f"https://x/{veiculo}/{data_fato}",
+        )
+
+    def test_datas_diferentes_nao_divergem(self):
+        from src import grafo
+        grupos = grafo.agrupa([
+            self._cotacao(65500, "CriptoFácil", "2026-08-25"),
+            self._cotacao(79589, "Portal do Bitcoin", "2026-08-27"),
+        ])
+        assert all(not g.diverge for g in grupos)
+
+    def test_mesma_data_diverge(self):
+        from src import grafo
+        grupos = grafo.agrupa([
+            self._cotacao(65500, "CriptoFácil", "2026-08-25"),
+            self._cotacao(80000, "Folha", "2026-08-25"),
+        ])
+        assert any(g.diverge for g in grupos)
+
+    def test_sem_data_compara_entre_si(self):
+        # Estado presente sem data explícita é contemporâneo por construção.
+        from src import grafo
+        grupos = grafo.agrupa([
+            self._cotacao(100, "A", None),
+            self._cotacao(200, "B", None),
+        ])
+        assert any(g.diverge for g in grupos)
+
+    def test_granularidade_diferente_nao_compara(self):
+        # "2026-08" vs "2026-08-25": pode perder divergência real, nunca
+        # inventa uma.
+        from src import grafo
+        grupos = grafo.agrupa([
+            self._cotacao(100, "A", "2026-08"),
+            self._cotacao(200, "B", "2026-08-25"),
+        ])
+        assert all(not g.diverge for g in grupos)
+
+    def test_arredondamento_na_mesma_data_continua_nao_divergindo(self):
+        from src import grafo
+        grupos = grafo.agrupa([
+            self._cotacao(80000, "A", "2026-08-25"),
+            self._cotacao(79900, "B", "2026-08-25"),
+        ])
+        assert all(not g.diverge for g in grupos)
+
+
 class TestAgrupamentoPorMedida:
     """A correção do defeito que impedia qualquer número de corroborar.
 

@@ -162,19 +162,40 @@ class Corroboracao:
 
     @property
     def divergencias(self) -> list[tuple[str, list["Afirmacao"]]]:
-        """Unidades em que os números afirmados não batem entre si."""
+        """Unidades em que os números não batem NO MESMO INSTANTE.
+
+        Número só disputa com número quando afirma o mesmo momento: dentro
+        de cada unidade, as afirmações se separam por `data_fato` antes da
+        comparação. A Medição 1 (30/08/2026) mostrou o porquê: a única
+        "divergência entre veículos" do acervo era a cotação do Bitcoin em
+        dias diferentes — o preço subiu 20% na semana e os dois estavam
+        certos, cada um no seu dia.
+
+        `data_fato` ausente forma o grupo "sem data": são as afirmações de
+        estado presente, contemporâneas por construção (o acervo cobre dias,
+        não eras). Datas de granularidade diferente ("2026-08" vs
+        "2026-08-25") ficam em grupos separados — pode perder divergência
+        real, nunca inventa uma. É a direção do princípio 5, e é revisão
+        registrada da regra original de "janela em dias" para estado, que a
+        medição derrubou (ver ARCHITECTURE, Detecção de contradição).
+        """
         achadas = []
         for unidade, grupo in self.por_unidade.items():
-            vs = [a.valor for a in grupo]
-            if len(vs) < 2:
-                continue
-            maior, menor = max(vs), min(vs)
-            # Diferença relativa: veículos arredondam diferente, e
-            # arredondamento não é contradição.
-            fora = (menor != 0) if maior == 0 else (
-                abs(maior - menor) / abs(maior) > TOLERANCIA_RELATIVA)
-            if fora:
-                achadas.append((unidade, grupo))
+            por_instante: dict[str, list[Afirmacao]] = \
+                collections.defaultdict(list)
+            for a in grupo:
+                por_instante[a.data_fato or ""].append(a)
+            for mesmos in por_instante.values():
+                vs = [a.valor for a in mesmos]
+                if len(vs) < 2:
+                    continue
+                maior, menor = max(vs), min(vs)
+                # Diferença relativa: veículos arredondam diferente, e
+                # arredondamento não é contradição.
+                fora = (menor != 0) if maior == 0 else (
+                    abs(maior - menor) / abs(maior) > TOLERANCIA_RELATIVA)
+                if fora:
+                    achadas.append((unidade, mesmos))
         return achadas
 
     @property

@@ -604,17 +604,28 @@ mas só isso produz falso positivo em massa, porque fato evolui:
 (X, nao_possui, Y)  2026     → evolução, NÃO contradição
 ```
 
-A regra depende do tipo da relação:
+A regra original previa janela temporal em dias para estado. **Revisada em
+30/08/2026, por medição**: a única divergência entre veículos que a Medição 1
+encontrou era a cotação do Bitcoin em `data_fato` distintas (25 vs 27/08) — o
+preço subiu 20% na semana e os dois veículos estavam certos, cada um no seu
+dia. A janela em dias rotularia exatamente isso como contradição.
 
-* **Estado** — compara-se pela janela temporal. Triplas conflitantes próximas no
-  tempo (dias) são contradição suspeita; separadas por meses ou anos são
-  evolução.
-* **Evento** — a janela **não se aplica**. Duas fontes que discordam sobre o que
-  ocorreu em 2019 se contradizem, tenham publicado com três dias ou três anos de
-  diferença. A comparação usa a `data_fato`, nunca a `data_publicacao`.
+A regra implementada (`Corroboracao.divergencias`): **número só disputa com
+número quando afirma o mesmo instante.** Dentro de (chave, unidade), as
+afirmações se separam por `data_fato` antes da comparação; ausente forma o
+grupo "sem data" (estado presente, contemporâneo por construção — o acervo
+cobre dias). Granularidades diferentes ("2026-08" vs "2026-08-25") não se
+comparam: pode perder divergência real, nunca inventa uma — a direção do
+princípio 5. Vale para evento e estado; disputa de DATA entre veículos
+("foi no dia 19" vs "foi no dia 20") fica registrada como caso não
+detectado, pela mesma assimetria.
 
-Aplicar a janela uniformemente produziria falso negativo em evento — o segundo
-pior erro, atrás apenas do falso positivo.
+**Contradição não-numérica continua não implementada, e o bloqueio é de
+vocabulário**: "aprovado" vs "rejeitado" exige relações com polaridade
+(aprovou/rejeitou como pares declarados incompatíveis), e a v2 deliberadamente
+recusou rótulo de desfecho neutro (caso `decidiu_sobre`). É a pergunta da v3:
+promover pares de desfecho com a incompatibilidade declarada no vocabulário,
+ou esperar a reificação da atribuição.
 
 Esta varredura é **código sobre dado normalizado**: espaço fechado e enumerável,
 agrupado por entidade canônica. Não há estratégia de busca a adaptar, e portanto
