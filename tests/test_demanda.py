@@ -1,10 +1,11 @@
 """A escada de freios da extração sob demanda, sem rede nem índice real.
 
-A ordem dos freios é o contrato: acervo que já cobre não busca; busca
-vazia não estima; orçamento curto recusa ANTES de chamar a API; recusa de
-grupo re-tenta UMA vez, só com a melhor candidata e só se o orçamento
-comportar; e só extração com tripla nova reindexa — incremental. Cada
-teste trava um degrau.
+A ordem dos freios é o contrato: quem pergunta "o acervo cobre?" é o
+CHECK do chamador (a demanda pressupõe um "sem evidência" — o oráculo por
+proximidade caiu no primeiro teste vivo); busca vazia não estima;
+orçamento curto recusa ANTES de chamar a API; recusa de grupo re-tenta
+UMA vez, só com a melhor candidata e só se o orçamento comportar; e só
+extração com tripla nova reindexa — incremental.
 """
 
 import pytest
@@ -13,21 +14,12 @@ from src import demanda
 
 
 class TestGarante:
-    def test_acervo_ja_cobre_nao_gasta(self, monkeypatch):
-        monkeypatch.setattr(demanda, "_ja_coberta", lambda t: True)
-        monkeypatch.setattr(demanda, "candidatas",
-                            lambda *a: pytest.fail("não deveria nem buscar"))
-        r = demanda.garante(None, "x")
-        assert r.motivo == "coberto" and r.custo == 0
-
     def test_sem_candidata_nao_gasta(self, monkeypatch):
-        monkeypatch.setattr(demanda, "_ja_coberta", lambda t: False)
         monkeypatch.setattr(demanda, "candidatas", lambda c, t: [])
         r = demanda.garante(None, "x")
         assert r.motivo == "sem_candidata" and r.custo == 0
 
     def test_teto_recusa_antes_da_api(self, monkeypatch):
-        monkeypatch.setattr(demanda, "_ja_coberta", lambda t: False)
         monkeypatch.setattr(demanda, "candidatas", lambda c, t: ["m"])
         monkeypatch.setattr(demanda.extract, "extrai_grupo",
                             lambda *a: pytest.fail("o teto não segurou"))
@@ -37,7 +29,6 @@ class TestGarante:
 
     def test_extraiu_reindexa_so_o_grupo_e_fatura_o_real(self, monkeypatch):
         m1, m2 = {"id": 11}, {"id": 22}
-        monkeypatch.setattr(demanda, "_ja_coberta", lambda t: False)
         monkeypatch.setattr(demanda, "candidatas", lambda c, t: [m1, m2])
         monkeypatch.setattr(demanda.extract, "extrai_grupo",
                             lambda c, g: (7, 0.08, False))
@@ -55,7 +46,6 @@ class TestGarante:
         # mesma_historia=false num grupo montado por proximidade com a
         # premissa não pode queimar a matéria certa junto com o carona.
         m1, m2 = {"id": 11}, {"id": 22}
-        monkeypatch.setattr(demanda, "_ja_coberta", lambda t: False)
         monkeypatch.setattr(demanda, "candidatas", lambda c, t: [m1, m2])
         chamadas = []
 
@@ -74,7 +64,6 @@ class TestGarante:
         assert r.custo == pytest.approx(0.09)
 
     def test_recusa_sem_orcamento_nao_retenta(self, monkeypatch):
-        monkeypatch.setattr(demanda, "_ja_coberta", lambda t: False)
         monkeypatch.setattr(demanda, "candidatas",
                             lambda c, t: [{"id": 1}, {"id": 2}])
         chamadas = []
@@ -91,7 +80,6 @@ class TestGarante:
     def test_falha_de_indice_nao_vira_falha_de_demanda(self, monkeypatch):
         # Extração PAGA precisa contar como extração mesmo se o Chroma
         # cair — a rota por chave do check segue enxergando o grafo.
-        monkeypatch.setattr(demanda, "_ja_coberta", lambda t: False)
         monkeypatch.setattr(demanda, "candidatas", lambda c, t: [{"id": 1}])
         monkeypatch.setattr(demanda.extract, "extrai_grupo",
                             lambda c, g, *a: (5, 0.06, False))
@@ -104,13 +92,31 @@ class TestGarante:
         assert r.motivo == "extraiu" and r.triplas == 5
 
 
+class _ConexaoFalsa:
+    """Devolve marco 0 para MAX(id) e 'sem_evidencia' para a consulta."""
+
+    def execute(self, sql, *a):
+        class R:
+            def __init__(self, valor):
+                self._v = valor
+
+            def fetchone(self):
+                return self._v
+
+        if "MAX(id)" in sql:
+            return R([0])
+        return R({"veredito": "sem_evidencia"})
+
+
 class TestConferePostEstado:
-    def test_orcamento_sobrevive_a_excecao_do_check(self, monkeypatch):
+    def test_orcamento_sobrevive_a_excecao_do_recheck(self, monkeypatch):
         # O bug que a revisão de 01/09/2026 confirmou: com o orçamento
-        # devolvido por retorno, a exceção restaurava dinheiro já gasto.
+        # devolvido por retorno, uma exceção depois do gasto restaurava o
+        # dinheiro. Cenário: 1º check sem evidência → demanda extrai e
+        # PAGA → re-check com forcar explode. O débito tem que ficar.
         from types import SimpleNamespace
 
-        from src import boletim, demanda
+        from src import boletim
 
         premissa = SimpleNamespace(tipo="fato", afirmacao="X fez Y",
                                    trecho="X fez Y")
@@ -124,21 +130,14 @@ class TestConferePostEstado:
             lambda c, t, o: demanda.Resultado("extraiu", 1, 3, 0.20))
         monkeypatch.setattr("src.grafo.carrega", lambda c: ["novo"])
 
-        def check_explode(*a, **k):
-            raise RuntimeError("API fora")
+        def check_fake(*a, forcar=False, **k):
+            if forcar:
+                raise RuntimeError("API fora no re-check")
 
-        monkeypatch.setattr("src.check.verifica", check_explode)
-
-        class ConexaoFalsa:
-            def execute(self, *a):
-                class R:
-                    @staticmethod
-                    def fetchone():
-                        return [0]
-                return R()
+        monkeypatch.setattr("src.check.verifica", check_fake)
 
         estado = {"acervo": ["velho"], "orcamento": demanda.TETO_USD}
         with pytest.raises(RuntimeError):
-            boletim._confere_post("post", ConexaoFalsa(), estado)
+            boletim._confere_post("post", _ConexaoFalsa(), estado)
         assert estado["orcamento"] == pytest.approx(demanda.TETO_USD - 0.20)
         assert estado["acervo"] == ["novo"]

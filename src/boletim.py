@@ -160,43 +160,60 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
         partes.append(f"  [{p.tipo}] {p.afirmacao} — nada a conferir")
         dados["nao_verificaveis"].append((p.tipo, p.afirmacao))
 
+    def _roda_check(afirmacao: str, forcar: bool):
+        """Um check capturado + a linha de consulta que ele produziu."""
+        marco_f = conexao.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM consultas").fetchone()[0]
+        s = io.StringIO()
+        with contextlib.redirect_stdout(s):
+            check.verifica(afirmacao, conexao=conexao,
+                           acervo=estado["acervo"], forcar=forcar)
+        linha = conexao.execute(
+            "SELECT * FROM consultas WHERE id > ? "
+            "ORDER BY id DESC LIMIT 1", (marco_f,)).fetchone()
+        if linha is None:
+            linha = check.consulta_recente(conexao, afirmacao)
+        return s, linha
+
     for p in fatos:
         nota_demanda = None
-        try:
-            r = demanda.garante(conexao, p.afirmacao, estado["orcamento"])
-        except Exception as erro:  # noqa: BLE001 — otimização não derruba
-            r = None
-            # Débito pessimista: a falha pode ter vindo DEPOIS de a
-            # chamada ser cobrada (llm.py registra esse caso), e teto que
-            # não desconta falha não é teto.
-            estado["orcamento"] -= demanda.CUSTO_ESTIMADO
-            partes.append(f"  demanda falhou ({type(erro).__name__}: "
-                          f"{erro}) — verificando só com o acervo; "
-                          f"orçamento debitado por precaução")
-        if r is not None and r.motivo == "extraiu":
-            estado["orcamento"] -= r.custo
-            custo_demanda += r.custo
-            estado["acervo"] = grafo.carrega(conexao)
-            nota_demanda = (f"{r.materias} matéria(s) extraída(s) na hora, "
-                            f"{r.triplas} triplas")
-            partes.append(f"  [DEMANDA] {nota_demanda} · US$ {r.custo:.4f}")
-        elif r is not None and r.motivo == "teto":
-            partes.append("  [DEMANDA] teto da rodada atingido — "
-                          "verificando só com o acervo")
-
-        marco_fato = conexao.execute(
-            "SELECT COALESCE(MAX(id), 0) FROM consultas").fetchone()[0]
-        saida = io.StringIO()
-        with contextlib.redirect_stdout(saida):
-            check.verifica(p.afirmacao, conexao=conexao,
-                           acervo=estado["acervo"],
-                           forcar=(r is not None and r.motivo == "extraiu"))
+        # CHECK PRIMEIRO; a demanda só depois de "sem evidência". A ordem
+        # inversa usava proximidade vetorial como oráculo de cobertura e
+        # caiu no primeiro teste vivo (01/09/2026, caso Esteves-Trump):
+        # "Esteves integra BTG" no índice fingia cobrir a premissa da
+        # REUNIÃO, a extração era pulada e o check morria sem evidência
+        # com as matérias na mão. Proximidade casa entidade; quem sabe se
+        # o FATO está coberto é o próprio veredito. O preço é um segundo
+        # check quando a demanda dispara — só nesse caso.
+        saida, nova = _roda_check(p.afirmacao, forcar=False)
+        if nova is not None and nova["veredito"] == "sem_evidencia":
+            try:
+                r = demanda.garante(conexao, p.afirmacao,
+                                    estado["orcamento"])
+            except Exception as erro:  # noqa: BLE001 — não derruba o check
+                r = None
+                # Débito pessimista: a falha pode ter vindo DEPOIS de a
+                # chamada ser cobrada (llm.py registra esse caso), e teto
+                # que não desconta falha não é teto.
+                estado["orcamento"] -= demanda.CUSTO_ESTIMADO
+                partes.append(f"  demanda falhou ({type(erro).__name__}: "
+                              f"{erro}) — fica o veredito sem o acervo "
+                              f"novo; orçamento debitado por precaução")
+            if r is not None and r.motivo == "extraiu":
+                estado["orcamento"] -= r.custo
+                custo_demanda += r.custo
+                estado["acervo"] = grafo.carrega(conexao)
+                nota_demanda = (f"{r.materias} matéria(s) extraída(s) na "
+                                f"hora, {r.triplas} triplas")
+                partes.append(f"  [DEMANDA] {nota_demanda} · "
+                              f"US$ {r.custo:.4f}")
+                # forcar: sem isso a janela de reuso devolveria o
+                # "sem evidência" que acabou de motivar a extração.
+                saida, nova = _roda_check(p.afirmacao, forcar=True)
+            elif r is not None and r.motivo == "teto":
+                partes.append("  [DEMANDA] teto da rodada atingido — "
+                              "fica o veredito só com o acervo")
         partes.append(f'  premissa: "{p.afirmacao}"')
-        nova = conexao.execute(
-            "SELECT * FROM consultas WHERE id > ? "
-            "ORDER BY id DESC LIMIT 1", (marco_fato,)).fetchone()
-        if nova is None:
-            nova = check.consulta_recente(conexao, p.afirmacao)
         evidencias = _RE_EVIDENCIA.findall(saida.getvalue())
         dados["checks"].append({
             "afirmacao": p.afirmacao,

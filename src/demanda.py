@@ -17,17 +17,24 @@ essa promessa fica de pé. Quem decide é este módulo, com regra fixa,
 UMA volta só e teto de gasto: é o princípio 7 do ARCHITECTURE em código
 (o ciclo serve para tentar outra fonte, não para insistir até inventar).
 
+A PERGUNTA "o acervo cobre?" é respondida pelo CHECK, nunca por proxy:
+quem chama roda o check primeiro e só aciona a demanda sobre um veredito
+"sem evidência" — e re-verifica com `forcar` depois de extrair. A versão
+inicial usava proximidade vetorial como oráculo de cobertura e caiu no
+primeiro teste vivo (01/09/2026): "Esteves integra BTG" no índice fingia
+cobrir a premissa da REUNIÃO com Trump; proximidade casa entidade, não o
+fato — que é literalmente a regra 2 do julgamento do check.
+
 Freios, na ordem em que seguram:
 
-1. Se o índice de afirmações já tem candidata no piso do check, não
-   extrai — o acervo já fala do assunto e o check decide sozinho.
-2. Só entra matéria com título+lead a >= LIMIAR_CANDIDATA da premissa,
-   uma por veículo, no máximo MAX_MATERIAS.
-3. Matéria já extraída pelas versões ATIVAS de prompt fica fora: ela já
+1. Só entra matéria com título+lead a >= LIMIAR_CANDIDATA da premissa,
+   dentro da janela de dias, uma por veículo, no máximo MAX_MATERIAS,
+   e coerente com a melhor candidata.
+2. Matéria já extraída pelas versões ATIVAS de prompt fica fora: ela já
    teve a vez, e re-extração seria moto-perpétuo de gasto. Extração de
    versão antiga não conta — a órfã volta a ser elegível, exatamente
    como no funil de lote.
-4. O chamador informa o orçamento restante da rodada; abaixo de
+3. O chamador informa o orçamento restante da rodada; abaixo de
    CUSTO_ESTIMADO a demanda recusa ANTES de chamar a API.
 """
 
@@ -67,23 +74,10 @@ comporta MAIS UMA extração; o custo real vem da fatura da chamada."""
 class Resultado:
     """O que uma volta do ciclo fez, e por quê."""
 
-    motivo: str  # "coberto" | "sem_candidata" | "teto" | "extraiu"
+    motivo: str  # "sem_candidata" | "teto" | "extraiu"
     materias: int
     triplas: int
     custo: float
-
-
-def _ja_coberta(texto: str) -> bool:
-    """O acervo extraído já fala disto? Busca vetorial, local e grátis.
-
-    Usa o MESMO piso do check: se alguma afirmação indexada passa dele, o
-    julgamento vai receber candidatas — extrair mais seria pagar por
-    evidência que talvez já exista. (Cobre só a rota semântica; a rota por
-    chave exata do check é mais um motivo para NÃO extrair à toa, nunca
-    para extrair.)
-    """
-    achadas = indice.busca("afirmacoes", texto, quantos=3)
-    return any(a.proximidade >= check.MIN_PROXIMIDADE for a in achadas)
 
 
 def candidatas(conexao: sqlite3.Connection, texto: str) -> list[sqlite3.Row]:
@@ -150,12 +144,12 @@ def garante(conexao: sqlite3.Connection, texto: str,
             orcamento: float = TETO_USD) -> Resultado:
     """Uma volta do ciclo: cobre a premissa se der, dentro do orçamento.
 
+    Pressupõe que o chamador JÁ verificou e recebeu "sem evidência" — a
+    demanda não re-pergunta se o acervo cobre (ver o docstring do módulo).
     Nunca levanta a mão de novo: extraiu ou recusou, o chamador segue para
     o check com o acervo que houver. Falha de API sobe como exceção — quem
     chama decide se ela derruba a rodada (o boletim não deixa).
     """
-    if _ja_coberta(texto):
-        return Resultado("coberto", 0, 0, 0.0)
     grupo = candidatas(conexao, texto)
     if not grupo:
         return Resultado("sem_candidata", 0, 0, 0.0)
@@ -213,26 +207,35 @@ def main() -> None:
             print("\nNada foi extraído. Remova --dry-run para rodar.")
             return
 
+        from . import grafo
+        acervo = grafo.carrega(conexao)
+        if not acervo:
+            print("Acervo vazio — rode coleta e extração antes.")
+            sys.exit(1)
+
+        # O rito é o do boletim: check primeiro; demanda só sobre
+        # "sem evidência"; re-check com forcar depois de extrair.
+        check.verifica(args.afirmacao, conexao=conexao, acervo=acervo)
+        ultima = check.consulta_recente(conexao, args.afirmacao)
+        if ultima is None or ultima["veredito"] != "sem_evidencia":
+            return
+
         r = garante(conexao, args.afirmacao)
         rotulos = {
-            "coberto": "o acervo já cobre o assunto — nada a extrair",
             "sem_candidata": "nenhuma matéria coletada passa do piso",
             "teto": "orçamento insuficiente para extrair",
             "extraiu": (f"{r.materias} matéria(s) extraída(s), "
                         f"{r.triplas} triplas · US$ {r.custo:.4f}"),
         }
-        print(f"demanda: {rotulos[r.motivo]}\n")
+        print(f"\ndemanda: {rotulos[r.motivo]}\n")
+        if r.motivo != "extraiu":
+            return
 
-        from . import grafo
         acervo = grafo.carrega(conexao)
-        if not acervo:
-            print("Acervo vazio mesmo após a demanda — nada para verificar.")
-            sys.exit(1)
-        # forcar quando extraiu: sem isso, a janela de reuso de 24h do
-        # check devolvia o "sem evidência" antigo e a extração recém-paga
-        # nunca chegava ao julgamento (revisão de 01/09/2026).
+        # forcar: sem isso, a janela de reuso de 24h devolvia o
+        # "sem evidência" que acabou de motivar a extração.
         check.verifica(args.afirmacao, conexao=conexao, acervo=acervo,
-                       forcar=(r.motivo == "extraiu"))
+                       forcar=True)
     finally:
         conexao.close()
 

@@ -179,16 +179,20 @@ def indexa_artigos(conexao: sqlite3.Connection, dias: int = 10) -> int:
     presentes = set(colecao.get(
         ids=[str(l["id"]) for l in linhas], include=[])["ids"])
     novas = [l for l in linhas if str(l["id"]) not in presentes]
-    if novas:
+    # Em lotes, como indexa_afirmacoes: o Chroma recusa upsert acima de
+    # ~5.4k itens, e a primeira indexação de uma janela cheia passa disso
+    # (5.666 matérias em 01/09/2026, descoberto no primeiro uso).
+    for i in range(0, len(novas), 200):
+        lote = novas[i:i + 200]
         colecao.upsert(
-            ids=[str(l["id"]) for l in novas],
+            ids=[str(l["id"]) for l in lote],
             embeddings=_vetores(
-                [agrupa.texto_de_agrupamento(l) for l in novas]),
-            documents=[l["titulo"] for l in novas],
+                [agrupa.texto_de_agrupamento(l) for l in lote]),
+            documents=[l["titulo"] for l in lote],
             metadatas=[{"artigo_id": l["id"], "veiculo": l["veiculo"],
                         "titulo": l["titulo"],
                         "data": l["data_publicacao"] or ""}
-                       for l in novas],
+                       for l in lote],
         )
     return len(novas)
 
