@@ -43,6 +43,54 @@ class TestEstadoDoBoletim:
             boletim.monta(1)
 
 
+class TestRendicaoTelegram:
+    def test_escapa_html_de_conteudo_de_modelo(self):
+        from src.boletim import _esc
+        assert _esc("a <b> & c") == "a &lt;b&gt; &amp; c"
+
+    def test_sem_evidencia_vira_linha_com_semaforo(self):
+        from src.boletim import _formata_telegram
+        html = _formata_telegram("@x", "01/09", [(1, "post", {
+            "nao_verificaveis": [("opiniao", "opinou algo")],
+            "checks": [{"afirmacao": "o IPCA foi 5,2%",
+                        "veredito": "sem_evidencia", "justificativa": "",
+                        "veiculos": 0, "custo": 0.02, "evidencias": []}],
+            "sem_premissas": False,
+        })], [], [], 0.10, 0.03)
+        assert "⚪ <b>sem evidência</b>" in html
+        assert "💬" in html
+        assert "<b>[1]</b>" in html
+
+    def test_confirmado_traz_fonte_clicavel(self):
+        from src.boletim import _formata_telegram
+        html = _formata_telegram("@x", "01/09", [(1, "post", {
+            "nao_verificaveis": [],
+            "checks": [{"afirmacao": "a Caixa lucrou",
+                        "veredito": "confirmado", "justificativa": "bate",
+                        "veiculos": 2, "custo": 0.02,
+                        "evidencias": [("G1", "http://g1/x")]}],
+            "sem_premissas": False,
+        })], [], ["http://x.com/i/status/1"], 0.10, 0.03)
+        assert "✅ <b>confirmado</b>" in html
+        assert '<a href="http://g1/x">G1</a>' in html
+        assert '<a href="http://x.com/i/status/1">1</a>' in html
+
+    def test_corte_html_respeita_linhas(self):
+        # Cortar no meio de uma tag quebraria o parse do Telegram inteiro.
+        from src import boletim
+        linhas = [f"<b>linha {i}</b>" for i in range(400)]
+        texto = "\n".join(linhas)
+        pedacos, atual = [], ""
+        for linha in texto.split("\n"):
+            if len(atual) + len(linha) + 1 > boletim.LIMITE_TELEGRAM:
+                pedacos.append(atual)
+                atual = linha
+            else:
+                atual = f"{atual}\n{linha}" if atual else linha
+        pedacos.append(atual)
+        assert all(p.count("<b>") == p.count("</b>") for p in pedacos)
+
+
 class TestReusoDeConsulta:
     def _grava(self, con, afirmacao, quando):
         salva_consulta(con, afirmacao, "confirmado", "just.", 3, 1, 2,

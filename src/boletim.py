@@ -44,6 +44,7 @@ import contextlib
 import hashlib
 import io
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -76,15 +77,22 @@ def _marca_entregue(conexao, hash_: str, resumo: str) -> None:
     conexao.commit()
 
 
-def _confere_post(post: str, conexao, acervo) -> tuple[str, float]:
-    """Separa as premissas de um post e confere cada fato. Devolve
-    (bloco de texto do boletim, custo em US$ das chamadas Anthropic).
+_RE_EVIDENCIA = re.compile(
+    r"^\s*\[([^\]]+)\][^\n]*\n\s+(https?://\S+)", re.MULTILINE)
 
-    O custo de verificação vem do livro-caixa: soma-se `custo_usd` das
-    linhas de `consultas` gravadas DURANTE esta função (id > marco).
-    Veredito reusado não grava linha, logo não soma — sinal estrutural,
-    nunca busca de palavra no texto capturado (a premissa "plástico
-    reusado cresceu 20%" derrubaria qualquer heurística textual).
+
+def _confere_post(post: str, conexao, acervo) -> tuple[str, float, dict]:
+    """Separa as premissas de um post e confere cada fato. Devolve
+    (bloco de texto puro, custo Anthropic, dados estruturados).
+
+    Os dados estruturados alimentam a rendição HTML do Telegram — montada
+    das linhas de `consultas`, nunca do stdout capturado, para o celular
+    não herdar a verborragia do terminal. O texto puro continua sendo a
+    trilha completa (arquivo e console).
+
+    O custo vem do livro-caixa: soma das linhas de `consultas` gravadas
+    DURANTE esta função (id > marco); veredito reusado não grava e não
+    soma — sinal estrutural, nunca busca de palavra no texto capturado.
     """
     from . import check, premissas
 
@@ -93,12 +101,15 @@ def _confere_post(post: str, conexao, acervo) -> tuple[str, float]:
 
     analise, uso = premissas.separa(post, conexao=conexao)
     partes: list[str] = []
+    dados: dict = {"nao_verificaveis": [], "checks": [],
+                   "sem_premissas": not analise.premissas}
 
     resto = [p for p in analise.premissas if p.tipo != "fato"]
     fatos = [p for p in analise.premissas if p.tipo == "fato"]
 
     for p in resto:
         partes.append(f"  [{p.tipo}] {p.afirmacao} — nada a conferir")
+        dados["nao_verificaveis"].append((p.tipo, p.afirmacao))
 
     for p in fatos:
         marco_fato = conexao.execute(
@@ -108,13 +119,22 @@ def _confere_post(post: str, conexao, acervo) -> tuple[str, float]:
             check.verifica(p.afirmacao, conexao=conexao, acervo=acervo)
         partes.append(f'  premissa: "{p.afirmacao}"')
         nova = conexao.execute(
-            "SELECT veredito, custo_usd FROM consultas WHERE id > ? "
+            "SELECT * FROM consultas WHERE id > ? "
             "ORDER BY id DESC LIMIT 1", (marco_fato,)).fetchone()
-        # Sem evidência vira UMA linha no boletim: a enumeração do que foi
-        # olhado e rejeitado é trilha de auditoria — fica gravada em
-        # `consultas` e visível no painel/CLI, não no celular. Exibir menos
-        # não economiza nada (o texto já foi pago ao ser gerado); isto é
-        # legibilidade, e a economia real é a premissa nem existir.
+        if nova is None:
+            nova = check.consulta_recente(conexao, p.afirmacao)
+        evidencias = _RE_EVIDENCIA.findall(saida.getvalue())
+        dados["checks"].append({
+            "afirmacao": p.afirmacao,
+            "veredito": nova["veredito"] if nova else "sem_evidencia",
+            "justificativa": nova["justificativa"] if nova else "",
+            "veiculos": nova["veiculos"] if nova else 0,
+            "custo": nova["custo_usd"] if nova else 0.0,
+            "evidencias": evidencias,
+        })
+        # Sem evidência vira UMA linha: a enumeração do que foi olhado e
+        # rejeitado é trilha de auditoria — mora em `consultas` e no
+        # painel, não no bolso.
         if nova and nova["veredito"] == "sem_evidencia":
             partes.append(f"    → SEM EVIDÊNCIA — o acervo não cobre · "
                           f"US$ {nova['custo_usd']:.4f}")
@@ -128,7 +148,7 @@ def _confere_post(post: str, conexao, acervo) -> tuple[str, float]:
     pago_em_checks = conexao.execute(
         "SELECT COALESCE(SUM(custo_usd), 0) FROM consultas WHERE id > ?",
         (marco,)).fetchone()[0]
-    return "\n".join(partes), uso.custo + pago_em_checks
+    return "\n".join(partes), uso.custo + pago_em_checks, dados
 
 
 def monta(dias: int) -> tuple[str, float, list[str]]:
@@ -170,6 +190,7 @@ def monta(dias: int) -> tuple[str, float, list[str]]:
                   ENQUADRAMENTO, ""]
         custo = rodada.custo_usd
         contidos: list[tuple[str, str]] = []
+        estruturados: list[tuple[int, str, dict]] = []
 
         if not ineditos:
             linhas.append(f"Nenhum post novo na janela de {dias} dia(s)."
@@ -180,7 +201,7 @@ def monta(dias: int) -> tuple[str, float, list[str]]:
             linhas.append(f"[{i}] {post}")
             # Falha num post não derruba o lote — padrão do extract.main.
             try:
-                bloco, gasto = _confere_post(post, conexao, acervo)
+                bloco, gasto, dados = _confere_post(post, conexao, acervo)
             except Exception as erro:  # noqa: BLE001 — vira linha do boletim
                 linhas.append(f"  CONFERÊNCIA FALHOU ({type(erro).__name__}: "
                               f"{erro}) — o post volta na próxima rodada")
@@ -190,6 +211,7 @@ def monta(dias: int) -> tuple[str, float, list[str]]:
             linhas.append(bloco)
             linhas.append("")
             contidos.append((h, post))
+            estruturados.append((i, post, dados))
 
         for nota in rodada.notas:
             linhas.append(f"aviso da busca: {nota}")
@@ -202,9 +224,70 @@ def monta(dias: int) -> tuple[str, float, list[str]]:
         linhas.append(f"custo da rodada: US$ {custo:.4f} "
                       f"(busca xAI US$ {rodada.custo_usd:.4f} + "
                       f"Anthropic US$ {custo - rodada.custo_usd:.4f})")
-        return "\n".join(linhas), custo, contidos
+        html = _formata_telegram(handles, hoje, estruturados, rodada.notas,
+                                 rodada.links, custo, rodada.custo_usd)
+        return "\n".join(linhas), custo, contidos, html
     finally:
         conexao.close()
+
+
+# ------------------------------------------------------------- rendição
+
+def _esc(texto: str) -> str:
+    return (texto.replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;"))
+
+
+_EMOJI_TIPO = {"opiniao": "💬", "previsao": "🔮", "relato": "👤"}
+_EMOJI_VEREDITO = {"confirmado": "✅", "contradito": "❌",
+                   "sem_evidencia": "⚪"}
+
+
+def _formata_telegram(handles: str, hoje: str, estruturados, notas,
+                      links, custo: float, custo_xai: float) -> str:
+    """A rendição HTML do Telegram: os MESMOS dados do texto puro, com
+    hierarquia visual — negrito no cabeçalho, itálico no post, semáforo no
+    veredito e link clicável na evidência. Trilha completa continua no
+    arquivo; aqui é o resumo para o bolso. Tudo que vem de modelo ou de
+    post passa por `_esc` antes de virar HTML."""
+    p: list[str] = [f"📡 <b>Radar · {_esc(handles)} · {hoje}</b>",
+                    f"<i>{_esc(ENQUADRAMENTO)}</i>", ""]
+    if not estruturados:
+        p.append("Nenhum post novo na janela.")
+    for i, post, dados in estruturados:
+        corpo = post.split("\n", 1)[-1] if post.startswith("POST") else post
+        p.append(f"<b>[{i}]</b> <i>{_esc(corpo.strip())}</i>")
+        for tipo, afirmacao in dados["nao_verificaveis"]:
+            p.append(f"{_EMOJI_TIPO.get(tipo, '•')} {_esc(afirmacao)}")
+        for c in dados["checks"]:
+            emoji = _EMOJI_VEREDITO.get(c["veredito"], "•")
+            if c["veredito"] == "sem_evidencia":
+                p.append(f"{emoji} <b>sem evidência</b> — o acervo não "
+                         f"cobre · <i>{_esc(c['afirmacao'])}</i>")
+            else:
+                rotulo = c["veredito"].replace("_", " ")
+                fontes = " · ".join(
+                    f'<a href="{_esc(url)}">{_esc(veiculo)}</a>'
+                    for veiculo, url in c["evidencias"][:4])
+                p.append(f"{emoji} <b>{rotulo}</b> · "
+                         f"{c['veiculos']} veículo(s) — "
+                         f"<i>{_esc(c['afirmacao'])}</i>")
+                p.append(f"    {_esc(c['justificativa'])}")
+                if fontes:
+                    p.append(f"    fontes: {fontes}")
+        if dados["sem_premissas"]:
+            p.append("(nenhuma afirmação separável)")
+        p.append("")
+    for nota in notas:
+        p.append(f"⚠️ {_esc(nota)}")
+    if links:
+        ancoras = " · ".join(f'<a href="{_esc(u)}">{n}</a>'
+                             for n, u in enumerate(links, 1))
+        p.append(f"🔗 posts no X: {ancoras}")
+    p.append("")
+    p.append(f"<i>custo: US$ {custo:.2f} (xAI {custo_xai:.2f} + "
+             f"Anthropic {custo - custo_xai:.2f})</i>")
+    return "\n".join(p)
 
 
 # ---------------------------------------------------------------- entrega
@@ -219,23 +302,39 @@ def _grava(texto: str) -> "os.PathLike":
     return caminho
 
 
-def _envia_telegram(texto: str) -> str:
+def _envia_telegram(texto: str, html: bool = False) -> str:
     """Envia se o .env tiver bot e chat. Devolve o status para o relatório —
-    qualquer falha vira texto, nunca traceback: o arquivo já é o registro."""
+    qualquer falha vira texto, nunca traceback: o arquivo já é o registro.
+
+    Com `html`, o corte em pedaços respeita quebras de linha (cortar no
+    meio de uma tag quebraria o parse do Telegram inteiro)."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat = os.environ.get("TELEGRAM_CHAT_ID", "")
     if not token or not chat:
         return ("não enviado — TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID ausentes "
                 "no .env (ver .env.example)")
-    pedacos = [texto[i:i + LIMITE_TELEGRAM]
-               for i in range(0, len(texto), LIMITE_TELEGRAM)]
+    if html:
+        pedacos, atual = [], ""
+        for linha in texto.split("\n"):
+            if len(atual) + len(linha) + 1 > LIMITE_TELEGRAM:
+                pedacos.append(atual)
+                atual = linha
+            else:
+                atual = f"{atual}\n{linha}" if atual else linha
+        if atual:
+            pedacos.append(atual)
+    else:
+        pedacos = [texto[i:i + LIMITE_TELEGRAM]
+                   for i in range(0, len(texto), LIMITE_TELEGRAM)]
     for n, pedaco in enumerate(pedacos, 1):
+        corpo = {"chat_id": chat, "text": pedaco,
+                 "disable_web_page_preview": True}
+        if html:
+            corpo["parse_mode"] = "HTML"
         try:
             resposta = requests.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": chat, "text": pedaco,
-                      "disable_web_page_preview": True},
-                timeout=30)
+                json=corpo, timeout=30)
         except requests.RequestException as erro:
             return (f"FALHOU no Telegram (pedaço {n}/{len(pedacos)}, "
                     f"{type(erro).__name__}) — o boletim está no arquivo")
@@ -259,7 +358,7 @@ def main() -> None:
                         help="monta e grava o arquivo, não envia")
     args = parser.parse_args()
 
-    texto, custo, contidos = monta(args.dias)
+    texto, custo, contidos, html = monta(args.dias)
     print(texto)
     caminho = _grava(texto)
     print(f"\ngravado em {caminho}")
@@ -274,7 +373,9 @@ def main() -> None:
     conexao.close()
 
     if contidos and not args.sem_envio:
-        print(f"entrega: {_envia_telegram(texto)}")
+        # O celular recebe a rendição HTML; o texto puro é a trilha,
+        # gravada no arquivo acima.
+        print(f"entrega: {_envia_telegram(html, html=True)}")
     elif not contidos:
         print("entrega: pulada — nada novo")
 
