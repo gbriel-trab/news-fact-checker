@@ -587,10 +587,44 @@ Condições registradas antes de virar o desenho padrão:
 * **`AB` é corroboração afirmada pelo modelo** — generosidade aqui fabrica
   confirmação, o pior erro. Produção exige `sentenca_a`/`sentenca_b` por
   tripla AB e validação local de que cada fonte sustenta o afirmado.
-* Amostra de 3 pares, todos de 2 veículos; falta medir 3+ veículos por
-  história e o comportamento em histórias longas.
 * A ideia veio de revisão externa (outra instância, 01/09/2026); a
   validação contra os fracassos medidos é deste acervo.
+
+**A segunda trava caiu no mesmo dia**: a história do incêndio com os SETE
+veículos do acervo num prompt só ([A]…[G], campo `fontes` com as letras)
+produziu 14 triplas com atribuição graduada — o evento e o "preside o TSE"
+saíram `ABCDEFG` com um nome único; bombeiros `ABDEF`; "não houve feridos"
+`DEG`; os pronunciamentos exclusivos da CNN, só `A`. US$ 0,12 pela história
+inteira — **US$ 0,017 por matéria, ~65% mais barato** que sete chamadas — e
+as matérias de 1 sentença (Folha, Exame) CONTRIBUÍRAM: no modo história, o
+piso de sentenças deixa de existir como problema, porque a matéria curta é
+lida no contexto das longas.
+
+### Medições do funil (01/09/2026, custo zero, propostas em revisão externa)
+
+Três medições sobre o funil de seleção, e a terceira muda a fila:
+
+1. **Sindicação**: 8 de 539 pares cross-veículo com Jaccard de texto > 50%
+   (InfoMoney×Estadão via Estadão Conteúdo, G1×Valor). ~1,5% — corroboração
+   falsa existe, é pequena, e o modo história a neutraliza barato (texto
+   quase idêntico vira uma leitura com as duas fontes anotadas).
+2. **Vazamento do léxico**: das matérias que NÃO formaram par, 189 de 400
+   têm vizinho semântico ≥ 0,70 em OUTRO veículo (título+lead) — pares que
+   o agrupamento por termos de título nunca viu (Quaest-SE na CNN e no G1;
+   PLOA na CNN e no Poder360). Parte é mesmo-assunto e não mesma-história,
+   mas os espécimes inequívocos abundam.
+3. **Calibração com pares-ouro** (117 pares de matérias cujas triplas v2
+   compartilham chave): pela similaridade de TÍTULO — o input real da
+   peneira — a mediana do ouro é **0,37**, e **74 de 117 ficam abaixo do
+   limiar 0,70**. Com título+lead, mediana 0,55 contra 0,13 do aleatório.
+
+Leitura conjunta: **título é sinal fraco de mesma-história**, e tanto o
+agrupamento léxico quanto a peneira de 0,70 estão calibrados nele. Os 71
+fatos confirmados da Medição 1 são a fruta baixa (títulos gêmeos); o resto
+morre em silêncio antes de qualquer chamada. Decisão registrada: o topo do
+funil migra para agrupamento por embedding de título+lead, com limiar
+calibrado nos pares-ouro (a zona útil aparente é ~0,35–0,45 em título+lead)
+— junto com a extração por história, no mesmo redesenho da v3.
 
 ### Questão em aberto: atribuição
 
