@@ -773,6 +773,53 @@ def _roda_historias(conexao: sqlite3.Connection, grupos, args,
     return usos
 
 
+def extrai_grupo(conexao: sqlite3.Connection,
+                 linhas: list[sqlite3.Row],
+                 limite_lide: int | None = MAX_SENTENCAS,
+                 ) -> tuple[int, float, bool]:
+    """Extrai um grupo de matérias como UMA história e grava. Devolve
+    (triplas válidas, custo em US$, recusada) — `recusada` é o
+    mesma_historia=false, que quem chama pode querer tratar (a demanda
+    re-tenta a melhor candidata sozinha; o lote só registra).
+
+    É o caminho do modo história sem a cerimônia do CLI, para a extração
+    sob demanda (`demanda`): o chamador já escolheu as matérias; aqui é
+    montar os blocos, chamar o modelo uma vez e gravar explodido por
+    fonte — mesmas regras, mesma validação e mesma versão de prompt do
+    `_roda_historias`. Grupo de UMA matéria também passa por aqui: o
+    formato de história com uma fonte só é válido, e manter um caminho
+    único evita duas gravações com semânticas diferentes.
+
+    `mesma_historia=false` grava os marcadores vazios e devolve 0 triplas
+    — o grupo não volta a ser candidato, igual ao comportamento do lote.
+    """
+    repetidas: dict[str, set[str]] = {}
+    blocos: list[tuple[sqlite3.Row, list[str]]] = []
+    for linha in linhas[:MAX_FONTES]:
+        v = linha["veiculo"]
+        if v not in repetidas:
+            repetidas[v] = boilerplate.frases_repetidas(
+                conexao, v, em_sentencas)
+        sentencas, _ = boilerplate.filtra(
+            em_sentencas(max(linha["conteudo"], linha["resumo"], key=len)),
+            repetidas[v])
+        blocos.append((linha, corta_lide(sentencas, limite_lide)))
+
+    resultado = extrai_historia(blocos)
+    if not resultado.dados.mesma_historia:
+        salva_historia(conexao, blocos, [], resultado.uso,
+                       PROMPT_VERSAO_HISTORIA)
+        return 0, resultado.uso.custo, True
+
+    n_sentencas = {ROTULOS_FONTE[i]: len(s) for i, (_, s) in enumerate(blocos)}
+    validas, _ = valida_origens(resultado.dados.triplas, n_sentencas)
+    validas = [t for t in validas
+               if t.objeto_canonico or t.valor_numero is not None]
+    salva_historia(conexao, blocos, validas, resultado.uso,
+                   PROMPT_VERSAO_HISTORIA)
+    return len(validas), resultado.uso.custo, False
+
+
 def _por_id(conexao: sqlite3.Connection, ids: list[int]) -> list[sqlite3.Row]:
     """Matérias escolhidas a dedo, para extrair uma história inteira.
 

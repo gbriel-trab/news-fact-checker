@@ -182,6 +182,12 @@ def conecta(caminho: Path) -> sqlite3.Connection:
     """Abre o banco, criando arquivo e esquema se ainda não existirem."""
     caminho.parent.mkdir(parents=True, exist_ok=True)
     conexao = sqlite3.connect(caminho)
+    # Painel, coleta agendada e boletim abrem este banco ao mesmo tempo.
+    # Sem timeout, escrita concorrente vira "database is locked" na hora —
+    # e no pior lugar possível: gravando uma extração JÁ COBRADA pela API
+    # (apontado na revisão de 01/09/2026). Cinco segundos de espera cobrem
+    # qualquer transação real deste projeto.
+    conexao.execute("PRAGMA busy_timeout = 5000")
     conexao.row_factory = sqlite3.Row
     conexao.executescript(ESQUEMA)
     _migra(conexao)

@@ -83,8 +83,8 @@ class TestRendicaoTelegram:
                         "veiculos": 0, "custo": 0.02, "evidencias": []}],
             "sem_premissas": False,
         }, None)], [], [], 0.10, 0.03)
-        assert "⚪ <b>sem evidência</b>" in html
-        assert "💬" in html
+        assert "<b>[SEM EVIDÊNCIA]</b>" in html
+        assert "<code>[OPINIÃO]</code>" in html
         assert "<b>[1]</b>" in html
 
     def test_confirmado_traz_fonte_clicavel(self):
@@ -97,12 +97,42 @@ class TestRendicaoTelegram:
                         "evidencias": [("G1", "http://g1/x")]}],
             "sem_premissas": False,
         }, None)], [], ["https://x.com/i/status/12345"], 0.10, 0.03)
-        assert "✅ <b>confirmado</b>" in html
+        assert "<b>[CONFIRMADO]</b>" in html
+        assert "<code>[EVIDÊNCIA]</code>" in html
         assert '<a href="http://g1/x">G1</a>' in html
         # Sem par com o post, o link vai para o rodapé de sobras — com o
         # fim do ID como texto, nunca um número que prometa ordem.
         assert '<a href="https://x.com/i/status/12345">…12345</a>' in html
         assert "sem par" in html
+
+    def test_nota_de_demanda_aparece(self):
+        from src.boletim import _formata_telegram
+        html = _formata_telegram("@x", "01/09", [(1, "post", {
+            "nao_verificaveis": [],
+            "checks": [{"afirmacao": "a", "veredito": "confirmado",
+                        "justificativa": "ok", "veiculos": 2, "custo": 0.02,
+                        "evidencias": [("G1", "http://g1/x")],
+                        "demanda": "2 matéria(s) extraída(s) na hora"}],
+            "sem_premissas": False,
+        }, None)], [], [], 0.10, 0.03)
+        assert "<code>[DEMANDA]</code>" in html
+
+    def test_sem_emoji_na_rendicao(self):
+        # Pedido de 01/09/2026: etiquetas textuais no lugar de emoji.
+        from src.boletim import _formata_telegram
+        html = _formata_telegram("@x", "01/09", [(1, "post", {
+            "nao_verificaveis": [("relato", "r"), ("previsao", "p")],
+            "checks": [{"afirmacao": "a", "veredito": "sem_evidencia",
+                        "justificativa": "", "veiculos": 0, "custo": 0,
+                        "evidencias": []}],
+            "sem_premissas": False,
+        }, None)], ["nota da busca"], ["https://x.com/i/status/9"],
+            0.10, 0.03)
+        for emoji in "📡💬🔮👤⚪✅❌🔗⚠️↳":
+            assert emoji not in html
+        assert "<code>[RELATO]</code>" in html
+        assert "<code>[PREVISÃO]</code>" in html
+        assert "<code>[AVISO]</code>" in html
 
     def test_post_com_url_validada_ganha_ancora_e_contexto(self):
         from src.boletim import _formata_telegram
@@ -115,7 +145,8 @@ class TestRendicaoTelegram:
             "@x", "01/09", [(1, post, vazio, "https://x.com/x/status/123")],
             [], ["https://x.com/i/status/123"], 0.10, 0.03)
         assert '<a href="https://x.com/x/status/123">ver no X</a>' in html
-        assert "↳ <i>EM RESPOSTA A (@y): qual a resposta?</i>" in html
+        assert ("<code>[CONTEXTO]</code> "
+                "<i>EM RESPOSTA A (@y): qual a resposta?</i>") in html
         # A linha URL: não aparece no corpo, e o link pareado não repete
         # no rodapé de sobras.
         assert "URL:" not in html

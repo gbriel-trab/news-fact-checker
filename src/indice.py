@@ -156,6 +156,43 @@ def texto_da_tripla(sujeito: str, relacao: str, objeto: str | None,
 
 # ------------------------------------------------------------------ indexação
 
+def indexa_artigos(conexao: sqlite3.Connection, dias: int = 10) -> int:
+    """Indexa título+lead das matérias RECENTES — o índice do COLETADO.
+
+    As outras coleções indexam o que foi extraído; esta indexa o que foi
+    apenas coletado, e existe para a extração sob demanda (`demanda`):
+    premissa sem cobertura procura aqui a matéria que o seletor não
+    priorizou. A janela é a mesma do agrupamento, pelo mesmo motivo —
+    premissa de post é sobre o agora, e matéria sem `data_publicacao`
+    fica de fora com ela.
+
+    Upsert por id, e só embeda o que ainda não está na coleção: rodar a
+    cada premissa do boletim custa uma consulta ao Chroma, não a janela
+    inteira de embeddings. Devolve quantas matérias NOVAS entraram.
+    """
+    from . import agrupa
+
+    linhas = agrupa.carrega(conexao, dias)
+    if not linhas:
+        return 0
+    colecao = _colecao("artigos")
+    presentes = set(colecao.get(
+        ids=[str(l["id"]) for l in linhas], include=[])["ids"])
+    novas = [l for l in linhas if str(l["id"]) not in presentes]
+    if novas:
+        colecao.upsert(
+            ids=[str(l["id"]) for l in novas],
+            embeddings=_vetores(
+                [agrupa.texto_de_agrupamento(l) for l in novas]),
+            documents=[l["titulo"] for l in novas],
+            metadatas=[{"artigo_id": l["id"], "veiculo": l["veiculo"],
+                        "titulo": l["titulo"],
+                        "data": l["data_publicacao"] or ""}
+                       for l in novas],
+        )
+    return len(novas)
+
+
 def indexa_entidades(conexao: sqlite3.Connection) -> int:
     """Indexa as entidades canônicas distintas do acervo.
 
@@ -217,13 +254,28 @@ def indexa_entidades(conexao: sqlite3.Connection) -> int:
     return len(nomes)
 
 
-def indexa_afirmacoes(conexao: sqlite3.Connection) -> int:
+def indexa_afirmacoes(conexao: sqlite3.Connection,
+                      so_artigos: list[int] | None = None) -> int:
     """Indexa cada tripla como frase legível.
 
     A tripla é indexada pelo que ela AFIRMA, não pela frase de origem: é assim
     que uma afirmação que chega de fora encontra a tripla equivalente, ainda
     que os dois textos não se pareçam.
+
+    `so_artigos` restringe às triplas dessas matérias — é o caminho da
+    extração sob demanda, que indexa meia dúzia de triplas novas por vez.
+    Sem o filtro, cada extração de demanda re-embedava o recorte INTEIRO
+    (minutos de CPU por rodada, crescendo com o acervo — revisão de
+    01/09/2026). A reindexação completa continua sendo o padrão do CLI.
     """
+    filtro_artigo = ""
+    extras: tuple = ()
+    if so_artigos is not None:
+        if not so_artigos:
+            return 0
+        filtro_artigo = (
+            f" AND a.id IN ({','.join('?' * len(so_artigos))})")
+        extras = tuple(so_artigos)
     linhas = conexao.execute(
         """
         SELECT t.id, t.sujeito_canonico s, t.relacao r, t.objeto_canonico o,
@@ -255,8 +307,8 @@ def indexa_afirmacoes(conexao: sqlite3.Connection) -> int:
                     AND e2.modelo = ?
                   GROUP BY e2.artigo_id
               )
-        """,
-        (llm.EXTRACAO.id,),
+        """ + filtro_artigo,
+        (llm.EXTRACAO.id,) + extras,
     ).fetchall()
 
     if not linhas:

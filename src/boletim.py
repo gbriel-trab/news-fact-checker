@@ -110,20 +110,36 @@ _RE_EVIDENCIA = re.compile(
     r"^\s*\[([^\]]+)\][^\n]*\n\s+(https?://\S+)", re.MULTILINE)
 
 
-def _confere_post(post: str, conexao, acervo) -> tuple[str, float, dict]:
+def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
     """Separa as premissas de um post e confere cada fato. Devolve
     (bloco de texto puro, custo Anthropic, dados estruturados).
+
+    `estado` é MUTÁVEL de propósito — {"acervo": ..., "orcamento": ...} —
+    e pertence à rodada, não ao post: acervo recarregado e orçamento de
+    demanda debitado sobrevivem mesmo quando esta função morre no meio
+    (a revisão de 01/09/2026 mostrou que devolver os dois por retorno
+    deixava uma exceção restaurar o orçamento já gasto — TETO furado no
+    caminho de falha, que é o caminho onde teto mais importa).
 
     Os dados estruturados alimentam a rendição HTML do Telegram — montada
     das linhas de `consultas`, nunca do stdout capturado, para o celular
     não herdar a verborragia do terminal. O texto puro continua sendo a
     trilha completa (arquivo e console).
 
+    Antes de cada fato ir ao check, a EXTRAÇÃO SOB DEMANDA (`demanda`)
+    tenta cobrir a premissa com matéria coletada e ainda não extraída,
+    dentro do orçamento da rodada. Se extraiu, o check roda com
+    `forcar=True` — sem isso a janela de reuso de 24h devolvia o
+    "sem evidência" antigo e a extração recém-paga nunca era julgada.
+    Demanda é otimização: falha nela vira linha do boletim e um débito
+    PESSIMISTA no orçamento (não dá para saber se a chamada chegou a ser
+    cobrada), nunca derruba o check.
+
     O custo vem do livro-caixa: soma das linhas de `consultas` gravadas
-    DURANTE esta função (id > marco); veredito reusado não grava e não
-    soma — sinal estrutural, nunca busca de palavra no texto capturado.
+    DURANTE esta função (id > marco) mais o custo faturado das extrações
+    de demanda; veredito reusado não grava e não soma.
     """
-    from . import check, premissas, radar
+    from . import check, demanda, grafo, premissas, radar
 
     marco = conexao.execute(
         "SELECT COALESCE(MAX(id), 0) FROM consultas").fetchone()[0]
@@ -133,6 +149,7 @@ def _confere_post(post: str, conexao, acervo) -> tuple[str, float, dict]:
     analise, uso = premissas.separa(radar.para_separacao(post),
                                     conexao=conexao)
     partes: list[str] = []
+    custo_demanda = 0.0
     dados: dict = {"nao_verificaveis": [], "checks": [],
                    "sem_premissas": not analise.premissas}
 
@@ -144,11 +161,36 @@ def _confere_post(post: str, conexao, acervo) -> tuple[str, float, dict]:
         dados["nao_verificaveis"].append((p.tipo, p.afirmacao))
 
     for p in fatos:
+        nota_demanda = None
+        try:
+            r = demanda.garante(conexao, p.afirmacao, estado["orcamento"])
+        except Exception as erro:  # noqa: BLE001 — otimização não derruba
+            r = None
+            # Débito pessimista: a falha pode ter vindo DEPOIS de a
+            # chamada ser cobrada (llm.py registra esse caso), e teto que
+            # não desconta falha não é teto.
+            estado["orcamento"] -= demanda.CUSTO_ESTIMADO
+            partes.append(f"  demanda falhou ({type(erro).__name__}: "
+                          f"{erro}) — verificando só com o acervo; "
+                          f"orçamento debitado por precaução")
+        if r is not None and r.motivo == "extraiu":
+            estado["orcamento"] -= r.custo
+            custo_demanda += r.custo
+            estado["acervo"] = grafo.carrega(conexao)
+            nota_demanda = (f"{r.materias} matéria(s) extraída(s) na hora, "
+                            f"{r.triplas} triplas")
+            partes.append(f"  [DEMANDA] {nota_demanda} · US$ {r.custo:.4f}")
+        elif r is not None and r.motivo == "teto":
+            partes.append("  [DEMANDA] teto da rodada atingido — "
+                          "verificando só com o acervo")
+
         marco_fato = conexao.execute(
             "SELECT COALESCE(MAX(id), 0) FROM consultas").fetchone()[0]
         saida = io.StringIO()
         with contextlib.redirect_stdout(saida):
-            check.verifica(p.afirmacao, conexao=conexao, acervo=acervo)
+            check.verifica(p.afirmacao, conexao=conexao,
+                           acervo=estado["acervo"],
+                           forcar=(r is not None and r.motivo == "extraiu"))
         partes.append(f'  premissa: "{p.afirmacao}"')
         nova = conexao.execute(
             "SELECT * FROM consultas WHERE id > ? "
@@ -163,6 +205,7 @@ def _confere_post(post: str, conexao, acervo) -> tuple[str, float, dict]:
             "veiculos": nova["veiculos"] if nova else 0,
             "custo": nova["custo_usd"] if nova else 0.0,
             "evidencias": evidencias,
+            "demanda": nota_demanda,
         })
         # Sem evidência vira UMA linha: a enumeração do que foi olhado e
         # rejeitado é trilha de auditoria — mora em `consultas` e no
@@ -180,7 +223,8 @@ def _confere_post(post: str, conexao, acervo) -> tuple[str, float, dict]:
     pago_em_checks = conexao.execute(
         "SELECT COALESCE(SUM(custo_usd), 0) FROM consultas WHERE id > ?",
         (marco,)).fetchone()[0]
-    return "\n".join(partes), uso.custo + pago_em_checks, dados
+    return ("\n".join(partes), uso.custo + pago_em_checks + custo_demanda,
+            dados)
 
 
 def monta(dias: int, reenviar: bool = False,
@@ -230,7 +274,7 @@ def monta(dias: int, reenviar: bool = False,
 
         hoje = datetime.now(timezone.utc).strftime("%d/%m/%Y")
         handles = ", ".join("@" + h for h in config.HANDLES_RADAR)
-        linhas = [f"📡 RADAR · {handles} · {hoje}",
+        linhas = [f"RADAR · {handles} · {hoje}",
                   "transcrição de modelo — o registro é o post, no link",
                   ENQUADRAMENTO, ""]
         custo = rodada.custo_usd
@@ -242,6 +286,11 @@ def monta(dias: int, reenviar: bool = False,
                           if not rodada.posts else
                           f"{len(rodada.posts)} post(s) na janela, todos já "
                           f"entregues em boletins anteriores.")
+        from . import demanda
+        # O estado é da RODADA e mutável de propósito: exceção num post
+        # não pode restaurar orçamento de demanda já gasto nem descartar
+        # o acervo recarregado (revisão de 01/09/2026).
+        estado = {"acervo": acervo, "orcamento": demanda.TETO_USD}
         for i, (post, chaves) in enumerate(ineditos, 1):
             linhas.append(f"[{i}] {post}")
             url, confere = radar.url_do_post(post, rodada.links)
@@ -251,7 +300,7 @@ def monta(dias: int, reenviar: bool = False,
                               "link omitido")
             # Falha num post não derruba o lote — padrão do extract.main.
             try:
-                bloco, gasto, dados = _confere_post(post, conexao, acervo)
+                bloco, gasto, dados = _confere_post(post, conexao, estado)
             except Exception as erro:  # noqa: BLE001 — vira linha do boletim
                 linhas.append(f"  CONFERÊNCIA FALHOU ({type(erro).__name__}: "
                               f"{erro}) — o post volta na próxima rodada")
@@ -289,21 +338,30 @@ def _esc(texto: str) -> str:
             .replace(">", "&gt;"))
 
 
-_EMOJI_TIPO = {"opiniao": "💬", "previsao": "🔮", "relato": "👤"}
-_EMOJI_VEREDITO = {"confirmado": "✅", "contradito": "❌",
-                   "sem_evidencia": "⚪"}
+_TAG_TIPO = {"opiniao": "OPINIÃO", "previsao": "PREVISÃO",
+             "relato": "RELATO"}
+_TAG_VEREDITO = {"confirmado": "CONFIRMADO", "contradito": "CONTRADITO",
+                 "sem_evidencia": "SEM EVIDÊNCIA"}
 
 
 def _formata_telegram(handles: str, hoje: str, estruturados, notas,
                       links, custo: float, custo_xai: float) -> str:
     """A rendição HTML do Telegram: os MESMOS dados do texto puro, com
-    hierarquia visual — negrito no cabeçalho, itálico no post, semáforo no
-    veredito e link clicável na evidência. Trilha completa continua no
-    arquivo; aqui é o resumo para o bolso. Tudo que vem de modelo ou de
-    post passa por `_esc` antes de virar HTML."""
+    hierarquia visual — negrito no cabeçalho, itálico no post, etiqueta
+    monoespaçada no tipo e link clicável na evidência. Trilha completa
+    continua no arquivo; aqui é o resumo para o bolso. Tudo que vem de
+    modelo ou de post passa por `_esc` antes de virar HTML.
+
+    Sem emoji, por pedido (01/09/2026): etiquetas textuais [RELATO],
+    [CONFIRMADO] etc. O Telegram não aceita cor de texto — a paleta é
+    negrito (veredito), itálico (texto de post) e `<code>` (etiquetas),
+    que os clientes renderizam num tom próprio: é a "cor" possível."""
     from . import radar
 
-    p: list[str] = [f"📡 <b>Radar · {_esc(handles)} · {hoje}</b>",
+    def tag(texto: str) -> str:
+        return f"<code>[{texto}]</code>"
+
+    p: list[str] = [f"<b>RADAR · {_esc(handles)} · {hoje}</b>",
                     f"<i>{_esc(ENQUADRAMENTO)}</i>", ""]
     if not estruturados:
         p.append("Nenhum post novo na janela.")
@@ -340,31 +398,32 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
             pareados.add(radar.id_status(url))
         p.append(f"<b>[{i}]</b>{meta}{ver}")
         if resposta:
-            p.append(f"↳ <i>{_esc(resposta)}</i>")
+            p.append(f"{tag('CONTEXTO')} <i>{_esc(resposta)}</i>")
         p.append(f"<i>{_esc(corpo)}</i>")
         for tipo, afirmacao in dados["nao_verificaveis"]:
-            p.append(f"{_EMOJI_TIPO.get(tipo, '•')} {_esc(afirmacao)}")
+            p.append(f"{tag(_TAG_TIPO.get(tipo, tipo.upper()))} "
+                     f"{_esc(afirmacao)}")
         for c in dados["checks"]:
-            emoji = _EMOJI_VEREDITO.get(c["veredito"], "•")
+            rotulo = _TAG_VEREDITO.get(c["veredito"], c["veredito"].upper())
+            if c.get("demanda"):
+                p.append(f"{tag('DEMANDA')} {_esc(c['demanda'])}")
             if c["veredito"] == "sem_evidencia":
-                p.append(f"{emoji} <b>sem evidência</b> — o acervo não "
-                         f"cobre · <i>{_esc(c['afirmacao'])}</i>")
+                p.append(f"<b>[{rotulo}]</b> o acervo não cobre · "
+                         f"<i>{_esc(c['afirmacao'])}</i>")
             else:
-                rotulo = c["veredito"].replace("_", " ")
                 fontes = " · ".join(
                     f'<a href="{_esc(url)}">{_esc(veiculo)}</a>'
                     for veiculo, url in c["evidencias"][:4])
-                p.append(f"{emoji} <b>{rotulo}</b> · "
-                         f"{c['veiculos']} veículo(s) — "
+                p.append(f"<b>[{rotulo}]</b> · {c['veiculos']} veículo(s) — "
                          f"<i>{_esc(c['afirmacao'])}</i>")
                 p.append(f"    {_esc(c['justificativa'])}")
                 if fontes:
-                    p.append(f"    fontes: {fontes}")
+                    p.append(f"    {tag('EVIDÊNCIA')} {fontes}")
         if dados["sem_premissas"]:
             p.append("(nenhuma afirmação separável)")
         p.append("")
     for nota in notas:
-        p.append(f"⚠️ {_esc(nota)}")
+        p.append(f"{tag('AVISO')} {_esc(nota)}")
     # Só as SOBRAS: link já pareado a um post não repete aqui. O texto da
     # âncora é o fim do ID do status, nunca um número — numerar este
     # conjunto foi o que fez o boletim de 31/08 prometer correspondência
@@ -374,7 +433,7 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
         ancoras = " · ".join(
             f'<a href="{_esc(u)}">…{(radar.id_status(u) or u)[-5:]}</a>'
             for u in sobras)
-        p.append(f"🔗 também lidos na busca, sem par com os posts acima "
+        p.append(f"Também lidos na busca, sem par com os posts acima "
                  f"(sem ordem): {ancoras}")
     p.append("")
     p.append(f"<i>custo: US$ {custo:.2f} (xAI {custo_xai:.2f} + "
