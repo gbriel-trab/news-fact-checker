@@ -1,10 +1,17 @@
 """Testes da deduplicação e do versionamento do acervo."""
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from src.models import Artigo, ResultadoGravacao
 from src.normalize import hash_conteudo, normaliza_url
 from src.storage import conecta, estatisticas, salva
+
+# Dinâmica, não fixa: a janela de agrupamento (agrupa.JANELA_DIAS) filtra
+# por data de publicação, e uma data congelada faria a suíte inteira
+# apodrecer em silêncio quando o fixture envelhecesse para fora da janela.
+ONTEM = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
 
 
 def artigo(
@@ -14,6 +21,7 @@ def artigo(
     conteudo: str = "Corpo",
     veiculo: str = "Veículo",
     editoria: str = "Geral",
+    data_publicacao: str = ONTEM,
 ) -> Artigo:
     return Artigo(
         veiculo=veiculo,
@@ -23,7 +31,7 @@ def artigo(
         url_norm=normaliza_url(url),
         resumo=resumo,
         conteudo=conteudo,
-        data_publicacao="2026-08-25T12:00:00+00:00",
+        data_publicacao=data_publicacao,
         hash_conteudo=hash_conteudo(titulo, resumo, conteudo),
     )
 

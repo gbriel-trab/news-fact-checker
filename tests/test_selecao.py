@@ -152,6 +152,42 @@ class TestCortaLide:
         assert extract.PROMPT_VERSAO == extract.versao_prompt()
 
 
+class TestJanelaDoAgrupamento:
+    """Evento recorrente não pode formar par entre edições de meses
+    diferentes — 'Copom mantém Selic' de julho e de setembro são fatos
+    distintos com o mesmo título."""
+
+    def test_materia_velha_fica_fora_do_agrupamento(self, tmp_path):
+        from datetime import datetime, timedelta, timezone
+        from src import agrupa
+        from src.storage import conecta, salva
+        from tests.test_storage import artigo
+
+        con = conecta(tmp_path / "t.db")
+        velha = (datetime.now(timezone.utc)
+                 - timedelta(days=agrupa.JANELA_DIAS + 5)).isoformat()
+        salva(con, artigo(url="https://a/1", titulo="Copom mantém Selic",
+                          veiculo="A"))
+        salva(con, artigo(url="https://b/2", titulo="Copom mantém Selic",
+                          veiculo="B", data_publicacao=velha))
+        ids = {m["id"] for m in agrupa.carrega(con)}
+        assert len(ids) == 1  # só a recente
+
+    def test_sem_janela_carrega_tudo(self, tmp_path):
+        from datetime import datetime, timedelta, timezone
+        from src import agrupa
+        from src.storage import conecta, salva
+        from tests.test_storage import artigo
+
+        con = conecta(tmp_path / "t.db")
+        velha = (datetime.now(timezone.utc)
+                 - timedelta(days=99)).isoformat()
+        salva(con, artigo(url="https://a/1", veiculo="A"))
+        salva(con, artigo(url="https://b/2", veiculo="B",
+                          data_publicacao=velha))
+        assert len(agrupa.carrega(con, janela_dias=None)) == 2
+
+
 class TestJanelaTemporal:
     """Número só disputa com número quando afirma o mesmo instante.
 

@@ -88,15 +88,42 @@ def agrupa(materias: list[sqlite3.Row]) -> list[Historia]:
     return sorted(historias, key=lambda h: (-len(h.veiculos), -len(h.materias)))
 
 
-def carrega(conexao: sqlite3.Connection) -> list[sqlite3.Row]:
+JANELA_DIAS = 10
+"""Só matéria publicada nos últimos N dias entra no agrupamento.
+
+Sem janela, o agrupamento varre o acervo INTEIRO — e o acervo é permanente.
+Evento recorrente ("Copom mantém Selic", "Quaest divulga pesquisa") formaria
+par entre edições de meses diferentes: mesmos termos no título, fatos
+distintos, extração paga de par falso. Não mordeu na primeira semana de
+acervo; morderia com o primeiro Copom repetido. Apontado em revisão externa
+de 01/09/2026.
+
+Dez dias, e não menos, pelo custo do outro lado: a promessa "matéria
+solitária espera o par" (ARCHITECTURE, filtro de custo) vale DENTRO da
+janela — corroboração entre veículos acontece em horas ou dias, e o evento
+recorrente mais frequente do acervo (reunião do Copom) tem ciclo de ~45
+dias. Dez fica com folga dos dois lados. Matéria fora da janela continua no
+acervo e na busca; só deixa de formar par novo."""
+
+
+def carrega(conexao: sqlite3.Connection,
+            janela_dias: int | None = JANELA_DIAS) -> list[sqlite3.Row]:
+    filtro = ""
+    parametros: tuple = ()
+    if janela_dias is not None:
+        filtro = ("WHERE data_publicacao >= "
+                  "datetime('now', ?) ")
+        parametros = (f"-{janela_dias} days",)
     return conexao.execute(
-        """
+        f"""
         SELECT id, veiculo, editoria, titulo, resumo, conteudo,
                MAX(LENGTH(conteudo), LENGTH(resumo)) AS tamanho,
                (SELECT COUNT(*) FROM extracoes e WHERE e.artigo_id = artigos.id) AS extraida
         FROM artigos
+        {filtro}
         ORDER BY data_publicacao DESC
-        """
+        """,
+        parametros,
     ).fetchall()
 
 
