@@ -9,21 +9,23 @@ from src.storage import conecta, salva, salva_extracao
 from tests.test_storage import artigo
 
 
-def _corpo(sentencas: int) -> str:
-    """Texto com N sentencas de verdade.
+def _corpo(sentencas: int, titulo: str = "O órgão divulgou o dado") -> str:
+    """Texto com N sentencas cujo assunto ecoa o título.
 
-    O piso passou de caracteres para SENTENCAS (ver `MIN_SENTENCAS`), entao
-    encher de caractere nao basta: 2000 letras sem pontuacao sao uma sentenca
-    so, e a materia seria descartada com razao.
+    O agrupamento é semântico sobre título+lead — lead genérico idêntico
+    entre matérias de assuntos diferentes as aproximaria artificialmente.
     """
     return " ".join(
-        f"O orgao divulgou o dado numero {i} nesta quarta-feira." 
+        f"{titulo}, segundo o levantamento de número {i} desta quarta."
         for i in range(sentencas)
     )
 
 
 def _base(tmp_path, materias):
-    """materias: lista de (veiculo, titulo, quantas_sentencas, ja_extraida)."""
+    """materias: lista de (veiculo, titulo, quantas_sentencas, ja_extraida).
+
+    `ja_extraida` marca sob a versão do MODO HISTÓRIA — é ela que o seletor
+    de histórias usa para não repetir."""
     from src import llm
     from src.llm import Uso
 
@@ -32,16 +34,15 @@ def _base(tmp_path, materias):
               cache_leitura=0, cache_escrita=0)
     for i, (veiculo, titulo, sentencas, extraida) in enumerate(materias):
         salva(conexao, artigo(url=f"https://x/{i}", titulo=titulo,
-                              veiculo=veiculo, conteudo=_corpo(sentencas)))
+                              veiculo=veiculo,
+                              conteudo=_corpo(sentencas, titulo)))
         if extraida:
             linha = conexao.execute(
                 "SELECT id FROM artigos WHERE url_norm LIKE ?",
                 (f"%/{i}",)).fetchone()
-            # A versão corrente, não um número fixo: extração de vocabulário
-            # antigo VOLTA para a fila por regra do seletor, e um fixture
-            # preso à v1 testaria esse retorno em vez do "já extraída".
             salva_extracao(conexao, linha["id"], [], llm.EXTRACAO.id,
-                           "v1", extract.VOCAB_VERSAO, uso)
+                           extract.PROMPT_VERSAO_HISTORIA,
+                           extract.VOCAB_VERSAO, uso)
     return conexao
 
 
@@ -50,26 +51,35 @@ TITULO_B = "Lucro da Caixa cresce 5,9% e chega a R$ 3,9 bilhões"
 TITULO_OUTRO = "Eclipse lunar quase total será visível no Brasil hoje"
 
 
-class TestParParcial:
-    def test_completa_o_par_quando_metade_ja_foi_extraida(self, tmp_path):
-        """O caso mais barato de todos: uma chamada fecha uma confirmação.
-
-        Contar só as pendentes descartava exatamente esta história.
-        """
+class TestSelecaoDeHistorias:
+    def test_historia_com_metade_extraida_entra_inteira(self, tmp_path):
+        """No modo história a releitura é o ponto: o membro já extraído em
+        modo matéria volta JUNTO, para os nomes convergirem na mesma
+        chamada — e a linha nova supera a antiga no grafo."""
+        from src import llm
+        from src.llm import Uso
         conexao = _base(tmp_path, [
-            ("G1", TITULO_A, 3, True),
+            ("G1", TITULO_A, 3, False),
             ("Folha", TITULO_B, 3, False),
         ])
-        escolhidas = extract._por_historia(conexao, 5)
-        assert [m["veiculo"] for m in escolhidas] == ["Folha"]
+        # G1 extraída em modo MATÉRIA (versão diferente da de história)
+        linha = conexao.execute(
+            "SELECT id FROM artigos WHERE url_norm LIKE '%/0'").fetchone()
+        salva_extracao(conexao, linha["id"], [], llm.EXTRACAO.id,
+                       extract.PROMPT_VERSAO, extract.VOCAB_VERSAO,
+                       Uso(modelo=llm.EXTRACAO, entrada=1, saida=1,
+                           cache_leitura=0, cache_escrita=0))
+        grupos = extract._historias_para_extrair(conexao, 5)
+        assert len(grupos) == 1
+        assert {m["veiculo"] for m in grupos[0]} == {"G1", "Folha"}
         conexao.close()
 
-    def test_nao_seleciona_quando_tudo_ja_foi_extraido(self, tmp_path):
+    def test_historia_toda_sob_a_versao_de_historia_nao_volta(self, tmp_path):
         conexao = _base(tmp_path, [
             ("G1", TITULO_A, 3, True),
             ("Folha", TITULO_B, 3, True),
         ])
-        assert extract._por_historia(conexao, 5) == []
+        assert extract._historias_para_extrair(conexao, 5) == []
         conexao.close()
 
 
@@ -78,7 +88,7 @@ class TestFonteUnica:
         """Não pode ser corroborado por definição — a chamada seria gasto sem
         retorno possível. Continua no acervo; só não entra nesta fila."""
         conexao = _base(tmp_path, [("G1", TITULO_A, 3, False)])
-        assert extract._por_historia(conexao, 5) == []
+        assert extract._historias_para_extrair(conexao, 5) == []
         conexao.close()
 
     def test_duas_materias_do_mesmo_veiculo_nao_formam_par(self, tmp_path):
@@ -87,30 +97,56 @@ class TestFonteUnica:
             ("G1", TITULO_A, 3, False),
             ("G1", TITULO_B, 3, False),
         ])
-        assert extract._por_historia(conexao, 5) == []
+        assert extract._historias_para_extrair(conexao, 5) == []
         conexao.close()
 
 
-class TestPeneiraSemantica:
-    def test_titulos_de_assuntos_diferentes_nao_formam_par(self, tmp_path):
-        """Termo em comum não é assunto em comum. Ver `_por_historia`."""
+class TestAgrupamento:
+    def test_assuntos_diferentes_nao_formam_historia(self, tmp_path):
+        """Caixa e eclipse lunar não compartilham termos — o léxico separa
+        na entrada."""
         conexao = _base(tmp_path, [
             ("G1", TITULO_A, 3, False),
             ("Folha", TITULO_OUTRO, 3, False),
         ])
-        assert extract._por_historia(conexao, 5) == []
+        assert extract._historias_para_extrair(conexao, 5) == []
+        conexao.close()
+
+    def test_mesmo_fato_agrupado_passa_pela_coesao(self, tmp_path):
+        """Dois títulos do mesmo fato: o léxico junta (compartilham
+        'Caixa/lucro/bilhões') e a guarda de coesão — calibrada no ouro
+        refinado, p10 0,62 — não pode expulsar par verdadeiro."""
+        conexao = _base(tmp_path, [
+            ("G1", TITULO_A, 3, False),
+            ("Folha", TITULO_B, 3, False),
+        ])
+        grupos = extract._historias_para_extrair(conexao, 5)
+        assert len(grupos) == 1
         conexao.close()
 
 
 class TestTextoInsuficiente:
-    def test_uma_sentenca_so_nao_entra(self, tmp_path):
-        """Uma sentenca traz fato solto, sem data nem entidade em volta, e
-        tripla sem contexto nao corrobora nem contradiz."""
+    def test_uma_sentenca_entra_se_a_historia_tem_ancora(self, tmp_path):
+        """A mudança medida do modo história (7 fontes, 01/09/2026): a
+        matéria de 1 sentença contribui lida no contexto das outras — o
+        piso vale para a HISTÓRIA, não para o membro."""
         conexao = _base(tmp_path, [
             ("G1", TITULO_A, 3, False),
             ("Folha", TITULO_B, 1, False),
         ])
-        assert extract._por_historia(conexao, 5) == []
+        grupos = extract._historias_para_extrair(conexao, 5)
+        assert len(grupos) == 1
+        assert {m["veiculo"] for m in grupos[0]} == {"G1", "Folha"}
+        conexao.close()
+
+    def test_historia_so_de_manchetes_nao_entra(self, tmp_path):
+        """Sem nenhuma matéria de 2+ sentenças não há âncora — só manchete
+        não sustenta extração nem em conjunto."""
+        conexao = _base(tmp_path, [
+            ("G1", TITULO_A, 1, False),
+            ("Folha", TITULO_B, 1, False),
+        ])
+        assert extract._historias_para_extrair(conexao, 5) == []
         conexao.close()
 
 

@@ -176,6 +176,201 @@ class Extracao(BaseModel):
     triplas: list[Tripla]
 
 
+# ------------------------------------------------------------ modo história
+
+ROTULOS_FONTE = "ABCDEFG"
+MAX_FONTES = len(ROTULOS_FONTE)
+"""Matérias por chamada no modo história. Sete é o máximo testado
+(experimento de 01/09/2026, história do incêndio): atribuição graduada
+saiu limpa. Acima disso, sem medição."""
+
+
+class Origem(BaseModel):
+    """De onde uma tripla saiu: qual matéria, qual sentença."""
+
+    fonte: str = Field(
+        description='A letra da matéria que afirma: "A", "B"...')
+    sentenca: int = Field(
+        description="Índice da sentença numerada DAQUELA matéria.")
+
+
+class TriplaHistoria(BaseModel):
+    """Tripla do modo história: os mesmos campos da `Tripla`, trocando o
+    índice único de sentença por `origens` — uma entrada por matéria que
+    afirma o fato. É o que torna a corroboração auditável: código barato
+    confere que cada fonte apontada de fato contém a sentença.
+
+    Definida por inteiro em vez de herdar: a `Tripla` exige `sentenca`, que
+    aqui não existe — e schema explícito é mais honesto que herança com
+    campo morto."""
+
+    sujeito: str = Field(description="Entidade como apareceu no texto.")
+    sujeito_canonico: str = Field(
+        description=(
+            "Nome canônico e completo da entidade, sem cargo nem artigo."
+        )
+    )
+    relacao: Relacao = Field(
+        description=(
+            "A relação, da lista fechada. `outro` quando nenhuma servir."
+        )
+    )
+    objeto: str | None = Field(
+        description="Segunda entidade como apareceu, ou null em atributo.")
+    objeto_canonico: str | None = Field(
+        description="Nome canônico da segunda entidade. null junto de objeto.")
+    tipo_relacao: Literal["evento", "estado"] = Field(
+        description="'evento' = instante; 'estado' = intervalo.")
+    origem: Literal["EXTRACTED", "INFERRED"] = Field(
+        description="EXTRACTED explícito no texto; INFERRED deduzido.")
+    valor_numero: float | None = Field(
+        description="O número puro quando houver quantidade, senão null.")
+    valor_unidade: str | None = Field(
+        description="Unidade curta ('%', 'BRL', 'votos'), ou null.")
+    valor_contexto: str | None = Field(
+        description="O que o número mede, curto, ou null.")
+    data_fato: str | None = Field(
+        description="Quando o fato ocorreu (AAAA-MM-DD/AAAA-MM/AAAA) ou null.")
+    origens: list[Origem] = Field(
+        description=(
+            "Uma entrada por matéria que AFIRMA este fato, com a sentença. "
+            "Inclua uma matéria APENAS se ela de fato o afirma."
+        )
+    )
+
+    @model_validator(mode="after")
+    def _objeto_e_canonico_andam_juntos(self) -> "TriplaHistoria":
+        if self.objeto and not self.objeto_canonico:
+            self.objeto_canonico = self.objeto
+        return self
+
+
+class ExtracaoHistoria(BaseModel):
+    mesma_historia: bool = Field(
+        description=(
+            "true se as matérias tratam do MESMO fato central. false se o "
+            "agrupamento errou e elas falam de coisas distintas — nesse "
+            "caso devolva triplas vazio."
+        )
+    )
+    triplas: list[TriplaHistoria]
+
+
+ADENDO_HISTORIA = """
+
+MODO HISTÓRIA: você receberá VÁRIAS matérias sobre a mesma história,
+etiquetadas [A], [B], [C]... Extraia as triplas seguindo TODAS as regras
+acima, e mais três:
+
+11. ORIGENS. Cada tripla lista `origens`: uma entrada {fonte, sentenca} por
+    matéria que AFIRMA aquele fato, apontando a sentença exata daquela
+    matéria. Inclua uma matéria SOMENTE se ela de fato afirma — atribuir a
+    quem não disse é o erro mais grave deste modo.
+
+12. UM NOME SÓ. Todas as matérias estão diante de você. A mesma entidade,
+    o mesmo evento e o mesmo ato recebem EXATAMENTE o mesmo nome canônico
+    em todas as triplas — "incêndio na casa de X" e "incêndio na residência
+    de X" são o MESMO evento. Se várias matérias afirmam o mesmo fato,
+    faça UMA tripla com várias origens, nunca cópias.
+
+13. HISTÓRIA ERRADA SE DECLARA. Se as matérias NÃO tratam do mesmo fato
+    central, devolva mesma_historia=false e triplas vazio — o agrupamento
+    errou, e dizer isso vale mais que extrair um par falso.
+"""
+
+
+def monta_conteudo_historia(
+        blocos: list[tuple[sqlite3.Row, list[str]]]) -> str:
+    """A parte variável do modo história: cada matéria com seu rótulo e
+    suas sentenças numeradas por fonte ([A0], [A1], [B0]...)."""
+    partes = []
+    for rotulo, (linha, sentencas) in zip(ROTULOS_FONTE, blocos):
+        numeradas = "\n".join(f"[{rotulo}{i}] {s}"
+                              for i, s in enumerate(sentencas))
+        partes.append(
+            f"MATÉRIA {rotulo} — Veículo: {linha['veiculo']} · "
+            f"Data de publicação: {linha['data_publicacao'] or 'desconhecida'}"
+            f" · Título: {linha['titulo']}\n{numeradas}")
+    return "\n\n".join(partes)
+
+
+def valida_origens(
+        triplas: list[TriplaHistoria],
+        n_sentencas: dict[str, int]) -> tuple[list[TriplaHistoria], int]:
+    """Descarta origem que aponta fonte ou sentença inexistente, e tripla
+    que ficar sem origem válida. É a trava contra corroboração fabricada:
+    `origens` é o modelo AFIRMANDO que cada fonte disse — índice inválido é
+    afirmação sem lastro e cai antes de virar registro. (A verificação
+    semântica — a sentença sustenta o conteúdo? — fica registrada como
+    evolução; esta é a estrutural.)"""
+    boas: list[TriplaHistoria] = []
+    descartadas = 0
+    for t in triplas:
+        validas = [o for o in t.origens
+                   if o.fonte in n_sentencas
+                   and 0 <= o.sentenca < n_sentencas[o.fonte]]
+        if validas:
+            t.origens[:] = validas
+            boas.append(t)
+        else:
+            descartadas += 1
+    return boas, descartadas
+
+
+def extrai_historia(blocos: list[tuple[sqlite3.Row, list[str]]]
+                    ) -> llm.Resposta:
+    """Uma chamada para a história inteira. Ver o registro no ARCHITECTURE:
+    com as matérias no mesmo contexto, o modelo nomeia o evento uma vez —
+    a convergência que chamadas isoladas não têm como entregar."""
+    return llm.gera(
+        INSTRUCOES + ADENDO_HISTORIA,
+        monta_conteudo_historia(blocos),
+        ExtracaoHistoria,
+        modelo=llm.EXTRACAO,
+    )
+
+
+def _tripla_da_fonte(t: TriplaHistoria, sentenca: int) -> Tripla:
+    return Tripla(
+        sujeito=t.sujeito, sujeito_canonico=t.sujeito_canonico,
+        relacao=t.relacao, objeto=t.objeto,
+        objeto_canonico=t.objeto_canonico, tipo_relacao=t.tipo_relacao,
+        origem=t.origem, valor_numero=t.valor_numero,
+        valor_unidade=t.valor_unidade, valor_contexto=t.valor_contexto,
+        data_fato=t.data_fato, sentenca=sentenca,
+    )
+
+
+def salva_historia(conexao: sqlite3.Connection,
+                   blocos: list[tuple[sqlite3.Row, list[str]]],
+                   triplas: list[TriplaHistoria],
+                   uso: llm.Uso, prompt_versao: str) -> None:
+    """Explode a extração da história em linhas POR FONTE, no formato que o
+    banco já conhece: cada origem vira uma tripla comum presa ao artigo e à
+    sentença dela. Grafo, índice, digest e check não mudam uma linha — a
+    corroboração aparece como triplas idênticas de artigos distintos, que
+    agora casam porque nasceram na mesma chamada. O custo é rateado por
+    igual entre os artigos: a soma bate com a fatura."""
+    n = len(blocos)
+    for i, (rotulo, (linha, _)) in enumerate(zip(ROTULOS_FONTE, blocos)):
+        do_artigo = [
+            _tripla_da_fonte(t, o.sentenca)
+            for t in triplas for o in t.origens if o.fonte == rotulo
+        ]
+        # Último leva o resto da divisão: a soma dos rateios = fatura.
+        rateio = llm.Uso(
+            modelo=uso.modelo,
+            entrada=uso.entrada // n + (uso.entrada % n if i == n - 1 else 0),
+            saida=uso.saida // n + (uso.saida % n if i == n - 1 else 0),
+            cache_leitura=uso.cache_leitura // n
+            + (uso.cache_leitura % n if i == n - 1 else 0),
+            cache_escrita=uso.cache_escrita // n
+            + (uso.cache_escrita % n if i == n - 1 else 0),
+        )
+        salva_extracao(conexao, linha["id"], do_artigo,
+                       llm.EXTRACAO.id, prompt_versao, VOCAB_VERSAO, rateio)
+
+
 INSTRUCOES = f"""\
 Você extrai afirmações verificáveis de matérias jornalísticas em português e as
 estrutura como triplas (sujeito, relação, objeto).
@@ -239,6 +434,14 @@ Regras que importam mais que as outras:
    partidária, cargo e propriedade duram anos; carimbá-los com a data da
    matéria inventa uma precisão que a fonte não deu, e faz duas matérias sobre
    o mesmo fato permanente parecerem separadas no tempo.
+
+   E VALOR CITADO DENTRO DE PERÍODO NARRADO recebe a data do período, nunca
+   a da publicação. Caso real que virou divergência falsa no acervo:
+
+   Matéria de 25/08: "os ETFs somaram captações entre 14 e 22 de julho...
+                      o Bitcoin era negociado perto de US$ 65.500"
+   Errado: valor 65500 · data_fato 2026-08-25   ← data da publicação
+   Certo:  valor 65500 · data_fato 2026-07-22   ← o preço é DE JULHO
 
 5. QUANTIDADE NÃO VAI NO OBJETO. Se a afirmação é sobre um número, o objeto é
    a ENTIDADE a que o número se refere, e o número vai nos campos de valor.
@@ -407,6 +610,29 @@ def versao_prompt(max_sentencas: int | None = MAX_SENTENCAS) -> str:
 PROMPT_VERSAO = versao_prompt()
 
 
+def versao_prompt_historia(max_sentencas: int | None = MAX_SENTENCAS) -> str:
+    """Versão do prompt do modo história — hash próprio, pelo mesmo motivo
+    do `versao_prompt`: instruções e schema diferentes produzem triplas que
+    não se comparam com as do modo matéria sem marca que as distinga."""
+    material = INSTRUCOES + ADENDO_HISTORIA + json.dumps(
+        {
+            "schema": ExtracaoHistoria.model_json_schema(),
+            "filtro": {
+                "marcadores": boilerplate.MARCADORES,
+                "min_ocorrencias": boilerplate.MIN_OCORRENCIAS,
+                "min_dias": boilerplate.MIN_DIAS_DISTINTOS,
+                "min_materias": boilerplate.MIN_MATERIAS,
+                "max_sentencas": max_sentencas,
+            },
+            "esforco": llm.EXTRACAO.esforco,
+        },
+        sort_keys=True, ensure_ascii=False, default=list)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
+
+
+PROMPT_VERSAO_HISTORIA = versao_prompt_historia()
+
+
 def corta_lide(sentencas: list[str],
                limite: int | None = MAX_SENTENCAS) -> list[str]:
     """Fica com as primeiras `limite` sentenças. Ver `MAX_SENTENCAS`.
@@ -461,6 +687,78 @@ def extrai(titulo: str, veiculo: str, data_pub: str | None,
 
 # ---------------------------------------------------------------- interface
 
+def _roda_historias(conexao: sqlite3.Connection, grupos, args,
+                    limite_lide, prompt_versao: str) -> list[llm.Uso]:
+    """Executa o modo história: uma chamada por grupo, gravação explodida
+    por fonte. Falha numa história não derruba o lote."""
+    usos: list[llm.Uso] = []
+    repetidas: dict[str, set[str]] = {}
+    for n, grupo in enumerate(grupos, 1):
+        blocos: list[tuple[sqlite3.Row, list[str]]] = []
+        print(f"\n{'=' * 78}")
+        print(f"HISTÓRIA {n}/{len(grupos)} — {len(grupo)} veículos")
+        for linha in grupo:
+            v = linha["veiculo"]
+            if v not in repetidas:
+                repetidas[v] = boilerplate.frases_repetidas(
+                    conexao, v, em_sentencas)
+            sentencas, removidas = boilerplate.filtra(
+                em_sentencas(max(linha["conteudo"], linha["resumo"],
+                                 key=len)),
+                repetidas[v])
+            sentencas = corta_lide(sentencas, limite_lide)
+            rotulo = ROTULOS_FONTE[len(blocos)]
+            blocos.append((linha, sentencas))
+            print(f"  [{rotulo}] {v}: {len(sentencas)} sentenças · "
+                  f"{linha['titulo'][:58]}")
+            for r in removidas:
+                print(f"      fora: {r[:90]}")
+
+        if args.dry_run:
+            conteudo = monta_conteudo_historia(blocos)
+            print(f"  ~{(len(INSTRUCOES) + len(ADENDO_HISTORIA) + len(conteudo)) // 4} "
+                  f"tokens de entrada")
+            if n == 1:
+                print(f"\n--- user (variável) ---\n{conteudo[:1200]}\n[...]")
+            continue
+
+        try:
+            resultado = extrai_historia(blocos)
+        except llm.FalhaNoModelo as erro:
+            print(f"  FALHOU: {erro}")
+            continue
+        usos.append(resultado.uso)
+
+        if not resultado.dados.mesma_historia:
+            # O agrupamento errou e o modelo disse — grava linhas vazias
+            # para a história não voltar, e o caso realimenta a calibração.
+            print("  MESMA_HISTORIA=FALSE — o modelo recusou o grupo. "
+                  "Gravado vazio; conferir o agrupamento.")
+            salva_historia(conexao, blocos, [], resultado.uso, prompt_versao)
+            continue
+
+        n_sentencas = {ROTULOS_FONTE[i]: len(s)
+                       for i, (_, s) in enumerate(blocos)}
+        validas, invalidas = valida_origens(resultado.dados.triplas,
+                                            n_sentencas)
+        validas = [t for t in validas
+                   if t.objeto_canonico or t.valor_numero is not None]
+        salva_historia(conexao, blocos, validas, resultado.uso,
+                       prompt_versao)
+
+        aviso = (f" · {invalidas} com origens inválidas fora"
+                 if invalidas else "")
+        print(f"  {len(validas)} triplas{aviso} · {resultado.uso}")
+        for t in sorted(validas, key=lambda x: -len(x.origens)):
+            fontes = "".join(sorted(o.fonte for o in t.origens))
+            alvo = t.objeto_canonico or "—"
+            valor = (f" = {t.valor_numero:g} {t.valor_unidade or ''}"
+                     if t.valor_numero is not None else "")
+            print(f"    [{fontes:>7}] ({t.sujeito_canonico}, {t.relacao}, "
+                  f"{alvo}){valor}")
+    return usos
+
+
 def _por_id(conexao: sqlite3.Connection, ids: list[int]) -> list[sqlite3.Row]:
     """Matérias escolhidas a dedo, para extrair uma história inteira.
 
@@ -505,11 +803,12 @@ LIMITAÇÃO: `Mundo` e `Geral` são sacos de gato — carregam a guerra tarifár
 junto com celebridade. Ficam de fora inteiras, e com elas cai notícia dura de
 exterior. É corte grosseiro, e por isso opcional em vez de padrão."""
 
-MIN_SIMILARIDADE = 0.70
-"""Proximidade semântica mínima entre dois títulos para valer o par.
-
-Ver a justificativa e a medição em `_por_historia`. Roda no modelo local de
-embedding — não custa chamada."""
+# A peneira de 0,70 sobre títulos morreu na v3, por medição (01/09/2026):
+# nos 117 pares-ouro do acervo, 74 reprovavam nela. O papel dela — impedir
+# par falso — passou a ser feito em três camadas melhores: o agrupamento já
+# é semântico (agrupa.LIMIAR_SEMANTICO, calibrado no ouro), o modelo declara
+# mesma_historia=false quando o grupo veio errado (regra 13), e as origens
+# por fonte são validadas na volta.
 
 MIN_SENTENCAS = 2
 """Sentenças mínimas para uma matéria sustentar extração.
@@ -541,109 +840,67 @@ Cointelegraph entrariam trazendo um fato solto sem contexto de data ou
 entidade, e tripla sem contexto não corrobora nem contradiz."""
 
 
-def _por_historia(conexao: sqlite3.Connection, quantas: int,
-                  por_historia: int = 2,
-                  editorias: frozenset[str] | None = None) -> list[sqlite3.Row]:
-    """Matérias escolhidas aos PARES, um veículo diferente em cada.
+def _historias_para_extrair(
+        conexao: sqlite3.Connection, quantas: int,
+        editorias: frozenset[str] | None = None,
+        prompt_versao: str = PROMPT_VERSAO_HISTORIA
+) -> list[list[sqlite3.Row]]:
+    """Histórias inteiras para o modo história, uma chamada cada.
 
-    É a seleção que faz o dinheiro render. `_materias` pega as mais recentes,
-    e recência não tem relação nenhuma com corroboração: matéria de fonte única
-    nunca vira confirmação, por mais nova que seja. Extrair uma delas gasta o
-    mesmo e não move o número de fatos confirmados.
+    A seleção que faz o dinheiro render, agora na unidade certa: a HISTÓRIA.
+    Devolve grupos de matérias — um veículo por matéria, até MAX_FONTES —
+    que vão juntas num prompt só. A corroboração nasce dentro da chamada
+    (ver o registro de 01/09/2026 no ARCHITECTURE), então:
 
-    O que move é PAR — dois veículos distintos cobrindo o mesmo fato. Por isso
-    a história só entra se sobrarem dois veículos com texto suficiente depois
-    de todos os filtros; história que não forma par é descartada inteira, e não
-    parcialmente, porque metade de um par não corrobora nada.
-
-    Já extraídas pelo modelo ativo ficam de fora, em qualquer versão de prompt:
-    elas já estão no acervo e o grafo já as lê. Reextrair com o prompt novo
-    melhoraria a qualidade delas, mas gastaria onde não há confirmação nova a
-    ganhar — e é justamente o que este seletor existe para evitar.
+    * O piso de 2 sentenças vale para a HISTÓRIA (ao menos uma matéria com
+      substância), não para cada membro — no modo história, a matéria de 1
+      sentença contribui lida no contexto das outras. Medido: Folha e Exame
+      de 1 sentença entraram com atribuição correta no teste das 7 fontes.
+    * Membro já extraído em modo matéria ENTRA de novo: a releitura no
+      contexto da história é o que faz os nomes convergirem, e a linha nova
+      supera a antiga no grafo (que lê MAX(id) por artigo).
+    * História onde TODOS os membros já passaram por esta versão do modo
+      história fica de fora — inclusive as marcadas mesma_historia=false,
+      que gravam linhas vazias exatamente para não voltarem.
     """
-    # `vocab_versao` entra no filtro, e sem ele havia um buraco silencioso:
-    # matéria extraída sob vocabulário antigo contava como extraída e nunca
-    # mais era oferecida — enquanto o grafo, corretamente, a ignorava por ter
-    # relações que o enum atual não tem. Paga, invisível, e sem volta.
-    ja_extraidas = {
+    ja_nesta_versao = {
         linha["artigo_id"] for linha in conexao.execute(
             "SELECT artigo_id FROM extracoes WHERE modelo = ? "
-            "AND vocab_versao = ?", (llm.EXTRACAO.id, VOCAB_VERSAO))
+            "AND prompt_versao = ?", (llm.EXTRACAO.id, prompt_versao))
     }
 
-    escolhidas: list[int] = []
+    grupos: list[list[sqlite3.Row]] = []
     for historia in agrupa.agrupa(agrupa.carrega(conexao)):
-        # A história inteira precisa ter ao menos UMA matéria da editoria
-        # pedida. Basta uma: se a Folha cobriu em Mercado e a CNN no feed
-        # Geral, é o mesmo assunto — exigir das duas descartaria o par por
-        # causa de como a outra redação organiza o site dela.
+        # Ao menos UMA matéria da editoria pedida: se a Folha cobriu em
+        # Mercado e a CNN no Geral, é o mesmo assunto.
         if editorias and not any(m["editoria"] in editorias
                                  for m in historia.materias):
             continue
 
-        # Conta sentenças em vez de caracteres. Ver `MIN_SENTENCAS`. O
-        # boilerplate NÃO é removido aqui: exigiria varrer o acervo por
-        # veículo a cada candidata, e o filtro de verdade roda na extração.
-        # Erra para mais — uma matéria pode entrar e render menos do que
-        # aparentava — e errar para mais aqui custa uma chamada, não uma
-        # conclusão.
-        com_texto = [m for m in sorted(historia.materias,
-                                       key=lambda x: -x["tamanho"])
-                     if len(em_sentencas(max(m["conteudo"], m["resumo"],
-                                             key=len))) >= MIN_SENTENCAS]
+        # Um por veículo (o texto mais longo), com ao menos 1 sentença. O
+        # boilerplate não é removido aqui — o filtro de verdade roda na
+        # extração; errar para mais custa tokens, não conclusão.
+        por_veiculo: dict[str, tuple[sqlite3.Row, int]] = {}
+        for m in sorted(historia.materias, key=lambda x: -x["tamanho"]):
+            n = len(em_sentencas(max(m["conteudo"], m["resumo"], key=len)))
+            if n >= 1:
+                por_veiculo.setdefault(m["veiculo"], (m, n))
 
-        # Um por veículo, o de texto mais longo. Duas matérias do mesmo veículo
-        # na mesma história são a mesma redação publicando duas vezes — pagar
-        # pelas duas compra zero corroboração.
-        por_veiculo: dict[str, sqlite3.Row] = {}
-        for m in com_texto:
-            por_veiculo.setdefault(m["veiculo"], m)
-
-        # A elegibilidade olha o que o ACERVO terá, não só o que falta extrair.
-        # Contar apenas as pendentes descartava a história em que um veículo já
-        # foi extraído e o outro não — justamente o par que falta uma metade
-        # para fechar, e o mais barato de completar. Custava uma chamada e
-        # rendia uma confirmação nova; pulá-lo é o oposto do que este seletor
-        # existe para fazer.
-        if len(por_veiculo) < 2:
+        membros = [m for m, _ in por_veiculo.values()][:MAX_FONTES]
+        if len(membros) < 2:
+            continue
+        # Substância: uma matéria com 2+ sentenças ancora a história;
+        # só manchetes não sustentam extração nem em conjunto.
+        if not any(n >= 2 for _, n in por_veiculo.values()):
+            continue
+        if all(m["id"] in ja_nesta_versao for m in membros):
             continue
 
-        pendentes = [m for m in por_veiculo.values()
-                     if m["id"] not in ja_extraidas]
-        prontas = [m for m in por_veiculo.values() if m["id"] in ja_extraidas]
-        if not pendentes:
-            continue
-
-        # Segunda peneira, semântica. O agrupamento de `agrupa` casa termos do
-        # título, e termo em comum não é assunto em comum: "Flávio e Lula
-        # empatam no RS" e "Quaest em SC: Flávio Bolsonaro, 45%" compartilham
-        # três termos e são pesquisas em ESTADOS diferentes. Extrair esse par
-        # gasta duas chamadas e produz zero corroboração, porque as triplas
-        # falam de coisas distintas.
-        #
-        # Medido em 8 pares propostos pelo critério léxico: os verdadeiros
-        # ficaram entre 0,81 e 0,96, os falsos entre 0,43 e 0,58. Amostra
-        # pequena — o limiar vai ter que se mover quando houver mais dados.
-        #
-        # A peneira erra para o lado seguro: um par verdadeiro rejeitado só
-        # deixa de ser extraído nesta rodada; um par falso aceito é dinheiro
-        # gasto sem retorno possível.
-        #
-        # O par conferido é sempre a pendente contra a sua contraparte — outra
-        # pendente, ou a que já está no acervo. Comparar uma pendente consigo
-        # mesma daria 1,0 e a peneira não filtraria nada.
-        referencia = (prontas or pendentes[1:])
-        if not referencia:
-            continue
-        if indice.similaridade(pendentes[0]["titulo"],
-                               referencia[0]["titulo"]) < MIN_SIMILARIDADE:
-            continue
-
-        escolhidas.extend(m["id"] for m in pendentes[:por_historia])
-        if len(escolhidas) >= quantas * por_historia:
+        grupos.append(membros)
+        if len(grupos) >= quantas:
             break
 
-    return _por_id(conexao, escolhidas)
+    return grupos
 
 
 def _materias(conexao: sqlite3.Connection, limite: int,
@@ -732,9 +989,9 @@ def main() -> None:
                      else versao_prompt(limite_lide))
 
     conexao = conecta(config.BANCO)
-    if args.ids:
-        linhas = _por_id(conexao, [int(x) for x in args.ids.split(",")])
-    elif args.historias:
+    if args.historias:
+        # Modo história (v3): a unidade é o grupo, não a matéria. Fluxo
+        # próprio, gravação explodida por fonte, e o resto do main não roda.
         if not args.editorias:
             editorias = None
         elif args.editorias == "duras":
@@ -742,8 +999,26 @@ def main() -> None:
         else:
             editorias = frozenset(e.strip() for e in
                                   args.editorias.split(",") if e.strip())
-        linhas = _por_historia(conexao, args.historias,
-                               editorias=editorias)
+        versao_h = (PROMPT_VERSAO_HISTORIA
+                    if limite_lide == MAX_SENTENCAS
+                    else versao_prompt_historia(limite_lide))
+        grupos = _historias_para_extrair(conexao, args.historias,
+                                         editorias=editorias,
+                                         prompt_versao=versao_h)
+        if not grupos:
+            print("Nenhuma história nova para extrair nesta janela.")
+            sys.exit(0)
+        if not args.dry_run:
+            print(f"Provedor: {llm.descricao(llm.EXTRACAO)}\n")
+        usos = _roda_historias(conexao, grupos, args, limite_lide, versao_h)
+        if usos:
+            total = sum(u.custo for u in usos)
+            print(f"\n{'=' * 78}")
+            print(f"{len(grupos)} histórias · US$ {total:.4f} nesta rodada "
+                  f"· prompt {versao_h} · vocabulário v{VOCAB_VERSAO}")
+        return
+    if args.ids:
+        linhas = _por_id(conexao, [int(x) for x in args.ids.split(",")])
     else:
         linhas = _materias(conexao, args.n, prompt_versao)
     if not linhas:

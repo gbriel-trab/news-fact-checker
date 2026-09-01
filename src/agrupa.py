@@ -9,11 +9,21 @@ produz triplas que o sistema nunca conseguirá confirmar.
 E é pré-requisito da detecção de contradição: para saber que dois veículos
 divergem, é preciso primeiro saber que eles falam da mesma coisa.
 
-O agrupamento aqui é léxico — sobreposição de termos significativos no título.
-É grosseiro e será substituído por similaridade de embedding, que compara
-sentido em vez de palavra. Existe agora porque a decisão que ele sustenta
-(quais matérias extrair) precisa ser tomada antes de o índice vetorial existir,
-e porque errar aqui custa uma extração a mais, não uma conclusão errada.
+O agrupamento é LÉXICO com GUARDA SEMÂNTICA desde a v3 — e a história de
+como se chegou nisso é uma lição de método, registrada no ARCHITECTURE
+(01/09/2026): a primeira medição condenou o léxico ("mediana 0,37 nos
+pares-ouro"), a substituição por embedding puro foi construída — e o
+dry-run + a recalibração a derrubaram no mesmo dia. O gabarito estava
+contaminado por tripla BIOGRÁFICA: (X, preside, Y) aparece em histórias
+diferentes e ligava pares que nunca foram a mesma história. Com o ouro
+refinado (só tripla específica), a similaridade dos pares verdadeiros tem
+mediana 0,84 e o léxico co-agrupa 70% — enquanto o semântico puro fazia
+mega-blobs de centenas de matérias e co-agrupava MENOS.
+
+O desenho final usa cada sinal no que ele provou fazer bem: o LÉXICO agrupa
+(recall medido), a SEMÂNTICA guarda a coesão do grupo (membro distante do
+representante sai — precisão), a janela de dias limita o passado, e a regra
+13 do modo história (mesma_historia=false) é a rede final.
 """
 
 import re
@@ -23,6 +33,20 @@ from dataclasses import dataclass
 
 from . import config
 from .storage import conecta
+
+LIMIAR_COESAO = 0.55
+"""Similaridade mínima (título+lead) entre um membro e o representante do
+grupo léxico para o membro FICAR.
+
+Calibrado no ouro REFINADO (43 pares de tripla específica, 01/09/2026):
+os pares verdadeiros têm p10 = 0,62 e mediana 0,84 nessa escala — 0,55
+preserva praticamente todos e expulsa o carona léxico ("Flávio no RS" ×
+"Quaest em SC", que compartilham termos e não assunto). Generaliza a antiga
+peneira de par (0,70 só-título) para grupos de qualquer tamanho, com régua
+melhor: título+lead, não só título."""
+
+LEAD_CARACTERES = 300
+"""Quanto do começo do texto entra no embedding, junto do título."""
 
 STOPWORDS = frozenset("""
 para com uma que dos das nos nas por mais sobre como após até entre seus suas
@@ -65,8 +89,48 @@ def _termos(titulo: str) -> frozenset[str]:
     return frozenset(p for p in palavras if p not in STOPWORDS)
 
 
-def agrupa(materias: list[sqlite3.Row]) -> list[Historia]:
-    """Junta matérias com títulos que compartilham termos suficientes."""
+def texto_de_agrupamento(materia: sqlite3.Row) -> str:
+    """O que representa a matéria no embedding: título + começo do texto.
+
+    Só título reprova ouro (mediana 0,37); o lead carrega o fato."""
+    lead = max(materia["conteudo"], materia["resumo"], key=len)
+    return f"{materia['titulo']}. {lead[:LEAD_CARACTERES]}"
+
+
+def agrupa(materias: list[sqlite3.Row],
+           limiar_coesao: float = LIMIAR_COESAO) -> list[Historia]:
+    """Agrupamento léxico + guarda de coesão semântica.
+
+    O léxico junta (70% do ouro refinado co-agrupado, medido); a coesão
+    expulsa o carona — membro cujo título+lead fica abaixo de
+    `limiar_coesao` do representante compartilha palavras, não assunto.
+    Grupo que perder membros a ponto de ficar sozinho deixa de ser
+    história. Só grupos léxicos pagam embedding: a coesão embeda dezenas
+    de matérias por rodada, não o acervo."""
+    brutas = agrupa_lexico(materias)
+    if not brutas:
+        return []
+    from . import indice  # tardio: carrega o modelo de embedding
+
+    import numpy as np
+    historias: list[Historia] = []
+    for h in brutas:
+        vetores = np.asarray(indice.vetoriza(
+            [texto_de_agrupamento(m) for m in h.materias]))
+        base = vetores[0]
+        coesas = tuple(
+            m for m, v in zip(h.materias, vetores)
+            if float(v @ base) >= limiar_coesao)
+        if len(coesas) > 1:
+            historias.append(Historia(coesas))
+
+    return sorted(historias, key=lambda h: (-len(h.veiculos), -len(h.materias)))
+
+
+def agrupa_lexico(materias: list[sqlite3.Row]) -> list[Historia]:
+    """O agrupador primário: termos significativos compartilhados no título.
+    Sobreviveu à tentativa de substituição por embedding puro — ver o
+    docstring do módulo."""
     termos = [_termos(m["titulo"]) for m in materias]
     usadas: set[int] = set()
     historias: list[Historia] = []
@@ -117,6 +181,7 @@ def carrega(conexao: sqlite3.Connection,
     return conexao.execute(
         f"""
         SELECT id, veiculo, editoria, titulo, resumo, conteudo,
+               data_publicacao,
                MAX(LENGTH(conteudo), LENGTH(resumo)) AS tamanho,
                (SELECT COUNT(*) FROM extracoes e WHERE e.artigo_id = artigos.id) AS extraida
         FROM artigos

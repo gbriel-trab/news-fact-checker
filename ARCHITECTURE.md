@@ -618,13 +618,30 @@ Três medições sobre o funil de seleção, e a terceira muda a fila:
    peneira — a mediana do ouro é **0,37**, e **74 de 117 ficam abaixo do
    limiar 0,70**. Com título+lead, mediana 0,55 contra 0,13 do aleatório.
 
-Leitura conjunta: **título é sinal fraco de mesma-história**, e tanto o
-agrupamento léxico quanto a peneira de 0,70 estão calibrados nele. Os 71
-fatos confirmados da Medição 1 são a fruta baixa (títulos gêmeos); o resto
-morre em silêncio antes de qualquer chamada. Decisão registrada: o topo do
-funil migra para agrupamento por embedding de título+lead, com limiar
-calibrado nos pares-ouro (a zona útil aparente é ~0,35–0,45 em título+lead)
-— junto com a extração por história, no mesmo redesenho da v3.
+Leitura conjunta da época: título é sinal fraco, migrar o funil para
+embedding puro. **CORRIGIDA NO MESMO DIA — e a correção é a lição.** A
+migração foi construída, e duas defesas baratas a derrubaram antes de
+gastar um centavo: o dry-run mostrou uma "história" de 900 matérias
+(Ibovespa + Argentina + sabatina do Lula no mesmo grupo), e a recalibração
+achou o defeito do gabarito: **os pares-ouro estavam contaminados por
+tripla BIOGRÁFICA** — (X, preside, Y) aparece em histórias diferentes e
+ligava pares que nunca foram a mesma história. Com o ouro refinado (43
+pares de tripla específica): mediana de similaridade **0,84**, e o léxico
+co-agrupa **70%** — enquanto o embedding puro, em qualquer limiar testado,
+fazia blobs e co-agrupava MENOS.
+
+Decisão final, medida: **cada sinal no que provou fazer bem.** O léxico
+agrupa; a semântica vira GUARDA DE COESÃO dentro do grupo
+(`agrupa.LIMIAR_COESAO` = 0,55, com p10 do ouro em 0,62 — expulsa o carona
+léxico sem tocar par verdadeiro, generalizando a antiga peneira de par); a
+janela de dias limita o passado; a regra 13 do modo história é a rede
+final. Verificado em operação: ouro preservado (30/43, idêntico ao léxico
+puro), maior grupo 58, e o dry-run com histórias limpas de 7 veículos.
+
+Duas morais registradas para as próximas medições: gabarito derivado de
+triplas EXCLUI as biográficas/recorrentes, senão liga histórias distintas;
+e conclusão de medição só vira decisão depois do dry-run — as duas juntas
+custaram zero e salvaram o funil de uma troca para pior.
 
 ### Questão em aberto: atribuição
 
