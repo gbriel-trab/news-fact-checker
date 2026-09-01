@@ -123,12 +123,15 @@ def _confere_post(post: str, conexao, acervo) -> tuple[str, float, dict]:
     DURANTE esta função (id > marco); veredito reusado não grava e não
     soma — sinal estrutural, nunca busca de palavra no texto capturado.
     """
-    from . import check, premissas
+    from . import check, premissas, radar
 
     marco = conexao.execute(
         "SELECT COALESCE(MAX(id), 0) FROM consultas").fetchone()[0]
 
-    analise, uso = premissas.separa(post, conexao=conexao)
+    # A linha EM RESPOSTA A entra REATRIBUÍDA ao interlocutor — as
+    # palavras do outro não podem virar premissa do autor do post.
+    analise, uso = premissas.separa(radar.para_separacao(post),
+                                    conexao=conexao)
     partes: list[str] = []
     dados: dict = {"nao_verificaveis": [], "checks": [],
                    "sem_premissas": not analise.premissas}

@@ -101,6 +101,47 @@ class TestLinks:
         assert _links_de('{"url":"https://x.com/i/user/777"}') == ()
 
 
+class TestCitacoes:
+    def test_prefere_anotacoes_do_servidor(self):
+        # URL no texto do modelo sem anotação correspondente fica FORA:
+        # medido em 01/09/2026, o modelo escreveu duas URLs inventadas, e
+        # o regex sobre o JSON inteiro as teria posto no conjunto que
+        # valida a própria linha URL: — alucinação validando a si mesma.
+        from src.radar import _citacoes_de
+        dados = {"output": [
+            {"content": [{"annotations": [
+                {"type": "url_citation",
+                 "url": "https://x.com/i/status/123"}]}]},
+            {"text": "veja https://x.com/x/status/999"},
+        ]}
+        assert _citacoes_de(dados) == ("https://x.com/i/status/123",)
+
+    def test_anotacao_que_nao_e_status_fica_fora(self):
+        from src.radar import _citacoes_de
+        dados = {"annotations": [
+            {"type": "url_citation", "url": "https://x.com/i/user/7"}]}
+        assert _citacoes_de(dados) == ()
+
+
+class TestParaSeparacao:
+    def test_reatribui_o_interlocutor_e_tira_a_url(self):
+        from src.radar import para_separacao
+        bloco = ("POST 1 (@x, 01 Sep 2026):\n"
+                 "URL: https://x.com/x/status/123\n"
+                 "EM RESPOSTA A (@grok): o índice subiu 40% no ano\n"
+                 "Então falta muito?")
+        saida = para_separacao(bloco)
+        assert "URL:" not in saida
+        assert "palavras do interlocutor, não do autor" in saida
+        assert "(@grok): o índice subiu 40% no ano" in saida
+        assert "Então falta muito?" in saida
+
+    def test_bloco_sem_linhas_novas_passa_intacto(self):
+        from src.radar import para_separacao
+        bloco = "POST 1 (@x, data):\ntexto simples"
+        assert para_separacao(bloco) == bloco
+
+
 class TestUrlDoPost:
     BLOCO = ("POST 1 (@x, 01 Sep 2026):\n"
              "URL: https://x.com/x/status/123\n"

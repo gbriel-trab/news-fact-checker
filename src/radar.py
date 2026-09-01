@@ -139,8 +139,53 @@ def _links_de(bruto: str) -> tuple[str, ...]:
     return tuple(vistos)
 
 
+def _citacoes_de(objeto) -> tuple[str, ...]:
+    """URLs de status nas anotações `url_citation` — o conjunto do
+    SERVIDOR, imune ao texto do modelo.
+
+    Existe porque o regex sobre o JSON inteiro (`_links_de`) também pesca
+    URLs escritas pelo próprio modelo — e no teste de 01/09/2026 o texto
+    trazia duas URLs sem anotação correspondente (IDs sequenciais de
+    2024, prováveis invenções). Validar a linha URL: contra um conjunto
+    que contém o texto do modelo deixaria a alucinação validar a si
+    mesma. Quando não há anotação nenhuma, `busca` cai no regex — captura
+    frouxa é melhor que nenhuma, mas aí sem valor de validação.
+    """
+    achados: list[str] = []
+    if isinstance(objeto, dict):
+        if (objeto.get("type") == "url_citation"
+                and re.search(r"x\.com/[\w./]*status/\d+",
+                              str(objeto.get("url", "")))):
+            achados.append(objeto["url"])
+        for valor in objeto.values():
+            achados.extend(_citacoes_de(valor))
+    elif isinstance(objeto, list):
+        for valor in objeto:
+            achados.extend(_citacoes_de(valor))
+    return tuple(dict.fromkeys(achados))
+
+
 _RE_URL_BLOCO = re.compile(
     r"^\s*URL:\s*(https://x\.com/[\w./]*status/(\d+))", re.MULTILINE)
+_RE_LINHA_URL = re.compile(r"^\s*URL:[^\n]*\n?", re.MULTILINE | re.IGNORECASE)
+_RE_RESPOSTA_CAPT = re.compile(r"^\s*EM RESPOSTA A\s*([^\n]*)$",
+                               re.MULTILINE | re.IGNORECASE)
+
+
+def para_separacao(bloco: str) -> str:
+    """O bloco como o separador de premissas deve vê-lo.
+
+    A linha URL: sai (ruído de tokens); a linha EM RESPOSTA A vira
+    contexto REATRIBUÍDO ao interlocutor. Sem a reatribuição, as palavras
+    do outro entram no separador como se fossem do autor do post — e o
+    interlocutor pode estar afirmando fatos (o caso medido: respostas do
+    @grok com números). Sem o contexto, resposta curta perde o referente
+    ("Errou só que foi e voltou..." sem saber do quê).
+    """
+    sem_url = _RE_LINHA_URL.sub("", bloco)
+    return _RE_RESPOSTA_CAPT.sub(
+        lambda m: ("(contexto — palavras do interlocutor, não do autor "
+                   f"do post: {m.group(1).strip()})"), sem_url)
 
 
 def id_status(url: str) -> str | None:
@@ -236,7 +281,7 @@ def busca(handles: tuple[str, ...], dias: int = 2) -> Rodada:
     return Rodada(
         posts=posts,
         notas=notas,
-        links=_links_de(bruto),
+        links=_citacoes_de(dados) or _links_de(bruto),
         custo_usd=ticks * TICK_USD,
         bruto=bruto,
     )
@@ -263,7 +308,7 @@ def _confere(post: str, custo_busca: float) -> None:
         conexao.close()
         sys.exit(1)
 
-    analise, uso = premissas.separa(post, conexao=conexao)
+    analise, uso = premissas.separa(para_separacao(post), conexao=conexao)
     fatos = [p for p in analise.premissas if p.tipo == "fato"]
     resto = [p for p in analise.premissas if p.tipo != "fato"]
 
