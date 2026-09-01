@@ -5,7 +5,8 @@ filtro `allowed_x_handles` — só o prompt direciona. Um prompt que não nomeia
 os handles devolve "quais handles?" e paga a chamada mesmo assim.
 """
 
-from src.radar import _corpo, _handles_de, _links_de, _posts_de, _prompt
+from src.radar import (_corpo, _handles_de, _links_de, _posts_de, _prompt,
+                       id_status, url_do_post)
 
 
 class TestPrompt:
@@ -16,6 +17,14 @@ class TestPrompt:
 
     def test_pede_transcricao_integral(self):
         assert "ÍNTEGRA" in _prompt(("a",), 2)
+
+    def test_pede_url_e_contexto_de_resposta(self):
+        # O pareamento link↔post e o contexto de thread vêm do MODELO —
+        # as anotações da API chegam sem posição (01/09/2026), então não
+        # há como parear do nosso lado depois.
+        texto = _prompt(("a",), 2)
+        assert "URL:" in texto
+        assert "EM RESPOSTA A" in texto
 
     def test_corpo_carrega_filtro_e_janela(self):
         corpo = _corpo(("mentalhedgebr",), 3)
@@ -90,3 +99,28 @@ class TestLinks:
 
     def test_perfil_sem_status_nao_e_link_de_post(self):
         assert _links_de('{"url":"https://x.com/i/user/777"}') == ()
+
+
+class TestUrlDoPost:
+    BLOCO = ("POST 1 (@x, 01 Sep 2026):\n"
+             "URL: https://x.com/x/status/123\n"
+             "texto do post")
+
+    def test_url_que_confere_por_id_de_status(self):
+        # As anotações usam x.com/i/status/N; o modelo escreve
+        # x.com/handle/status/N — o ID é o que identifica.
+        url, confere = url_do_post(self.BLOCO,
+                                   ("https://x.com/i/status/123",))
+        assert url == "https://x.com/x/status/123" and confere
+
+    def test_url_fora_das_citacoes_e_alegacao_sem_lastro(self):
+        url, confere = url_do_post(self.BLOCO,
+                                   ("https://x.com/i/status/999",))
+        assert url == "https://x.com/x/status/123" and not confere
+
+    def test_bloco_sem_linha_url(self):
+        assert url_do_post("POST 1 (@x):\ntexto", ()) == (None, False)
+
+    def test_id_status(self):
+        assert id_status("https://x.com/i/status/42") == "42"
+        assert id_status("https://x.com/i/user/42") is None

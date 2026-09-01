@@ -67,7 +67,13 @@ def _prompt(handles: tuple[str, ...], dias: int) -> str:
         f"Busque os posts dos últimos {dias} dias de: {nomes}. "
         "TRANSCREVA cada um na ÍNTEGRA, sem resumir, sem parafrasear e sem "
         "comentar. Formato obrigatório, um bloco por post:\n"
-        "POST N (@handle, data):\n<texto literal>\n---\n"
+        "POST N (@handle, data):\n"
+        "URL: <link do PRÓPRIO post transcrito, x.com/.../status/...>\n"
+        "EM RESPOSTA A (@autor): <texto do post respondido — inclua esta "
+        "linha SOMENTE se o post for uma resposta; senão, omita>\n"
+        "<texto literal>\n---\n"
+        "A linha URL de cada bloco tem de apontar para o post transcrito "
+        "NAQUELE bloco, nunca para outro. "
         "Se um handle não retornar nada, diga qual, numa linha à parte."
     )
 
@@ -120,10 +126,44 @@ def _links_de(bruto: str) -> tuple[str, ...]:
     30/08/2026. Regex sobre o JSON serializado é deliberado: o formato das
     anotações não é documentado, e campo que muda de lugar não pode
     derrubar a captura.
+
+    Este conjunto NÃO tem ordem que corresponda aos posts: as anotações
+    chegam com start/end zerados (medido em 01/09/2026), então não existe
+    pareamento estrutural link↔post. Numerar estes links como se casassem
+    com a numeração dos posts foi o defeito do boletim de 31/08. O
+    pareamento é pedido ao modelo (linha URL: de cada bloco) e conferido
+    contra este conjunto por `url_do_post`.
     """
     urls = re.findall(r"https://x\.com/[\w./]*status/\d+", bruto)
     vistos: dict[str, None] = dict.fromkeys(urls)
     return tuple(vistos)
+
+
+_RE_URL_BLOCO = re.compile(
+    r"^\s*URL:\s*(https://x\.com/[\w./]*status/(\d+))", re.MULTILINE)
+
+
+def id_status(url: str) -> str | None:
+    """O número do status numa URL do X, ou None se não houver."""
+    m = re.search(r"status/(\d+)", url)
+    return m.group(1) if m else None
+
+
+def url_do_post(bloco: str, citados: tuple[str, ...]) -> tuple[str | None, bool]:
+    """(URL que o bloco alega, se ela confere com as citações da busca).
+
+    A linha URL: é escrita pelo MODELO; as citações são anexadas pelo
+    SERVIDOR com o que a ferramenta de busca de fato leu. URL alegada que
+    não está entre as citações é alegação sem lastro — sai como (url,
+    False) e quem consome decide o aviso. A comparação é por ID do status
+    porque o mesmo post aparece como x.com/i/status/N nas anotações e
+    x.com/handle/status/N no texto do modelo.
+    """
+    m = _RE_URL_BLOCO.search(bloco)
+    if not m:
+        return None, False
+    ids_citados = {id_status(u) for u in citados}
+    return m.group(1), m.group(2) in ids_citados
 
 
 def _limpa(pedaco: str) -> str:

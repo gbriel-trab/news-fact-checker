@@ -20,6 +20,32 @@ class TestEstadoDoBoletim:
     def test_hash_estavel_a_espacos_e_caixa(self):
         assert _hash_post("Bitcoin  a 80 mil") == _hash_post("bitcoin a 80 MIL")
 
+    def test_hash_ignora_o_numero_do_cabecalho(self):
+        # O N muda a cada rodada: com o cabeçalho no hash, o mesmo post
+        # voltava como "inédito" na rodada seguinte.
+        a = _hash_post("POST 1 (@x, 30 Aug 2026):\ntexto do post")
+        b = _hash_post("POST 7 (@x, 31 Aug 2026):\ntexto do post")
+        assert a == b == _hash_post("texto do post")
+
+    def test_hash_ignora_url_e_contexto_de_resposta(self):
+        com = _hash_post("POST 1 (@x, data):\n"
+                         "URL: https://x.com/x/status/123\n"
+                         "EM RESPOSTA A (@y): pergunta\n"
+                         "texto do post")
+        sem = _hash_post("texto do post")
+        assert com == sem
+
+    def test_chave_de_url_so_com_citacao_que_confere(self):
+        from src.boletim import _chaves_do_post
+        post = ("POST 1 (@x, data):\nURL: https://x.com/x/status/123\n"
+                "texto")
+        # x.com/i/status/N e x.com/handle/status/N são o mesmo status.
+        chaves = _chaves_do_post(post, ("https://x.com/i/status/123",))
+        assert "url:123" in chaves and _hash_post(post) in chaves
+        # URL alegada fora das citações não vira identidade.
+        chaves = _chaves_do_post(post, ("https://x.com/i/status/999",))
+        assert chaves == {_hash_post(post)}
+
     def test_post_marcado_nao_volta(self, tmp_path):
         con = _banco(tmp_path)
         h = _hash_post("post qualquer")
@@ -56,7 +82,7 @@ class TestRendicaoTelegram:
                         "veredito": "sem_evidencia", "justificativa": "",
                         "veiculos": 0, "custo": 0.02, "evidencias": []}],
             "sem_premissas": False,
-        })], [], [], 0.10, 0.03)
+        }, None)], [], [], 0.10, 0.03)
         assert "⚪ <b>sem evidência</b>" in html
         assert "💬" in html
         assert "<b>[1]</b>" in html
@@ -70,10 +96,31 @@ class TestRendicaoTelegram:
                         "veiculos": 2, "custo": 0.02,
                         "evidencias": [("G1", "http://g1/x")]}],
             "sem_premissas": False,
-        })], [], ["http://x.com/i/status/1"], 0.10, 0.03)
+        }, None)], [], ["https://x.com/i/status/12345"], 0.10, 0.03)
         assert "✅ <b>confirmado</b>" in html
         assert '<a href="http://g1/x">G1</a>' in html
-        assert '<a href="http://x.com/i/status/1">1</a>' in html
+        # Sem par com o post, o link vai para o rodapé de sobras — com o
+        # fim do ID como texto, nunca um número que prometa ordem.
+        assert '<a href="https://x.com/i/status/12345">…12345</a>' in html
+        assert "sem par" in html
+
+    def test_post_com_url_validada_ganha_ancora_e_contexto(self):
+        from src.boletim import _formata_telegram
+        post = ("POST 3 (@x, 01 Sep 2026):\n"
+                "URL: https://x.com/x/status/123\n"
+                "EM RESPOSTA A (@y): qual a resposta?\n"
+                "Expansão")
+        vazio = {"nao_verificaveis": [], "checks": [], "sem_premissas": True}
+        html = _formata_telegram(
+            "@x", "01/09", [(1, post, vazio, "https://x.com/x/status/123")],
+            [], ["https://x.com/i/status/123"], 0.10, 0.03)
+        assert '<a href="https://x.com/x/status/123">ver no X</a>' in html
+        assert "↳ <i>EM RESPOSTA A (@y): qual a resposta?</i>" in html
+        # A linha URL: não aparece no corpo, e o link pareado não repete
+        # no rodapé de sobras.
+        assert "URL:" not in html
+        assert "também lidos" not in html
+        assert "<i>Expansão</i>" in html
 
     def test_corte_html_respeita_linhas(self):
         # Cortar no meio de uma tag quebraria o parse do Telegram inteiro.

@@ -12,7 +12,8 @@ indica onde olhar; a evidência vem do acervo — post não entra nele.
 O fluxo por rodada:
 
     radar.busca(handles, janela)
-      → descarta o que já foi entregue (tabela boletim_posts, por hash)
+      → descarta o que já foi entregue (tabela boletim_posts, por hash de
+        conteúdo E por ID de status quando o bloco traz URL validada)
       → para cada post inédito: premissas.separa → check de cada fato
       → monta o texto → imprime → grava em data/boletins/ → envia
 
@@ -59,9 +60,37 @@ ENQUADRAMENTO = ("Conferência de premissas contra o acervo — não avalia o "
                  "autor. Sem evidência = o acervo não cobre.")
 
 
+_RE_CABECALHO = re.compile(r"^POST\s+\d+[^\n]*\n?")
+_RE_LINHA_URL = re.compile(r"^\s*URL:[^\n]*$\n?", re.MULTILINE | re.IGNORECASE)
+_RE_LINHA_RESPOSTA = re.compile(r"^\s*EM RESPOSTA A[^\n]*$\n?",
+                                re.MULTILINE | re.IGNORECASE)
+
+
 def _hash_post(texto: str) -> str:
-    normalizado = " ".join(texto.lower().split())
+    """Hash do CONTEÚDO do post: cabeçalho 'POST N (...)', linha URL: e
+    linha EM RESPOSTA A ficam de fora. O N muda a cada rodada — com o
+    cabeçalho no hash, o mesmo post voltava como inédito na rodada
+    seguinte (defeito notado em 01/09/2026); as outras duas linhas variam
+    conforme o modelo obedece ou não ao formato."""
+    corpo = _RE_LINHA_RESPOSTA.sub(
+        "", _RE_LINHA_URL.sub("", _RE_CABECALHO.sub("", texto)))
+    normalizado = " ".join(corpo.lower().split())
     return hashlib.sha256(normalizado.encode("utf-8")).hexdigest()[:16]
+
+
+def _chaves_do_post(post: str, links: tuple[str, ...]) -> set[str]:
+    """As identidades de um post para dedup: hash do conteúdo sempre; e
+    'url:<id do status>' quando o bloco traz URL validada contra as
+    citações da busca. A URL é a identidade forte — sobrevive a variação
+    de transcrição; o hash cobre bloco sem URL e o histórico anterior à
+    linha URL:. Post editado no X ganha status novo, então a versão
+    pré-edição continua contando como inédita, como decidido."""
+    from . import radar
+    chaves = {_hash_post(post)}
+    url, confere = radar.url_do_post(post, links)
+    if url and confere:
+        chaves.add("url:" + radar.id_status(url))
+    return chaves
 
 
 def _ja_entregues(conexao) -> set[str]:
@@ -151,9 +180,10 @@ def _confere_post(post: str, conexao, acervo) -> tuple[str, float, dict]:
     return "\n".join(partes), uso.custo + pago_em_checks, dados
 
 
-def monta(dias: int) -> tuple[str, float, list[str]]:
-    """Roda a cadeia e devolve (texto, custo total, hashes dos posts que o
-    texto contém). Quem marca entrega é o chamador, DEPOIS de gravar.
+def monta(dias: int) -> tuple[str, float, list[tuple[set[str], str]], str]:
+    """Roda a cadeia e devolve (texto, custo total, [(chaves, post)] dos
+    posts contidos, HTML do Telegram). Quem marca entrega é o chamador,
+    DEPOIS de gravar — e marca TODAS as chaves de cada post.
 
     Falha na conferência de um post não derruba a rodada nem o marca:
     o post volta inteiro na próxima, e o que já foi pago em vereditos é
@@ -179,9 +209,16 @@ def monta(dias: int) -> tuple[str, float, list[str]]:
         except radar.FalhaNoRadar as erro:
             raise SystemExit(f"Busca do radar falhou: {erro}") from erro
 
-        entregues = _ja_entregues(conexao)
-        ineditos = [(p, _hash_post(p)) for p in rodada.posts
-                    if _hash_post(p) not in entregues]
+        # `vistos` acumula as chaves da própria rodada: o modelo transcrever
+        # o mesmo post duas vezes não pode virar entrega dupla.
+        vistos = _ja_entregues(conexao)
+        ineditos: list[tuple[str, set[str]]] = []
+        for p in rodada.posts:
+            chaves = _chaves_do_post(p, rodada.links)
+            if chaves & vistos:
+                continue
+            vistos |= chaves
+            ineditos.append((p, chaves))
 
         hoje = datetime.now(timezone.utc).strftime("%d/%m/%Y")
         handles = ", ".join("@" + h for h in config.HANDLES_RADAR)
@@ -189,16 +226,21 @@ def monta(dias: int) -> tuple[str, float, list[str]]:
                   "transcrição de modelo — o registro é o post, no link",
                   ENQUADRAMENTO, ""]
         custo = rodada.custo_usd
-        contidos: list[tuple[str, str]] = []
-        estruturados: list[tuple[int, str, dict]] = []
+        contidos: list[tuple[set[str], str]] = []
+        estruturados: list[tuple[int, str, dict, str | None]] = []
 
         if not ineditos:
             linhas.append(f"Nenhum post novo na janela de {dias} dia(s)."
                           if not rodada.posts else
                           f"{len(rodada.posts)} post(s) na janela, todos já "
                           f"entregues em boletins anteriores.")
-        for i, (post, h) in enumerate(ineditos, 1):
+        for i, (post, chaves) in enumerate(ineditos, 1):
             linhas.append(f"[{i}] {post}")
+            url, confere = radar.url_do_post(post, rodada.links)
+            if url and not confere:
+                linhas.append("  aviso: a URL que o modelo deu para este "
+                              "post não está entre as citações da busca — "
+                              "link omitido")
             # Falha num post não derruba o lote — padrão do extract.main.
             try:
                 bloco, gasto, dados = _confere_post(post, conexao, acervo)
@@ -210,13 +252,14 @@ def monta(dias: int) -> tuple[str, float, list[str]]:
             custo += gasto
             linhas.append(bloco)
             linhas.append("")
-            contidos.append((h, post))
-            estruturados.append((i, post, dados))
+            contidos.append((chaves, post))
+            estruturados.append((i, post, dados, url if confere else None))
 
         for nota in rodada.notas:
             linhas.append(f"aviso da busca: {nota}")
         if rodada.links:
-            linhas.append("links: " + " · ".join(rodada.links))
+            linhas.append("lidos na busca (SEM ordem — não correspondem à "
+                          "numeração): " + " · ".join(rodada.links))
         linhas.append("")
         linhas.append(ENQUADRAMENTO)
         # Duas carteiras, dois consoles: quem confere fatura precisa saber
@@ -250,14 +293,19 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
     veredito e link clicável na evidência. Trilha completa continua no
     arquivo; aqui é o resumo para o bolso. Tudo que vem de modelo ou de
     post passa por `_esc` antes de virar HTML."""
+    from . import radar
+
     p: list[str] = [f"📡 <b>Radar · {_esc(handles)} · {hoje}</b>",
                     f"<i>{_esc(ENQUADRAMENTO)}</i>", ""]
     if not estruturados:
         p.append("Nenhum post novo na janela.")
-    for i, post, dados in estruturados:
+    pareados: set[str] = set()
+    for i, post, dados, url in estruturados:
         # A linha-cabeçalho do modelo ("POST 4 (@x, 30 Aug):") sai — o
         # número duplica o [n] — mas o parêntese (handle, data) fica. O
         # CORPO vai na íntegra, sem truncar: post é conteúdo, não resumo.
+        # A linha URL: vira a âncora do cabeçalho (só quando validada
+        # contra as citações); EM RESPOSTA A vira a linha de contexto ↳.
         meta = ""
         corpo = post
         if post.startswith("POST"):
@@ -266,8 +314,26 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
             m = re.search(r"\(([^)]+)\)", cabecalho)
             if m:
                 meta = f" <i>({_esc(m.group(1))})</i>"
-        p.append(f"<b>[{i}]</b>{meta}")
-        p.append(f"<i>{_esc(corpo.strip())}</i>")
+        resposta = None
+        corpo_linhas: list[str] = []
+        for linha in corpo.splitlines():
+            limpa = linha.strip()
+            if limpa.upper().startswith("URL:"):
+                continue
+            if limpa.upper().startswith("EM RESPOSTA A"):
+                resposta = limpa
+                continue
+            corpo_linhas.append(linha)
+        corpo = "\n".join(corpo_linhas).strip()
+
+        ver = ""
+        if url:
+            ver = f' — <a href="{_esc(url)}">ver no X</a>'
+            pareados.add(radar.id_status(url))
+        p.append(f"<b>[{i}]</b>{meta}{ver}")
+        if resposta:
+            p.append(f"↳ <i>{_esc(resposta)}</i>")
+        p.append(f"<i>{_esc(corpo)}</i>")
         for tipo, afirmacao in dados["nao_verificaveis"]:
             p.append(f"{_EMOJI_TIPO.get(tipo, '•')} {_esc(afirmacao)}")
         for c in dados["checks"]:
@@ -291,10 +357,17 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
         p.append("")
     for nota in notas:
         p.append(f"⚠️ {_esc(nota)}")
-    if links:
-        ancoras = " · ".join(f'<a href="{_esc(u)}">{n}</a>'
-                             for n, u in enumerate(links, 1))
-        p.append(f"🔗 posts no X: {ancoras}")
+    # Só as SOBRAS: link já pareado a um post não repete aqui. O texto da
+    # âncora é o fim do ID do status, nunca um número — numerar este
+    # conjunto foi o que fez o boletim de 31/08 prometer correspondência
+    # que a API não dá (as citações vêm sem ordem nem posição).
+    sobras = [u for u in links if radar.id_status(u) not in pareados]
+    if sobras:
+        ancoras = " · ".join(
+            f'<a href="{_esc(u)}">…{(radar.id_status(u) or u)[-5:]}</a>'
+            for u in sobras)
+        p.append(f"🔗 também lidos na busca, sem par com os posts acima "
+                 f"(sem ordem): {ancoras}")
     p.append("")
     p.append(f"<i>custo: US$ {custo:.2f} (xAI {custo_xai:.2f} + "
              f"Anthropic {custo - custo_xai:.2f})</i>")
@@ -379,8 +452,9 @@ def main() -> None:
     # rodada refaz — reusando os vereditos pagos, pela janela do check.
     from .storage import conecta
     conexao = conecta(config.BANCO)
-    for h, post in contidos:
-        _marca_entregue(conexao, h, post)
+    for chaves, post in contidos:
+        for chave in chaves:
+            _marca_entregue(conexao, chave, post)
     conexao.close()
 
     if contidos and not args.sem_envio:
