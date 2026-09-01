@@ -71,9 +71,15 @@ class Modelo:
 
 # Preços conferidos em https://claude.com/pricing — confira antes de confiar
 # no relatório de custo. A fatura real está no console.
+#
+# Corrigido em 01/09/2026: o Sonnet 5 estava com US$ 3/15, que é o preço do
+# Sonnet 4.6 — o certo é US$ 2/10. Consequência para o registro: o
+# experimento Sonnet×Opus da verificação (31/08) SUPERESTIMOU o custo do
+# Sonnet em ~33% — a média real era ~US$ 0,0064/consulta, não 0,0096. Não
+# muda a decisão (ela foi por qualidade, não por preço), mas muda a conta.
 HAIKU = Modelo("claude-haiku-4-5-20251001", entrada=1.00, saida=5.00,
                esforco=None)
-SONNET = Modelo("claude-sonnet-5", entrada=3.00, saida=15.00, esforco="medium")
+SONNET = Modelo("claude-sonnet-5", entrada=2.00, saida=10.00, esforco="medium")
 OPUS = Modelo("claude-opus-5", entrada=5.00, saida=25.00, esforco="medium")
 
 
