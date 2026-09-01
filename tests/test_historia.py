@@ -89,6 +89,49 @@ class TestExplosao:
         conexao.close()
 
 
+class TestSubstituicaoEmHistoriaCrescida:
+    def test_re_salvar_mesma_versao_substitui_sem_erro(self, tmp_path):
+        """História que ganha membro novo é re-extraída inteira — a linha
+        anterior da MESMA versão sai antes, senão a UNIQUE derrubava a
+        rodada (achado da revisão)."""
+        conexao = conecta(tmp_path / "t.db")
+        salva(conexao, artigo(url="https://a/1", veiculo="G1"))
+        linha = conexao.execute("SELECT * FROM artigos").fetchone()
+        uso = Uso(modelo=llm.EXTRACAO, entrada=10, saida=10,
+                  cache_leitura=0, cache_escrita=0)
+        blocos = [(linha, ["s0"])]
+        extract.salva_historia(conexao, blocos, [th([("A", 0)])], uso, "vh")
+        extract.salva_historia(conexao, blocos, [th([("A", 0)])], uso, "vh")
+        n = conexao.execute(
+            "SELECT COUNT(*) FROM extracoes WHERE prompt_versao='vh'"
+        ).fetchone()[0]
+        assert n == 1
+        conexao.close()
+
+
+class TestVazioNaoSuperaTripla:
+    def test_grafo_prefere_extracao_com_tripla(self, tmp_path):
+        """O marcador vazio do modo história (mesma_historia=false, fonte
+        sem origem) tem id maior — e um MAX(id) cru o deixava APAGAR
+        triplas boas do grafo. Vazio só vale quando é tudo que há."""
+        from src import grafo
+        conexao = conecta(tmp_path / "t.db")
+        salva(conexao, artigo(url="https://a/1", veiculo="G1"))
+        linha = conexao.execute("SELECT * FROM artigos").fetchone()
+        uso = Uso(modelo=llm.EXTRACAO, entrada=10, saida=10,
+                  cache_leitura=0, cache_escrita=0)
+        boa = extract._tripla_da_fonte(th([("A", 0)]), 0)
+        salva_extracao(conexao, linha["id"], [boa], llm.EXTRACAO.id,
+                       "v-materia", extract.VOCAB_VERSAO, uso)
+        # marcador vazio, mais novo, mesma geração
+        salva_extracao(conexao, linha["id"], [], llm.EXTRACAO.id,
+                       "v-historia", extract.VOCAB_VERSAO, uso)
+        afirmacoes = grafo.carrega(conexao)
+        assert len(afirmacoes) == 1
+        assert afirmacoes[0].sujeito == "Braskem"
+        conexao.close()
+
+
 class TestVersionamento:
     def test_historia_e_materia_tem_versoes_distintas(self):
         """Triplas dos dois modos não são comparáveis sem marca — mesmo

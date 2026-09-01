@@ -96,6 +96,12 @@ def compara(conexao: sqlite3.Connection, artigo_id: int) -> None:
     print(f"{'variação':<10} {'':<14} {depois['n'] - antes['n']:>+8} "
           f"{depois['tokens_saida'] - antes['tokens_saida']:>+8} "
           f"{format(pct, '+.0f') + '%':>10}")
+    if antes["prompt_versao"] != depois["prompt_versao"]:
+        # O modo história RATEIA a chamada entre os artigos do grupo; o
+        # modo matéria paga a chamada inteira. Comparar os dois custos
+        # como se fossem a mesma coisa mentiria por fator N.
+        print("  (versões diferentes: se um dos lados é modo história, o "
+              "custo dele é rateio da chamada do grupo — não compare)")
 
     a = {_chave(t): t for t in triplas_de(conexao, antes["id"])}
     d = {_chave(t): t for t in triplas_de(conexao, depois["id"])}

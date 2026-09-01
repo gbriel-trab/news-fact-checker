@@ -273,10 +273,25 @@ def carrega(conexao: sqlite3.Connection,
         JOIN extracoes e ON e.id = t.extracao_id
         JOIN artigos   a ON a.id = e.artigo_id
         WHERE e.id IN (
-                  SELECT MAX(id) FROM extracoes
-                  WHERE vocab_versao = (SELECT MAX(vocab_versao) FROM extracoes)
-                    AND modelo = ?
-                  GROUP BY artigo_id
+                  -- Uma extração por matéria, PREFERINDO a que tem tripla:
+                  -- o modo história grava linha vazia como marcador de
+                  -- "lida" (mesma_historia=false, fonte sem origem), e um
+                  -- MAX(id) cru deixava o marcador vazio superar triplas
+                  -- boas de extração anterior — achado da revisão de
+                  -- 01/09/2026. Vazio só vale quando é tudo que há.
+                  SELECT (SELECT e3.id FROM extracoes e3
+                          WHERE e3.artigo_id = e2.artigo_id
+                            AND e3.vocab_versao = e2.vocab_versao
+                            AND e3.modelo = e2.modelo
+                          ORDER BY (SELECT COUNT(*) FROM triplas t
+                                    WHERE t.extracao_id = e3.id) > 0 DESC,
+                                   e3.id DESC
+                          LIMIT 1)
+                  FROM extracoes e2
+                  WHERE e2.vocab_versao = (SELECT MAX(vocab_versao)
+                                           FROM extracoes)
+                    AND e2.modelo = ?
+                  GROUP BY e2.artigo_id
               )
         {filtro}
         """,

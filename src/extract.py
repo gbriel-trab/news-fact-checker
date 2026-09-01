@@ -353,6 +353,15 @@ def salva_historia(conexao: sqlite3.Connection,
     igual entre os artigos: a soma bate com a fatura."""
     n = len(blocos)
     for i, (rotulo, (linha, _)) in enumerate(zip(ROTULOS_FONTE, blocos)):
+        # História que ganhou membro novo é re-extraída inteira (é a
+        # releitura que faz os nomes convergirem) — a linha anterior da
+        # MESMA versão sai antes, senão a UNIQUE derruba a rodada. A
+        # substituição é explícita e restrita à versão de história: o
+        # UNIQUE continua protegendo contra pagamento duplo acidental.
+        conexao.execute(
+            "DELETE FROM extracoes WHERE artigo_id = ? AND modelo = ? "
+            "AND prompt_versao = ?",
+            (linha["id"], llm.EXTRACAO.id, prompt_versao))
         do_artigo = [
             _tripla_da_fonte(t, o.sentenca)
             for t in triplas for o in t.origens if o.fonte == rotulo
@@ -741,13 +750,18 @@ def _roda_historias(conexao: sqlite3.Connection, grupos, args,
                        for i, (_, s) in enumerate(blocos)}
         validas, invalidas = valida_origens(resultado.dados.triplas,
                                             n_sentencas)
+        antes = len(validas)
         validas = [t for t in validas
                    if t.objeto_canonico or t.valor_numero is not None]
+        # Contado e impresso como no modo matéria: filtro que descarta em
+        # silêncio não pode ser conferido.
+        vazias = antes - len(validas)
         salva_historia(conexao, blocos, validas, resultado.uso,
                        prompt_versao)
 
-        aviso = (f" · {invalidas} com origens inválidas fora"
-                 if invalidas else "")
+        aviso = ((f" · {invalidas} com origens inválidas fora"
+                  if invalidas else "")
+                 + (f" · {vazias} vazias descartadas" if vazias else ""))
         print(f"  {len(validas)} triplas{aviso} · {resultado.uso}")
         for t in sorted(validas, key=lambda x: -len(x.origens)):
             fontes = "".join(sorted(o.fonte for o in t.origens))
@@ -886,13 +900,22 @@ def _historias_para_extrair(
             if n >= 1:
                 por_veiculo.setdefault(m["veiculo"], (m, n))
 
-        membros = [m for m, _ in por_veiculo.values()][:MAX_FONTES]
-        if len(membros) < 2:
+        pares = list(por_veiculo.values())
+        membros_n = pares[:MAX_FONTES]
+        if len(membros_n) < 2:
             continue
-        # Substância: uma matéria com 2+ sentenças ancora a história;
-        # só manchetes não sustentam extração nem em conjunto.
-        if not any(n >= 2 for _, n in por_veiculo.values()):
-            continue
+        # Substância DEPOIS do corte (achado da revisão de 01/09/2026): o
+        # corte por tamanho — caracteres, não sentenças — podia deixar a
+        # única matéria de 2+ sentenças de fora, e a âncora checada no
+        # grupo inteiro aprovava um time só de manchetes. Se a âncora
+        # existe mas caiu no corte, ela troca com o último cortado.
+        if not any(n >= 2 for _, n in membros_n):
+            ancora = next(((m, n) for m, n in pares[MAX_FONTES:]
+                           if n >= 2), None)
+            if ancora is None:
+                continue
+            membros_n[-1] = ancora
+        membros = [m for m, _ in membros_n]
         if all(m["id"] in ja_nesta_versao for m in membros):
             continue
 
@@ -918,16 +941,22 @@ def _materias(conexao: sqlite3.Connection, limite: int,
         -- de sentenças é aplicado em `_por_historia`; aqui, com ORDER BY
         -- data e LIMIT, segmentar o acervo inteiro seria pior que o ganho.
         WHERE MAX(LENGTH(a.conteudo), LENGTH(a.resumo)) > ?
+          -- Exclui também o que o MODO HISTÓRIA já leu (achado da revisão
+          -- de 01/09/2026): sem isso, um -n rotineiro depois de --historias
+          -- re-pagava os mesmos artigos E a extração isolada, com id maior,
+          -- SUPERAVA a convergida no grafo — desfazendo o que a chamada
+          -- conjunta pagou para criar.
           AND NOT EXISTS (
               SELECT 1 FROM extracoes e
               WHERE e.artigo_id = a.id
                 AND e.modelo = ?
-                AND e.prompt_versao = ?
+                AND e.prompt_versao IN (?, ?)
           )
         ORDER BY a.data_publicacao DESC
         LIMIT ?
         """,
-        (150, llm.EXTRACAO.id, prompt_versao, limite),
+        (150, llm.EXTRACAO.id, prompt_versao, PROMPT_VERSAO_HISTORIA,
+         limite),
     ).fetchall()
 
 
@@ -976,6 +1005,10 @@ def main() -> None:
         help="mostra a requisição que seria enviada, sem chamar a API",
     )
     args = parser.parse_args()
+    if args.sentencas < 0:
+        # `sentencas[:-1]` cortaria do FIM — exatamente o que corta_lide
+        # existe para nunca fazer (achado da revisão de 01/09/2026).
+        parser.error("--sentencas não aceita valor negativo")
 
     total_uso: list[llm.Uso] = []
     falhas: list[tuple[int, str]] = []

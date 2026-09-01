@@ -170,10 +170,22 @@ def indexa_entidades(conexao: sqlite3.Connection) -> int:
         SELECT t.sujeito_canonico s, t.objeto_canonico o
         FROM triplas t JOIN extracoes e ON e.id = t.extracao_id
         WHERE e.id IN (
-                  SELECT MAX(id) FROM extracoes
-                  WHERE vocab_versao = (SELECT MAX(vocab_versao) FROM extracoes)
-                    AND modelo = ?
-                  GROUP BY artigo_id
+                  -- Prefere extração COM tripla: o modo história grava
+                  -- linha vazia como marcador, e MAX(id) cru deixava o
+                  -- vazio superar triplas boas (revisão de 01/09/2026).
+                  SELECT (SELECT e3.id FROM extracoes e3
+                          WHERE e3.artigo_id = e2.artigo_id
+                            AND e3.vocab_versao = e2.vocab_versao
+                            AND e3.modelo = e2.modelo
+                          ORDER BY (SELECT COUNT(*) FROM triplas t2
+                                    WHERE t2.extracao_id = e3.id) > 0 DESC,
+                                   e3.id DESC
+                          LIMIT 1)
+                  FROM extracoes e2
+                  WHERE e2.vocab_versao = (SELECT MAX(vocab_versao)
+                                           FROM extracoes)
+                    AND e2.modelo = ?
+                  GROUP BY e2.artigo_id
               )
     """
     linhas = conexao.execute(
@@ -226,10 +238,22 @@ def indexa_afirmacoes(conexao: sqlite3.Connection) -> int:
         -- check.py julga -- deixar entrar tripla de teste de outro modelo poe
         -- no veredito uma frase que o acervo nao contem.
         WHERE e.id IN (
-                  SELECT MAX(id) FROM extracoes
-                  WHERE vocab_versao = (SELECT MAX(vocab_versao) FROM extracoes)
-                    AND modelo = ?
-                  GROUP BY artigo_id
+                  -- Prefere extração COM tripla: o modo história grava
+                  -- linha vazia como marcador, e MAX(id) cru deixava o
+                  -- vazio superar triplas boas (revisão de 01/09/2026).
+                  SELECT (SELECT e3.id FROM extracoes e3
+                          WHERE e3.artigo_id = e2.artigo_id
+                            AND e3.vocab_versao = e2.vocab_versao
+                            AND e3.modelo = e2.modelo
+                          ORDER BY (SELECT COUNT(*) FROM triplas t2
+                                    WHERE t2.extracao_id = e3.id) > 0 DESC,
+                                   e3.id DESC
+                          LIMIT 1)
+                  FROM extracoes e2
+                  WHERE e2.vocab_versao = (SELECT MAX(vocab_versao)
+                                           FROM extracoes)
+                    AND e2.modelo = ?
+                  GROUP BY e2.artigo_id
               )
         """,
         (llm.EXTRACAO.id,),

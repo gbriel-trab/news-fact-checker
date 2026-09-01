@@ -117,7 +117,13 @@ def agrupa(materias: list[sqlite3.Row],
     for h in brutas:
         vetores = np.asarray(indice.vetoriza(
             [texto_de_agrupamento(m) for m in h.materias]))
-        base = vetores[0]
+        # A referência é o MEDOIDE — o membro mais parecido com todos os
+        # outros —, nunca o primeiro da lista. O primeiro é só o mais
+        # recente, e quando ELE era o carona, a guarda expulsava os membros
+        # verdadeiros e a história boa morria em silêncio (achado da
+        # revisão de 01/09/2026, demonstrado por execução). O carona nunca
+        # é medoide: por definição ele é o menos parecido com o resto.
+        base = vetores[int(np.argmax((vetores @ vetores.T).sum(axis=1)))]
         coesas = tuple(
             m for m, v in zip(h.materias, vetores)
             if float(v @ base) >= limiar_coesao)

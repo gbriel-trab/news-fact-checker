@@ -125,6 +125,92 @@ class TestAgrupamento:
         conexao.close()
 
 
+class TestMedoide:
+    def test_carona_mais_recente_nao_expulsa_o_par_verdadeiro(
+            self, tmp_path, monkeypatch):
+        """O achado grave da revisão: a referência da coesão era o membro
+        mais recente (sim 1,0 consigo, inexpulsável) — quando ELE era o
+        carona, expulsava o par verdadeiro e a história boa morria. A
+        referência agora é o MEDOIDE, que o carona nunca é."""
+        import numpy as np
+        from src import agrupa as mod_agrupa
+        from src import indice
+
+        conexao = _base(tmp_path, [
+            # mesmo conjunto léxico ("pesquisa/quaest/governo"), carona 1º
+            ("CNN", "Pesquisa Quaest para governo mostra líder em SC",
+             3, False),
+            ("G1", "Pesquisa Quaest para governo tem empate no RS",
+             3, False),
+            ("Folha", "Pesquisa Quaest para governo: empate no RS",
+             3, False),
+        ])
+        materias = mod_agrupa.carrega(conexao)
+        # vetores controlados POR VEÍCULO (a ordem do carrega não é
+        # garantida com datas iguais): CNN é o carona ortogonal.
+        fake = {"CNN": [1.0, 0.0], "G1": [0.0, 1.0], "Folha": [0.0, 1.0]}
+
+        def vetoriza_fake(textos):
+            # ordem dos textos segue a ordem das matérias do grupo
+            por_texto = {mod_agrupa.texto_de_agrupamento(m): fake[m["veiculo"]]
+                         for m in materias}
+            return [por_texto[t] for t in textos]
+
+        monkeypatch.setattr(indice, "vetoriza", vetoriza_fake)
+        historias = mod_agrupa.agrupa(materias)
+        assert len(historias) == 1
+        veiculos = {m["veiculo"] for m in historias[0].materias}
+        assert veiculos == {"G1", "Folha"}  # carona CNN expulso
+        conexao.close()
+
+
+class TestAncoraPosCorte:
+    def test_ancora_sobrevive_ao_corte_de_max_fontes(self, tmp_path):
+        """Com 8 veículos e a única matéria de 2+ sentenças sendo a MENOR
+        em caracteres, o corte por tamanho a derrubava e a âncora era
+        checada no grupo inteiro — time só de manchetes ia ao modelo."""
+        frase_longa = ("Este é um levantamento extenso sobre a pesquisa "
+                       "Quaest para governo com muitos detalhes " + "x" * 400)
+        materias = [(f"V{i}", "Pesquisa Quaest para governo no RS",
+                     0, False) for i in range(7)]
+        conexao = _base(tmp_path, materias)
+        # os 7 grandes: 1 sentença longa cada (corpo custom)
+        for i in range(7):
+            conexao.execute(
+                "UPDATE artigos SET conteudo = ? WHERE veiculo = ?",
+                (frase_longa + ".", f"V{i}"))
+        # a âncora: 2 sentenças curtas
+        from src.storage import salva
+        from tests.test_storage import artigo
+        salva(conexao, artigo(
+            url="https://ancora/1", veiculo="Ancora",
+            titulo="Pesquisa Quaest para governo no RS",
+            conteudo="A Quaest mediu o governo no RS. O empate segue firme."))
+        conexao.commit()
+        grupos = extract._historias_para_extrair(conexao, 5)
+        assert len(grupos) == 1
+        assert len(grupos[0]) == extract.MAX_FONTES
+        assert any(m["veiculo"] == "Ancora" for m in grupos[0])
+        conexao.close()
+
+
+class TestModoMateriaNaoSuperaHistoria:
+    def test_materias_exclui_lidas_pelo_modo_historia(self, tmp_path):
+        """-n depois de --historias re-pagava os artigos e a extração
+        isolada (id maior) SUPERAVA a convergida no grafo."""
+        from src import llm
+        from src.llm import Uso
+        conexao = _base(tmp_path, [("G1", TITULO_A, 3, False)])
+        linha = conexao.execute("SELECT id FROM artigos").fetchone()
+        salva_extracao(conexao, linha["id"], [], llm.EXTRACAO.id,
+                       extract.PROMPT_VERSAO_HISTORIA,
+                       extract.VOCAB_VERSAO,
+                       Uso(modelo=llm.EXTRACAO, entrada=1, saida=1,
+                           cache_leitura=0, cache_escrita=0))
+        assert extract._materias(conexao, 10) == []
+        conexao.close()
+
+
 class TestTextoInsuficiente:
     def test_uma_sentenca_entra_se_a_historia_tem_ancora(self, tmp_path):
         """A mudança medida do modo história (7 fontes, 01/09/2026): a
