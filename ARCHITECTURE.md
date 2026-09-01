@@ -969,6 +969,40 @@ pago e gravado) e repetir esta medição com acervo maior. Se continuar perto
 de zero com o detector completo, aí vale a sentença acima e o digest assume
 o papel de corroboração, não de divergência.
 
+**REPETIÇÃO EM 01/09/2026**, sob o v3 (extração por história), sobre 2.101
+afirmações de acervo com 6.317 matérias:
+
+* **Corroboração**: 1.258 fatos distintos, **291 confirmados por 2+
+  veículos (23%)** — mais que o dobro da taxa de 30/08 (10%). A extração
+  por história cumpre a promessa de corroboração que motivou o v3.
+* **Entidades**: 1.013 formas → 1.006 chaves; 7 fusões, todas variação de
+  caixa, zero fusão indevida. A leitura "divergência baixa = fragmentação"
+  segue afastada.
+* **Divergências ENTRE VEÍCULOS: 2 — uma real, uma falsa.**
+  * FALSA, e conhecida: Bitcoin a 65.500 (CriptoFácil) vs 80.000 (Folha)
+    em 25/08 — é o próprio caso que gerou a regra 4, extraído em 30/08
+    **antes** de a regra existir (prompt `9d4ed6ef`). A cura é re-extrair
+    a matéria sob o prompt atual; enquanto isso, ela serve de teste vivo:
+    se a regra 4 funciona, a divergência some.
+  * **REAL, a primeira do projeto**: desaparecidos nas enchentes do
+    Himalaia — G1 diz 3.044, Carta Capital diz 2.502, mesmo `data_fato`
+    (30/08), 22% de diferença. Dois veículos publicando números
+    materialmente distintos para o mesmo fato no mesmo dia. Ressalva de
+    método: número de desastre evolui hora a hora, e a granularidade
+    diária do carimbo pode estar fundindo momentos diferentes do mesmo
+    dia — mas como publicado, é exatamente o que o radar de contradição
+    existe para apontar.
+* O detector também acusou 2 conflitos MONO-veículo (não contam como
+  divergência entre veículos): série de captações diárias de ETF sem
+  `data_fato` colapsada no grupo "sem data", e dois níveis de prêmio da
+  Mega-Sena (quina/quadra) fundidos no mesmo contexto. Dois consertos
+  candidatos que eles pedem: exigir 2+ veículos no conflito antes de
+  chamar de divergência no digest (alinha com "falso positivo é o pior
+  erro"), e tratar série temporal sem data como incomparável.
+
+Veredito da régua de 30/08: apareceu divergência real com acervo maior —
+**o grafo fica.**
+
 **2. Acurácia contra checador profissional.** Rodar ~50 afirmações já julgadas
 por Lupa, Aos Fatos ou Comprova, sem mostrar o veredito delas, e comparar.
 
