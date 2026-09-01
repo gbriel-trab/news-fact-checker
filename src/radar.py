@@ -56,6 +56,12 @@ class Rodada:
     links: tuple[str, ...]
     custo_usd: float
     bruto: str
+    detalhe_custo: str = ""
+    """De onde o custo veio (tokens e chamadas de busca), legível.
+
+    Existe porque o custo por rodada triplicou quando o formato passou a
+    exigir URL e contexto de thread (0,03 → 0,11-0,25, medido em
+    01/09/2026) e só o total não diz qual alavanca puxar."""
 
 
 def _prompt(handles: tuple[str, ...], dias: int) -> str:
@@ -283,13 +289,24 @@ def busca(handles: tuple[str, ...], dias: int = 2) -> Rodada:
     bruto = json.dumps(dados, ensure_ascii=False)
     texto = "\n".join(_textos_de(dados.get("output", dados)))
     posts, notas = _posts_de(texto)
-    ticks = dados.get("usage", {}).get("cost_in_usd_ticks", 0)
+    uso = dados.get("usage", {})
+    ticks = uso.get("cost_in_usd_ticks", 0)
+    buscas = sum(1 for item in dados.get("output", [])
+                 if isinstance(item, dict)
+                 and "search" in str(item.get("type", "")))
+    partes = [f"{chave.replace('_tokens', '')} {uso[chave]:,}"
+              for chave in ("input_tokens", "output_tokens",
+                            "reasoning_tokens")
+              if isinstance(uso.get(chave), int)]
+    if buscas:
+        partes.append(f"{buscas} chamada(s) de busca")
     return Rodada(
         posts=posts,
         notas=notas,
         links=_citacoes_de(dados) or _links_de(bruto),
         custo_usd=ticks * TICK_USD,
         bruto=bruto,
+        detalhe_custo=" · ".join(partes),
     )
 
 
@@ -390,7 +407,8 @@ def main() -> None:
         print("Links citados:")
         for link in rodada.links:
             print(f"  {link}")
-    print(f"\n  busca: US$ {rodada.custo_usd:.4f}")
+    print(f"\n  busca: US$ {rodada.custo_usd:.4f}"
+          + (f" ({rodada.detalhe_custo})" if rodada.detalhe_custo else ""))
 
     if args.conferir is not None:
         if not (1 <= args.conferir <= len(rodada.posts)):
