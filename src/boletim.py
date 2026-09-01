@@ -255,8 +255,19 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
     if not estruturados:
         p.append("Nenhum post novo na janela.")
     for i, post, dados in estruturados:
-        corpo = post.split("\n", 1)[-1] if post.startswith("POST") else post
-        p.append(f"<b>[{i}]</b> <i>{_esc(corpo.strip())}</i>")
+        # A linha-cabeçalho do modelo ("POST 4 (@x, 30 Aug):") sai — o
+        # número duplica o [n] — mas o parêntese (handle, data) fica. O
+        # CORPO vai na íntegra, sem truncar: post é conteúdo, não resumo.
+        meta = ""
+        corpo = post
+        if post.startswith("POST"):
+            cabecalho, _, resto = post.partition("\n")
+            corpo = resto or post
+            m = re.search(r"\(([^)]+)\)", cabecalho)
+            if m:
+                meta = f" <i>({_esc(m.group(1))})</i>"
+        p.append(f"<b>[{i}]</b>{meta}")
+        p.append(f"<i>{_esc(corpo.strip())}</i>")
         for tipo, afirmacao in dados["nao_verificaveis"]:
             p.append(f"{_EMOJI_TIPO.get(tipo, '•')} {_esc(afirmacao)}")
         for c in dados["checks"]:
