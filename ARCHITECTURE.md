@@ -566,6 +566,32 @@ positivo: "comprou em 2019" e "não possui mais em 2026" são ambas verdadeiras.
 | **Evento** | Afirma algo sobre um instante | Sim, para sempre |
 | **Estado** | Afirma algo sobre um intervalo | Não, pode deixar de valer |
 
+### Extração por história: o experimento que redesenha a v3
+
+Medido em 01/09/2026 (US$ 0,18, três pares): a fragmentação de evento
+sintético — "incêndio na *residência*" vs "incêndio na *casa*", direções
+invertidas, zero corroboração quando cada matéria é extraída numa chamada
+isolada — **desaparece quando as duas matérias vão no MESMO prompt**,
+etiquetadas [A]/[B], com um campo `fonte ∈ {A, B, AB}` por tripla. Com os
+dois textos diante de si, o modelo nomeia o evento uma vez só — a
+convergência que a regra 2 pede e que chamadas isoladas não têm como
+entregar, sai por construção. Nos três pares que haviam fracassado
+(incêndio Nunes Marques, SEC→Casa Branca, Core Lightning), o fato principal
+saiu `AB` — corroborado dentro da própria chamada — com atribuição limpa do
+que era de uma fonte só, ~40% mais barato por história (um prefixo em vez
+de dois), e com a matéria de 1 sentença do Cointelegraph contribuindo
+(em chamada isolada ela rendia zero).
+
+Condições registradas antes de virar o desenho padrão:
+
+* **`AB` é corroboração afirmada pelo modelo** — generosidade aqui fabrica
+  confirmação, o pior erro. Produção exige `sentenca_a`/`sentenca_b` por
+  tripla AB e validação local de que cada fonte sustenta o afirmado.
+* Amostra de 3 pares, todos de 2 veículos; falta medir 3+ veículos por
+  história e o comportamento em histórias longas.
+* A ideia veio de revisão externa (outra instância, 01/09/2026); a
+  validação contra os fracassos medidos é deste acervo.
+
 ### Questão em aberto: atribuição
 
 O padrão mais comum em jornalismo é `Fulano afirmou que Z`, onde `Z` é ela
