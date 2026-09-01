@@ -197,7 +197,11 @@ def monta(dias: int) -> tuple[str, float, list[str]]:
             linhas.append("links: " + " · ".join(rodada.links))
         linhas.append("")
         linhas.append(ENQUADRAMENTO)
-        linhas.append(f"custo da rodada: US$ {custo:.4f}")
+        # Duas carteiras, dois consoles: quem confere fatura precisa saber
+        # de qual bolso saiu cada parte.
+        linhas.append(f"custo da rodada: US$ {custo:.4f} "
+                      f"(busca xAI US$ {rodada.custo_usd:.4f} + "
+                      f"Anthropic US$ {custo - rodada.custo_usd:.4f})")
         return "\n".join(linhas), custo, contidos
     finally:
         conexao.close()
