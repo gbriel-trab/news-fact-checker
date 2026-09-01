@@ -27,11 +27,17 @@ class TestPrompt:
         assert "EM RESPOSTA A" in texto
 
     def test_corpo_carrega_filtro_e_janela(self):
+        from datetime import datetime, timedelta, timezone
+        hoje = datetime.now(timezone.utc).date()
         corpo = _corpo(("mentalhedgebr",), 3)
         ferramenta = corpo["tools"][0]
         assert ferramenta["type"] == "x_search"
         assert ferramenta["allowed_x_handles"] == ["mentalhedgebr"]
-        assert ferramenta["from_date"] < ferramenta["to_date"]
+        assert ferramenta["from_date"] == (hoje - timedelta(days=3)).isoformat()
+        # to_date é AMANHÃ: o limite superior real é a meia-noite UTC do
+        # to_date (medido em 31/08 e 01/09/2026) — com to_date=hoje, o
+        # boletim nunca via os posts do próprio dia.
+        assert ferramenta["to_date"] == (hoje + timedelta(days=1)).isoformat()
 
 
 class TestParseDePosts:

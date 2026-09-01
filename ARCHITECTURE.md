@@ -120,6 +120,21 @@ Duas notas de mecânica para o módulo futuro: `allowed_x_handles` restringe a
 busca mas o modelo não vê a lista — o prompt precisa nomear os handles; e a
 citação vem inline (`[[N]](url)`), não no campo `citations` da resposta.
 
+**Medido em 31/08 e 01/09/2026 — o `to_date` corta na meia-noite UTC dele.**
+A documentação diz "including both dates", mas em três buscas (43 posts
+lidos) os posts mais novos vieram às 23:19 e 23:54 UTC da VÉSPERA e nenhum
+do dia corrente — com posts do dia comprovadamente existindo (timestamp
+decodificado do próprio ID do status). Leitura que reconcilia doc e medição:
+a data vira o instante 00:00:00 daquele dia, e o "inclusivo" vale para o
+instante. Consequência prática: `to_date = hoje` significa "até ontem";
+para incluir o dia corrente, o radar envia `to_date = amanhã`. Duas notas
+da mesma leva: as anotações de citação chegam com `start_index`/`end_index`
+zerados (não há pareamento estrutural link↔post — o pareamento é pedido ao
+modelo e validado por ID de status contra as anotações `url_citation`), e a
+busca não é exaustiva por chamada — duas buscas na mesma janela devolveram
+subconjuntos diferentes (10 e 20 posts), então cobertura completa de um dia
+só se acumula entre rodadas, via janela sobreposta + dedup.
+
 Fica para depois de a extração estar validada.
 
 #### Não existe trending topic

@@ -86,7 +86,13 @@ def _corpo(handles: tuple[str, ...], dias: int) -> dict:
             "type": "x_search",
             "allowed_x_handles": list(handles),
             "from_date": (hoje - timedelta(days=dias)).isoformat(),
-            "to_date": hoje.isoformat(),
+            # A doc diz "including both dates", mas o limite superior é a
+            # MEIA-NOITE UTC do to_date, medido em 31/08 e 01/09/2026:
+            # três buscas, 43 posts lidos, os mais novos às 23:19 e 23:54
+            # da véspera e ZERO do dia corrente — com posts do dia
+            # existindo. Com to_date=hoje, a busca nunca via o próprio
+            # dia; amanhã é o que faz "hoje até agora" entrar.
+            "to_date": (hoje + timedelta(days=1)).isoformat(),
         }],
         "input": _prompt(handles, dias),
     }
