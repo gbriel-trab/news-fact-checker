@@ -370,6 +370,28 @@ class TestJanelaTemporal:
         ])
         assert all(not g.diverge for g in grupos)
 
+    def test_conflito_dentro_do_mesmo_veiculo_nao_e_divergencia(self):
+        # Medição 1 de 01/09/2026: metade das acusações era mono-veículo
+        # (série de ETF sem data, quina/quadra) — inconsistência interna
+        # de matéria, não dois veículos disputando. Divergência é ENTRE
+        # veículos, e falso positivo é o pior erro do projeto.
+        from src import grafo
+        grupos = grafo.agrupa([
+            self._cotacao(139_000_000, "CriptoFácil", None),
+            self._cotacao(33_000_000, "CriptoFácil", None),
+        ])
+        assert all(not g.diverge for g in grupos)
+
+    def test_terceiro_veiculo_reativa_a_disputa(self):
+        # Dois do mesmo veículo + um de outro: há disputa entre veículos.
+        from src import grafo
+        grupos = grafo.agrupa([
+            self._cotacao(100, "A", "2026-08-25"),
+            self._cotacao(105, "A", "2026-08-25"),
+            self._cotacao(200, "B", "2026-08-25"),
+        ])
+        assert any(g.diverge for g in grupos)
+
 
 class TestAgrupamentoPorMedida:
     """A correção do defeito que impedia qualquer número de corroborar.

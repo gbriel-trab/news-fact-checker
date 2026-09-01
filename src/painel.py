@@ -61,23 +61,26 @@ def resumo() -> dict:
         "GROUP BY veiculo ORDER BY materias DESC")]
 
     custo = um("SELECT COALESCE(SUM(custo_usd),0) FROM extracoes")
-    vocab = um("SELECT COALESCE(MAX(vocab_versao),0) FROM extracoes")
-    # Só o vocabulário corrente: é o recorte que o grafo lê. O total de
+    # O recorte que o grafo lê: as versões COMPATÍVEIS de vocabulário
+    # (v3 é aditiva sobre a v2 — ver vocabulario.COMPATIVEIS). O total de
     # todas as gerações (testes de modelo, vocabulários antigos) descreve
     # gasto histórico, não o sistema de hoje — e induzia leitura errada.
+    from . import vocabulario
+    compat = ",".join(str(v) for v in sorted(vocabulario.COMPATIVEIS))
+    vocab = um("SELECT COALESCE(MAX(vocab_versao),0) FROM extracoes")
     extraidas = um("SELECT COUNT(DISTINCT artigo_id) FROM extracoes "
-                   "WHERE vocab_versao = ?", vocab)
+                   f"WHERE vocab_versao IN ({compat})")
     triplas_v = um(
         "SELECT COUNT(*) FROM triplas t JOIN extracoes e "
-        "ON e.id=t.extracao_id WHERE e.vocab_versao=?", vocab)
+        f"ON e.id=t.extracao_id WHERE e.vocab_versao IN ({compat})")
     outro_v = um(
         "SELECT COUNT(*) FROM triplas t JOIN extracoes e "
-        "ON e.id=t.extracao_id WHERE e.vocab_versao=? "
-        "AND t.relacao='outro'", vocab)
+        f"ON e.id=t.extracao_id WHERE e.vocab_versao IN ({compat}) "
+        "AND t.relacao='outro'")
     relacoes = [dict(r) for r in q(
         "SELECT t.relacao, COUNT(*) n FROM triplas t JOIN extracoes e "
-        "ON e.id=t.extracao_id WHERE e.vocab_versao=? "
-        "GROUP BY t.relacao ORDER BY n DESC LIMIT 12", vocab)]
+        f"ON e.id=t.extracao_id WHERE e.vocab_versao IN ({compat}) "
+        "GROUP BY t.relacao ORDER BY n DESC LIMIT 12")]
     consultas = [dict(r) for r in q(
         "SELECT afirmacao, veredito, veiculos, custo_usd, consultado_em "
         "FROM consultas ORDER BY id DESC LIMIT 12")]

@@ -114,7 +114,8 @@
   <div class="linha">
     últimos <input type="number" id="rdDias" value="2" min="1" style="width:70px"> dias
     <button onclick="radar()">Buscar posts dos handles</button>
-    <span class="custo">~US$ 0,03–0,05 por busca (xAI)</span>
+    <span class="custo">~US$ 0,10–0,25 por busca (xAI — subiu com URL e
+      contexto de thread por post, medido em 01/09/2026)</span>
   </div>
   <p class="aviso">Transcrição de modelo — o registro é o post, no link. Handles em config.HANDLES_RADAR.</p>
   <div id="radarSaida"></div>
@@ -270,7 +271,7 @@ async function conferir() {
 
 async function radar() {
   try {
-    const r = await acaoPaga("/api/radar", "~US$ 0,03–0,05", "radarSaida", {dias: +$("rdDias").value});
+    const r = await acaoPaga("/api/radar", "~US$ 0,10–0,25", "radarSaida", {dias: +$("rdDias").value});
     if (!r) return;
     $("radarSaida").innerHTML =
       (r.posts.map((p, i) => `<div class="fato">[${i+1}] ${esc(p)}</div>`).join("") ||

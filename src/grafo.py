@@ -21,7 +21,7 @@ import sqlite3
 import sys
 from dataclasses import dataclass
 
-from . import config, llm
+from . import config, llm, vocabulario
 from .canonico import chave_canonica
 from .vocabulario import Relacao
 from .storage import conecta
@@ -189,6 +189,14 @@ class Corroboracao:
                 vs = [a.valor for a in mesmos]
                 if len(vs) < 2:
                     continue
+                # Divergência é ENTRE VEÍCULOS — números conflitantes da
+                # mesma redação são inconsistência interna da matéria, não
+                # dois veículos disputando. A Medição 1 de 01/09/2026
+                # mostrou o custo de não exigir isto: metade das acusações
+                # era mono-veículo (série de ETF sem data, quina/quadra da
+                # Mega-Sena), e falso positivo é o pior erro do projeto.
+                if len({a.veiculo for a in mesmos}) < 2:
+                    continue
                 maior, menor = max(vs), min(vs)
                 # Diferença relativa: veículos arredondam diferente, e
                 # arredondamento não é contradição.
@@ -230,9 +238,12 @@ def carrega(conexao: sqlite3.Connection,
             desde: str | None = None) -> list[Afirmacao]:
     """Lê as afirmações do vocabulário mais recente.
 
-    Versões antigas ficam de fora: relações de vocabulários diferentes não são
-    comparáveis, e misturá-las produziria corroboração inexistente entre nomes
-    que só por acaso coincidem.
+    Versões INCOMPATÍVEIS ficam de fora: relações de vocabulários que mudaram
+    de significado não são comparáveis, e misturá-las produziria corroboração
+    inexistente entre nomes que só por acaso coincidem. Versões declaradas
+    compatíveis (`vocabulario.COMPATIVEIS` — evolução aditiva) convivem no
+    mesmo recorte: é o que impede a primeira extração de um vocabulário novo
+    de escurecer todo o acervo do anterior.
 
     E UMA extração por matéria, do MODELO DE EXTRAÇÃO ATIVO. Não basta pegar a
     mais recente: medir modelo exige extrair a mesma matéria com outro, e a
@@ -263,6 +274,12 @@ def carrega(conexao: sqlite3.Connection,
     sobre fato antigo — que é quando a corroboração costuma aparecer.
     """
     filtro = "AND a.data_publicacao >= ?" if desde else ""
+    # Versões COMPATÍVEIS convivem (v3 é aditiva sobre a v2 — ver
+    # vocabulario.COMPATIVEIS): sem isso, a primeira extração v3
+    # escurecia o acervo v2 inteiro. Dentro do mesmo artigo, a extração
+    # de vocabulário mais novo com tripla supera a antiga.
+    compat = sorted(vocabulario.COMPATIVEIS)
+    marcadores = ",".join("?" * len(compat))
     linhas = conexao.execute(
         f"""
         SELECT t.sujeito_canonico s, t.relacao r, t.objeto_canonico o,
@@ -281,21 +298,22 @@ def carrega(conexao: sqlite3.Connection,
                   -- 01/09/2026. Vazio só vale quando é tudo que há.
                   SELECT (SELECT e3.id FROM extracoes e3
                           WHERE e3.artigo_id = e2.artigo_id
-                            AND e3.vocab_versao = e2.vocab_versao
+                            AND e3.vocab_versao IN ({marcadores})
                             AND e3.modelo = e2.modelo
                           ORDER BY (SELECT COUNT(*) FROM triplas t
                                     WHERE t.extracao_id = e3.id) > 0 DESC,
+                                   e3.vocab_versao DESC,
                                    e3.id DESC
                           LIMIT 1)
                   FROM extracoes e2
-                  WHERE e2.vocab_versao = (SELECT MAX(vocab_versao)
-                                           FROM extracoes)
+                  WHERE e2.vocab_versao IN ({marcadores})
                     AND e2.modelo = ?
                   GROUP BY e2.artigo_id
               )
         {filtro}
         """,
-        (llm.EXTRACAO.id, desde) if desde else (llm.EXTRACAO.id,),
+        tuple(compat) + tuple(compat) + (
+            (llm.EXTRACAO.id, desde) if desde else (llm.EXTRACAO.id,)),
     ).fetchall()
     return [
         Afirmacao(l["s"], _relacao_normalizada(l["r"], l["o"], l["vn"]),

@@ -218,6 +218,17 @@ def recupera(afirmacao: AfirmacaoRecebida,
     return achados
 
 
+_ORIGEM_LEGIVEL = {"EXTRACTED": "explícita", "INFERRED": "inferida",
+                   "e": "explícita", "i": "inferida"}
+"""O enum de origem em português de tela. Cobre as duas gerações de
+valores gravados (EXTRACTED/INFERRED até 01/09/2026; e/i do schema magro
+em diante) — o cru vazava para o Telegram e para o julgamento."""
+
+
+def _origem_legivel(valor: str) -> str:
+    return _ORIGEM_LEGIVEL.get(valor, valor)
+
+
 def julga(texto: str, evidencias: list[indice.Achado]) -> tuple[Julgamento, llm.Uso]:
     linhas = []
     for i, e in enumerate(evidencias, 1):
@@ -225,7 +236,7 @@ def julga(texto: str, evidencias: list[indice.Achado]) -> tuple[Julgamento, llm.
         linhas.append(
             f"[{i}] {e.texto}\n"
             f"    veículo: {m['veiculo']} · data do fato: {m['data_fato'] or 'não informada'}"
-            f" · {m['origem']}\n"
+            f" · afirmação {_origem_legivel(m['origem'])}\n"
             f"    matéria: {m['titulo']}"
         )
     corpo = (
@@ -346,7 +357,8 @@ def verifica(texto: str, verboso: bool = False,
             # parecia citacao e nao servia para conferir nada.
             print(f"  [{m['veiculo']}] {m['titulo']}")
             print(f"    {e.texto}{valor}")
-            print(f"    fato: {m['data_fato'] or 'não informada'} · {m['origem']}")
+            print(f"    fato: {m['data_fato'] or 'não informada'} · "
+                  f"afirmação {_origem_legivel(m['origem'])}")
             print(f"    {m['url']}")
             print()
 

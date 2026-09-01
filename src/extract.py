@@ -18,7 +18,8 @@ import sqlite3
 import sys
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import (BaseModel, ConfigDict, Field, field_validator,
+                      model_validator)
 
 from . import agrupa, boilerplate, config, indice, llm, vocabulario
 from .vocabulario import Relacao
@@ -80,95 +81,126 @@ _LINHA_TETO = (
 
 
 class Tripla(BaseModel):
-    """Uma afirmação feita pela matéria."""
+    """Uma afirmação feita pela matéria.
 
-    sujeito: str = Field(description="Entidade como apareceu no texto.")
+    SCHEMA MAGRO (01/09/2026): no FIO, os campos usam aliases curtos e os
+    opcionais são omitidos em vez de emitidos como null. Saída de token é
+    a fatia dominante do custo de extração (53-85%, medido), e ~60 dos
+    ~178 tokens por tripla eram embalagem: nomes de campo longos, nulls
+    obrigatórios e o sujeito repetido idêntico ao canônico. Os NOMES
+    PYTHON continuam os longos — banco, grafo e o resto do código não
+    mudam; cada descrição começa com o nome longo para ancorar o alias.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    sujeito: str | None = Field(
+        None, alias="sj",
+        description=("sujeito como apareceu no texto — APENAS quando "
+                     "diferir de sc; omita quando idêntico."))
     sujeito_canonico: str = Field(
+        alias="sc",
         description=(
-            "Nome canônico e completo da entidade, sem cargo nem artigo. "
-            "'o presidente Lula' e 'Luiz Inácio Lula da Silva' devem produzir "
-            "o mesmo valor aqui."
+            "sujeito_canonico: nome canônico e completo da entidade, sem "
+            "cargo nem artigo. 'o presidente Lula' e 'Luiz Inácio Lula da "
+            "Silva' devem produzir o mesmo valor aqui."
         )
     )
     relacao: Relacao = Field(
+        alias="r",
         description=(
-            "A relação que a afirmação estabelece. Escolha da lista fechada; "
-            "não há outros valores possíveis. Use `outro` quando nenhuma "
-            "servir — forçar uma relação errada é pior que admitir a lacuna."
+            "relacao: a relação que a afirmação estabelece. Escolha da "
+            "lista fechada; não há outros valores possíveis. Use `outro` "
+            "quando nenhuma servir — forçar uma relação errada é pior que "
+            "admitir a lacuna."
         )
     )
     objeto: str | None = Field(
+        None, alias="ob",
         description=(
-            "Segunda entidade como apareceu no texto. null quando a afirmação é "
-            "um ATRIBUTO do sujeito e não uma relação com outra entidade — "
-            "margem de erro, custo, nível de confiança."
+            "objeto: segunda entidade como apareceu no texto. Omita quando "
+            "a afirmação é um ATRIBUTO do sujeito e não uma relação com "
+            "outra entidade — margem de erro, custo, nível de confiança."
         )
     )
     objeto_canonico: str | None = Field(
-        description="Nome canônico da segunda entidade. null junto com `objeto`."
-    )
+        None, alias="oc",
+        description=("objeto_canonico: nome canônico da segunda entidade — "
+                     "APENAS quando diferir de ob; omita quando idêntico."))
     tipo_relacao: Literal["evento", "estado"] = Field(
+        alias="t",
         description=(
-            "'evento' se afirma algo ocorrido num instante (comprou, anunciou, "
-            "votou) — permanece verdadeiro para sempre. 'estado' se afirma algo "
-            "sobre um intervalo (possui, preside, integra) — pode deixar de valer."
+            "tipo_relacao: 'evento' se afirma algo ocorrido num instante "
+            "(comprou, anunciou, votou) — permanece verdadeiro para sempre. "
+            "'estado' se afirma algo sobre um intervalo (possui, preside, "
+            "integra) — pode deixar de valer."
         )
     )
-    origem: Literal["EXTRACTED", "INFERRED"] = Field(
+    origem: Literal["e", "i"] = Field(
+        alias="og",
         description=(
-            "EXTRACTED se a afirmação está explícita no texto. INFERRED se você "
-            "a deduziu combinando informações. Na dúvida, INFERRED."
+            "origem: 'e' (explícito) se a afirmação está no texto. 'i' "
+            "(inferido) se você a deduziu combinando informações. Na "
+            "dúvida, 'i'."
         )
     )
     valor_numero: float | None = Field(
+        None, alias="v",
         description=(
-            "Quando a afirmação é sobre uma quantidade, o número puro aqui — "
-            "38, não '38%'. null quando não houver quantidade."
+            "valor_numero: quando a afirmação é sobre uma quantidade, o "
+            "número puro aqui — 38, não '38%'. Omita quando não houver."
         )
     )
     valor_unidade: str | None = Field(
+        None, alias="u",
         description=(
-            "Unidade do número, curta e padronizada: '%', 'BRL', 'pessoas', "
-            "'pontos percentuais', 'votos'. null se não houver."
+            "valor_unidade: unidade do número, curta e padronizada: '%', "
+            "'BRL', 'pessoas', 'pontos percentuais', 'votos'."
         )
     )
     valor_contexto: str | None = Field(
-        description=(
-            "O que o número mede, curto: '1º turno', 'margem de erro', "
-            "'2º cenário'. null se não houver."
-        )
-    )
+        None, alias="cx",
+        description=("valor_contexto: o que o número mede, curto: "
+                     "'1º turno', 'margem de erro', '2º cenário'."))
     data_fato: str | None = Field(
+        None, alias="d",
         description=(
-            "Quando o fato ocorreu, em AAAA-MM-DD, ou AAAA-MM / AAAA se o texto "
-            "só der o mês ou o ano. Resolva referências relativas ('ontem', "
-            "'nesta terça') usando a data de publicação informada. null se o "
-            "texto não permitir determinar."
+            "data_fato: quando o fato ocorreu, em AAAA-MM-DD, ou AAAA-MM / "
+            "AAAA se o texto só der o mês ou o ano. Resolva referências "
+            "relativas ('ontem', 'nesta terça') usando a data de publicação "
+            "informada. Omita se o texto não permitir determinar."
         )
     )
     sentenca: int = Field(
-        description="Índice da sentença numerada de onde a afirmação saiu."
+        alias="n",
+        description="sentenca: índice da sentença numerada de onde a "
+                    "afirmação saiu."
     )
 
+    @field_validator("origem", mode="before")
+    @classmethod
+    def _origem_curta(cls, v):
+        """Aceita a grafia longa (EXTRACTED/INFERRED) e normaliza para o
+        fio magro. O BANCO continua gravando a longa (ver salva_extracao)
+        — o CHECK do esquema e todo o acervo antigo ficam intactos."""
+        return {"EXTRACTED": "e", "INFERRED": "i"}.get(v, v)
+
     @model_validator(mode="after")
-    def _objeto_e_canonico_andam_juntos(self) -> "Tripla":
-        """Preenche `objeto_canonico` quando o modelo mandou só `objeto`.
+    def _pares_andam_juntos(self) -> "Tripla":
+        """Preenche a forma que o modelo omitiu com a forma irmã.
 
-        O schema não tem como impor os dois campos em conjunto, e o modelo às
-        vezes preenche um só. `descarta_vazias` olha apenas o canônico, então
-        a tripla com objeto e sem canônico morria em silêncio — medido em
-        29/08/2026: o fato principal de duas matérias parceiras de par caiu
-        como "vazia" exatamente assim. Completar preserva a afirmação paga;
-        descartar jogava fora o que o sistema existe para guardar.
-
-        Tensão assumida com "normalização é na leitura, nunca no registro"
-        (ver `canonico`): isto grava no registro. A diferença que a torna
-        aceitável é que nada é interpretado — o campo ausente recebe o TEXTO
-        que o próprio modelo devolveu no campo irmão, na mesma resposta. A
-        alternativa, medida, era perder o fato.
+        Para objeto/objeto_canonico é a regra medida em 29/08/2026 (tripla
+        com objeto e sem canônico morria em silêncio como "vazia"); para
+        sujeito é o contrato do schema magro — omitir quando idêntico. Nada
+        é interpretado: o campo ausente recebe o TEXTO que o próprio modelo
+        devolveu no campo irmão, na mesma resposta.
         """
+        if self.sujeito is None:
+            self.sujeito = self.sujeito_canonico
         if self.objeto and not self.objeto_canonico:
             self.objeto_canonico = self.objeto
+        if self.objeto_canonico and not self.objeto:
+            self.objeto = self.objeto_canonico
         return self
 
 
@@ -185,63 +217,89 @@ MAX_FONTES = len(ROTULOS_FONTE)
 saiu limpa. Acima disso, sem medição."""
 
 
-class Origem(BaseModel):
-    """De onde uma tripla saiu: qual matéria, qual sentença."""
-
-    fonte: str = Field(
-        description='A letra da matéria que afirma: "A", "B"...')
-    sentenca: int = Field(
-        description="Índice da sentença numerada DAQUELA matéria.")
+def _parse_origem(codigo: str) -> tuple[str, int] | None:
+    """'A3' → ('A', 3). None quando o código não tem a forma letra+índice."""
+    if len(codigo) >= 2 and codigo[0].isalpha() and codigo[1:].isdigit():
+        return codigo[0].upper(), int(codigo[1:])
+    return None
 
 
 class TriplaHistoria(BaseModel):
     """Tripla do modo história: os mesmos campos da `Tripla`, trocando o
-    índice único de sentença por `origens` — uma entrada por matéria que
+    índice único de sentença por `origens` — um código por matéria que
     afirma o fato. É o que torna a corroboração auditável: código barato
     confere que cada fonte apontada de fato contém a sentença.
 
     Definida por inteiro em vez de herdar: a `Tripla` exige `sentenca`, que
     aqui não existe — e schema explícito é mais honesto que herança com
-    campo morto."""
+    campo morto. Mesmo fio magro da `Tripla` (aliases, omissão de
+    opcionais); `origens` compacta para códigos "A3" — o objeto
+    {fonte, sentenca} custava ~10 tokens onde 2 bastam."""
 
-    sujeito: str = Field(description="Entidade como apareceu no texto.")
+    model_config = ConfigDict(populate_by_name=True)
+
+    sujeito: str | None = Field(
+        None, alias="sj",
+        description="sujeito como apareceu — APENAS quando diferir de sc.")
     sujeito_canonico: str = Field(
-        description=(
-            "Nome canônico e completo da entidade, sem cargo nem artigo."
-        )
-    )
+        alias="sc",
+        description=("sujeito_canonico: nome canônico e completo, sem "
+                     "cargo nem artigo."))
     relacao: Relacao = Field(
-        description=(
-            "A relação, da lista fechada. `outro` quando nenhuma servir."
-        )
-    )
+        alias="r",
+        description=("relacao: da lista fechada. `outro` quando nenhuma "
+                     "servir."))
     objeto: str | None = Field(
-        description="Segunda entidade como apareceu, ou null em atributo.")
+        None, alias="ob",
+        description=("objeto: segunda entidade como apareceu; omita em "
+                     "atributo."))
     objeto_canonico: str | None = Field(
-        description="Nome canônico da segunda entidade. null junto de objeto.")
+        None, alias="oc",
+        description=("objeto_canonico: nome canônico — APENAS quando "
+                     "diferir de ob."))
     tipo_relacao: Literal["evento", "estado"] = Field(
-        description="'evento' = instante; 'estado' = intervalo.")
-    origem: Literal["EXTRACTED", "INFERRED"] = Field(
-        description="EXTRACTED explícito no texto; INFERRED deduzido.")
+        alias="t",
+        description="tipo_relacao: 'evento' = instante; 'estado' = "
+                    "intervalo.")
+    origem: Literal["e", "i"] = Field(
+        alias="og",
+        description=("origem: 'e' explícito no texto; 'i' deduzido. Na "
+                     "dúvida, 'i'."))
     valor_numero: float | None = Field(
-        description="O número puro quando houver quantidade, senão null.")
+        None, alias="v",
+        description="valor_numero: o número puro quando houver quantidade.")
     valor_unidade: str | None = Field(
-        description="Unidade curta ('%', 'BRL', 'votos'), ou null.")
+        None, alias="u",
+        description="valor_unidade: unidade curta ('%', 'BRL', 'votos').")
     valor_contexto: str | None = Field(
-        description="O que o número mede, curto, ou null.")
+        None, alias="cx",
+        description="valor_contexto: o que o número mede, curto.")
     data_fato: str | None = Field(
-        description="Quando o fato ocorreu (AAAA-MM-DD/AAAA-MM/AAAA) ou null.")
-    origens: list[Origem] = Field(
+        None, alias="d",
+        description=("data_fato: quando o fato ocorreu (AAAA-MM-DD/"
+                     "AAAA-MM/AAAA); omita se indeterminável."))
+    origens: list[str] = Field(
+        alias="fs",
         description=(
-            "Uma entrada por matéria que AFIRMA este fato, com a sentença. "
-            "Inclua uma matéria APENAS se ela de fato o afirma."
+            "origens (fontes): um código por matéria que AFIRMA este "
+            'fato — a letra da matéria + o índice da sentença DELA: "A3", '
+            '"B0". Inclua uma matéria APENAS se ela de fato o afirma.'
         )
     )
+
+    @field_validator("origem", mode="before")
+    @classmethod
+    def _origem_curta(cls, v):
+        return {"EXTRACTED": "e", "INFERRED": "i"}.get(v, v)
 
     @model_validator(mode="after")
-    def _objeto_e_canonico_andam_juntos(self) -> "TriplaHistoria":
+    def _pares_andam_juntos(self) -> "TriplaHistoria":
+        if self.sujeito is None:
+            self.sujeito = self.sujeito_canonico
         if self.objeto and not self.objeto_canonico:
             self.objeto_canonico = self.objeto
+        if self.objeto_canonico and not self.objeto:
+            self.objeto = self.objeto_canonico
         return self
 
 
@@ -262,9 +320,9 @@ MODO HISTÓRIA: você receberá VÁRIAS matérias sobre a mesma história,
 etiquetadas [A], [B], [C]... Extraia as triplas seguindo TODAS as regras
 acima, e mais três:
 
-11. ORIGENS. Cada tripla lista `origens`: uma entrada {fonte, sentenca} por
-    matéria que AFIRMA aquele fato, apontando a sentença exata daquela
-    matéria. Inclua uma matéria SOMENTE se ela de fato afirma — atribuir a
+11. ORIGENS. Cada tripla lista `fs`: um código por matéria que AFIRMA
+    aquele fato — a letra da matéria + o índice da sentença DELA ("A3",
+    "B0"). Inclua uma matéria SOMENTE se ela de fato afirma — atribuir a
     quem não disse é o erro mais grave deste modo.
 
 12. UM NOME SÓ. Todas as matérias estão diante de você. A mesma entidade,
@@ -300,15 +358,19 @@ def valida_origens(
     """Descarta origem que aponta fonte ou sentença inexistente, e tripla
     que ficar sem origem válida. É a trava contra corroboração fabricada:
     `origens` é o modelo AFIRMANDO que cada fonte disse — índice inválido é
-    afirmação sem lastro e cai antes de virar registro. (A verificação
-    semântica — a sentença sustenta o conteúdo? — fica registrada como
-    evolução; esta é a estrutural.)"""
+    afirmação sem lastro e cai antes de virar registro. Código malformado
+    ("Z9", "A", "3A") cai pela mesma porta. (A verificação semântica — a
+    sentença sustenta o conteúdo? — fica registrada como evolução; esta é
+    a estrutural.)"""
     boas: list[TriplaHistoria] = []
     descartadas = 0
     for t in triplas:
-        validas = [o for o in t.origens
-                   if o.fonte in n_sentencas
-                   and 0 <= o.sentenca < n_sentencas[o.fonte]]
+        validas = []
+        for codigo in t.origens:
+            par = _parse_origem(codigo)
+            if par and par[0] in n_sentencas \
+                    and 0 <= par[1] < n_sentencas[par[0]]:
+                validas.append(f"{par[0]}{par[1]}")
         if validas:
             t.origens[:] = validas
             boas.append(t)
@@ -363,8 +425,9 @@ def salva_historia(conexao: sqlite3.Connection,
             "AND prompt_versao = ?",
             (linha["id"], llm.EXTRACAO.id, prompt_versao))
         do_artigo = [
-            _tripla_da_fonte(t, o.sentenca)
-            for t in triplas for o in t.origens if o.fonte == rotulo
+            _tripla_da_fonte(t, par[1])
+            for t in triplas for par in map(_parse_origem, t.origens)
+            if par and par[0] == rotulo
         ]
         # Último leva o resto da divisão: a soma dos rateios = fatura.
         rateio = llm.Uso(
@@ -393,11 +456,19 @@ O que NÃO extrair:
 - Afirmação sem as duas entidades identificáveis
 - Detalhe circunstancial que ninguém contestaria
 
+FORMATO DE SAÍDA: as chaves do schema são curtas — sc/sj (sujeito canônico
+/ como apareceu), r (relação), oc/ob (objeto canônico / como apareceu),
+t (tipo), og (origem: 'e' explícito, 'i' inferido), v/u/cx (valor, unidade
+e contexto do valor), d (data do fato), n (sentença). Omita campo opcional
+que não se aplica — nunca escreva null. Omita sj quando idêntico a sc, e
+oc quando idêntico a ob.
+
 Regras que importam mais que as outras:
 
-1. ORIGEM. EXTRACTED é o que o texto afirma explicitamente. INFERRED é o que
-   você deduziu. Distinguir os dois é o ponto central deste sistema — marcar
-   dedução como EXTRACTED corrompe o resultado em silêncio. Na dúvida, INFERRED.
+1. ORIGEM. EXTRACTED (og:'e') é o que o texto afirma explicitamente.
+   INFERRED (og:'i') é o que você deduziu. Distinguir os dois é o ponto
+   central deste sistema — marcar dedução como EXTRACTED corrompe o
+   resultado em silêncio. Na dúvida, INFERRED.
 
    Resolver a quem um apelido se refere é DEDUÇÃO, mesmo quando é óbvio:
 
@@ -452,6 +523,13 @@ Regras que importam mais que as outras:
    Errado: valor 65500 · data_fato 2026-08-25   ← data da publicação
    Certo:  valor 65500 · data_fato 2026-07-22   ← o preço é DE JULHO
 
+   E SÉRIE TEMPORAL EXIGE A DATA DE CADA PONTO. Captação diária, fechamento
+   de pregão, boletim dia a dia: cada valor recebe a data DO SEU dia. Se a
+   data do ponto não for determinável, a tripla daquele ponto NÃO sai —
+   valores de uma série sem data colapsam no grafo como se fossem o mesmo
+   instante e fabricam divergência (caso real: quatro captações diárias de
+   ETF, todas sem data, acusadas como contradição entre si).
+
 5. QUANTIDADE NÃO VAI NO OBJETO. Se a afirmação é sobre um número, o objeto é
    a ENTIDADE a que o número se refere, e o número vai nos campos de valor.
 
@@ -463,6 +541,13 @@ Regras que importam mais que as outras:
    escreveriam a mesma frase no objeto, e as triplas jamais se encontrariam no
    grafo. Como número, se encontram — e divergência entre eles é justamente a
    contradição que o sistema procura.
+
+   E FAIXAS DIFERENTES SÃO CONTEXTOS DIFERENTES. Prêmio da quina e da
+   quadra, 1º e 2º turno, cenário estimulado e espontâneo: o valor_contexto
+   tem que nomear a faixa de cada número. Dois valores de faixas distintas
+   sob o mesmo contexto disputam no grafo como se medissem a mesma coisa
+   (caso real: prêmio da quina e da quadra da Mega-Sena fundidos num só
+   contexto viraram divergência falsa).
 
 6. ATRIBUTO NÃO É RELAÇÃO. Quando a afirmação é uma PROPRIEDADE do sujeito e
    não um vínculo com outra entidade, `objeto` e `objeto_canonico` são null.
@@ -764,7 +849,7 @@ def _roda_historias(conexao: sqlite3.Connection, grupos, args,
                  + (f" · {vazias} vazias descartadas" if vazias else ""))
         print(f"  {len(validas)} triplas{aviso} · {resultado.uso}")
         for t in sorted(validas, key=lambda x: -len(x.origens)):
-            fontes = "".join(sorted(o.fonte for o in t.origens))
+            fontes = "".join(sorted({c[0] for c in t.origens}))
             alvo = t.objeto_canonico or "—"
             valor = (f" = {t.valor_numero:g} {t.valor_unidade or ''}"
                      if t.valor_numero is not None else "")

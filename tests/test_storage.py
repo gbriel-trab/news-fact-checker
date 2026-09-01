@@ -159,10 +159,12 @@ class TestCarregaUmaExtracaoPorMateria:
 
         uso = Uso(modelo=llm.EXTRACAO, entrada=1, saida=1,
                   cache_leitura=0, cache_escrita=0)
+        # vocab 2: dentro do conjunto compatível — o teste é sobre o
+        # filtro de MODELO, não o de vocabulário.
         salva_extracao(conexao, artigo_id, [tripla("do modelo ativo")],
-                       llm.EXTRACAO.id, "v1", 1, uso)
+                       llm.EXTRACAO.id, "v1", 2, uso)
         salva_extracao(conexao, artigo_id, [tripla("de outro modelo")],
-                       "modelo-de-teste", "v2", 1, uso)
+                       "modelo-de-teste", "v2", 2, uso)
         return conexao
 
     def test_so_a_extracao_do_modelo_ativo_entra(self, tmp_path):

@@ -27,7 +27,7 @@ import sys
 from dataclasses import dataclass
 from functools import lru_cache
 
-from . import config, llm
+from . import config, llm, vocabulario
 from .storage import conecta
 
 MODELO_EMBEDDING = "paraphrase-multilingual-MiniLM-L12-v2"
@@ -297,21 +297,24 @@ def indexa_afirmacoes(conexao: sqlite3.Connection,
                   -- Prefere extração COM tripla: o modo história grava
                   -- linha vazia como marcador, e MAX(id) cru deixava o
                   -- vazio superar triplas boas (revisão de 01/09/2026).
+                  -- Versões compatíveis convivem, e a mais nova com
+                  -- tripla vence — mesmo recorte do grafo.carrega.
                   SELECT (SELECT e3.id FROM extracoes e3
                           WHERE e3.artigo_id = e2.artigo_id
-                            AND e3.vocab_versao = e2.vocab_versao
+                            AND e3.vocab_versao IN ({compat})
                             AND e3.modelo = e2.modelo
                           ORDER BY (SELECT COUNT(*) FROM triplas t2
                                     WHERE t2.extracao_id = e3.id) > 0 DESC,
+                                   e3.vocab_versao DESC,
                                    e3.id DESC
                           LIMIT 1)
                   FROM extracoes e2
-                  WHERE e2.vocab_versao = (SELECT MAX(vocab_versao)
-                                           FROM extracoes)
+                  WHERE e2.vocab_versao IN ({compat})
                     AND e2.modelo = ?
                   GROUP BY e2.artigo_id
               )
-        """ + filtro_artigo,
+        """.format(compat=",".join(
+            str(v) for v in sorted(vocabulario.COMPATIVEIS))) + filtro_artigo,
         (llm.EXTRACAO.id,) + extras,
     ).fetchall()
 
