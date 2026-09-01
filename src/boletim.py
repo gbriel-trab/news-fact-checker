@@ -183,10 +183,15 @@ def _confere_post(post: str, conexao, acervo) -> tuple[str, float, dict]:
     return "\n".join(partes), uso.custo + pago_em_checks, dados
 
 
-def monta(dias: int) -> tuple[str, float, list[tuple[set[str], str]], str]:
+def monta(dias: int, reenviar: bool = False,
+          ) -> tuple[str, float, list[tuple[set[str], str]], str]:
     """Roda a cadeia e devolve (texto, custo total, [(chaves, post)] dos
     posts contidos, HTML do Telegram). Quem marca entrega é o chamador,
     DEPOIS de gravar — e marca TODAS as chaves de cada post.
+
+    Com `reenviar`, o estado 'já entregue' é ignorado e a janela inteira
+    volta — para auditar formato novo sem apagar histórico. O dedup
+    DENTRO da rodada continua valendo.
 
     Falha na conferência de um post não derruba a rodada nem o marca:
     o post volta inteiro na próxima, e o que já foi pago em vereditos é
@@ -214,7 +219,7 @@ def monta(dias: int) -> tuple[str, float, list[tuple[set[str], str]], str]:
 
         # `vistos` acumula as chaves da própria rodada: o modelo transcrever
         # o mesmo post duas vezes não pode virar entrega dupla.
-        vistos = _ja_entregues(conexao)
+        vistos = set() if reenviar else _ja_entregues(conexao)
         ineditos: list[tuple[str, set[str]]] = []
         for p in rodada.posts:
             chaves = _chaves_do_post(p, rodada.links)
