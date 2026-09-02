@@ -26,6 +26,14 @@ class TestPrompt:
         assert "URL:" in texto
         assert "EM RESPOSTA A" in texto
 
+    def test_quote_vem_transcrito(self):
+        # Cobre o QUOTE SECO: autor comenta por cima de um embed sem
+        # reescrever o conteúdo (caso real de 02/09/2026: a pergunta que
+        # o post da confluência respondia ficava só no embed e se perdia).
+        # Quando o autor reescreve o citado no corpo — caso RIOT — a
+        # transcrição normal já basta. Mesma receita do EM RESPOSTA A.
+        assert "CITANDO" in _prompt(("a",), 2)
+
     def test_post_original_tem_prioridade_sobre_resposta(self):
         # A charada de 01/09 (post-raiz) morreu de fome duas rodadas
         # seguidas: a amostra da busca veio inteira de respostas mais
@@ -153,6 +161,19 @@ class TestParaSeparacao:
         from src.radar import para_separacao
         bloco = "POST 1 (@x, data):\ntexto simples"
         assert para_separacao(bloco) == bloco
+
+    def test_post_citado_e_reatribuido_a_quem_o_escreveu(self):
+        # Caso RIOT (02/09/2026): a tese com números era do analista
+        # CITADO; o autor só comentou por cima. Sem reatribuir, os números
+        # do citado virariam premissa do autor.
+        from src.radar import para_separacao
+        bloco = ("POST 1 (@x, data):\n"
+                 "CITANDO (@sigel): RIOT assina contrato de US$ 9 bi\n"
+                 "Empresas boas sabem divulgar por estrutura.")
+        saida = para_separacao(bloco)
+        assert "as afirmações são de quem ele cita" in saida
+        assert "(@sigel): RIOT assina contrato" in saida
+        assert "Empresas boas" in saida
 
 
 class TestUrlDoPost:

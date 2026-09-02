@@ -64,6 +64,8 @@ _RE_CABECALHO = re.compile(r"^POST\s+\d+[^\n]*\n?")
 _RE_LINHA_URL = re.compile(r"^\s*URL:[^\n]*$\n?", re.MULTILINE | re.IGNORECASE)
 _RE_LINHA_RESPOSTA = re.compile(r"^\s*EM RESPOSTA A[^\n]*$\n?",
                                 re.MULTILINE | re.IGNORECASE)
+_RE_LINHA_CITANDO = re.compile(r"^\s*CITANDO[^\n]*$\n?",
+                               re.MULTILINE | re.IGNORECASE)
 
 
 def _hash_post(texto: str) -> str:
@@ -72,8 +74,8 @@ def _hash_post(texto: str) -> str:
     cabeçalho no hash, o mesmo post voltava como inédito na rodada
     seguinte (defeito notado em 01/09/2026); as outras duas linhas variam
     conforme o modelo obedece ou não ao formato."""
-    corpo = _RE_LINHA_RESPOSTA.sub(
-        "", _RE_LINHA_URL.sub("", _RE_CABECALHO.sub("", texto)))
+    corpo = _RE_LINHA_CITANDO.sub("", _RE_LINHA_RESPOSTA.sub(
+        "", _RE_LINHA_URL.sub("", _RE_CABECALHO.sub("", texto))))
     normalizado = " ".join(corpo.lower().split())
     return hashlib.sha256(normalizado.encode("utf-8")).hexdigest()[:16]
 
@@ -401,6 +403,7 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
             if m:
                 meta = f" <i>({_esc(m.group(1))})</i>"
         resposta = None
+        citando = None
         corpo_linhas: list[str] = []
         for linha in corpo.splitlines():
             limpa = linha.strip()
@@ -408,6 +411,9 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
                 continue
             if limpa.upper().startswith("EM RESPOSTA A"):
                 resposta = limpa
+                continue
+            if limpa.upper().startswith("CITANDO"):
+                citando = limpa
                 continue
             corpo_linhas.append(linha)
         corpo = "\n".join(corpo_linhas).strip()
@@ -419,6 +425,8 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
         p.append(f"<b>[{i}]</b>{meta}{ver}")
         if resposta:
             p.append(f"{tag('CONTEXTO')} <i>{_esc(resposta)}</i>")
+        if citando:
+            p.append(f"{tag('CITANDO')} <i>{_esc(citando)}</i>")
         p.append(f"<i>{_esc(corpo)}</i>")
         for tipo, afirmacao in dados["nao_verificaveis"]:
             p.append(f"{tag(_TAG_TIPO.get(tipo, tipo.upper()))} "

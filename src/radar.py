@@ -77,6 +77,8 @@ def _prompt(handles: tuple[str, ...], dias: int) -> str:
         "URL: <link do PRÓPRIO post transcrito, x.com/.../status/...>\n"
         "EM RESPOSTA A (@autor): <texto do post respondido — inclua esta "
         "linha SOMENTE se o post for uma resposta; senão, omita>\n"
+        "CITANDO (@autor): <texto do post citado/quotado — inclua esta "
+        "linha SOMENTE se o post cita outro post; senão, omita>\n"
         "<texto literal>\n---\n"
         "A linha URL de cada bloco tem de apontar para o post transcrito "
         "NAQUELE bloco, nunca para outro. "
@@ -185,22 +187,29 @@ _RE_URL_BLOCO = re.compile(
 _RE_LINHA_URL = re.compile(r"^\s*URL:[^\n]*\n?", re.MULTILINE | re.IGNORECASE)
 _RE_RESPOSTA_CAPT = re.compile(r"^\s*EM RESPOSTA A\s*([^\n]*)$",
                                re.MULTILINE | re.IGNORECASE)
+_RE_CITANDO_CAPT = re.compile(r"^\s*CITANDO\s*([^\n]*)$",
+                              re.MULTILINE | re.IGNORECASE)
 
 
 def para_separacao(bloco: str) -> str:
     """O bloco como o separador de premissas deve vê-lo.
 
-    A linha URL: sai (ruído de tokens); a linha EM RESPOSTA A vira
-    contexto REATRIBUÍDO ao interlocutor. Sem a reatribuição, as palavras
-    do outro entram no separador como se fossem do autor do post — e o
-    interlocutor pode estar afirmando fatos (o caso medido: respostas do
-    @grok com números). Sem o contexto, resposta curta perde o referente
-    ("Errou só que foi e voltou..." sem saber do quê).
+    A linha URL: sai (ruído de tokens); as linhas EM RESPOSTA A e CITANDO
+    viram contexto REATRIBUÍDO a quem falou. Sem a reatribuição, as
+    palavras do outro entram no separador como se fossem do autor do post
+    — o interlocutor pode estar afirmando fatos (caso medido: respostas
+    do @grok com números), e o post CITADO num quote seco idem. (Quando o
+    autor reescreve o citado no próprio corpo — caso RIOT, 02/09/2026 —
+    a linha nem aparece; a atribuição das aspas é problema do separador.)
+    Sem o contexto, resposta curta perde o referente.
     """
     sem_url = _RE_LINHA_URL.sub("", bloco)
-    return _RE_RESPOSTA_CAPT.sub(
+    com_resposta = _RE_RESPOSTA_CAPT.sub(
         lambda m: ("(contexto — palavras do interlocutor, não do autor "
                    f"do post: {m.group(1).strip()})"), sem_url)
+    return _RE_CITANDO_CAPT.sub(
+        lambda m: ("(contexto — post citado pelo autor; as afirmações são "
+                   f"de quem ele cita: {m.group(1).strip()})"), com_resposta)
 
 
 def id_status(url: str) -> str | None:
