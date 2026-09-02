@@ -80,17 +80,17 @@ _LINHA_TETO = (
 )
 
 
+# SCHEMA MAGRO (01/09/2026): no FIO, os campos usam aliases curtos e os
+# opcionais são omitidos em vez de emitidos como null. Saída de token é a
+# fatia dominante do custo de extração (53-85%, medido), e ~60 dos ~178
+# tokens por tripla eram embalagem: nomes de campo longos, nulls
+# obrigatórios e o sujeito repetido idêntico ao canônico. Os NOMES PYTHON
+# continuam os longos — banco, grafo e o resto do código não mudam; cada
+# descrição começa com o nome longo para ancorar o alias. O docstring da
+# classe fica CURTO de propósito: pydantic o envia como description do
+# schema, e comentário de engenharia ali é ruído pago para o modelo.
 class Tripla(BaseModel):
-    """Uma afirmação feita pela matéria.
-
-    SCHEMA MAGRO (01/09/2026): no FIO, os campos usam aliases curtos e os
-    opcionais são omitidos em vez de emitidos como null. Saída de token é
-    a fatia dominante do custo de extração (53-85%, medido), e ~60 dos
-    ~178 tokens por tripla eram embalagem: nomes de campo longos, nulls
-    obrigatórios e o sujeito repetido idêntico ao canônico. Os NOMES
-    PYTHON continuam os longos — banco, grafo e o resto do código não
-    mudam; cada descrição começa com o nome longo para ancorar o alias.
-    """
+    """Uma afirmação feita pela matéria."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -228,17 +228,17 @@ def _parse_origem(codigo: str) -> tuple[str, int] | None:
     return None
 
 
+# Tripla do modo história: os mesmos campos da `Tripla`, trocando o índice
+# único de sentença por `origens` — um código por matéria que afirma o
+# fato. É o que torna a corroboração auditável: código barato confere que
+# cada fonte apontada de fato contém a sentença. Definida por inteiro em
+# vez de herdar: a `Tripla` exige `sentenca`, que aqui não existe — e
+# schema explícito é mais honesto que herança com campo morto. Mesmo fio
+# magro da `Tripla`; `origens` compacta para códigos "A3" — o objeto
+# {fonte, sentenca} custava ~10 tokens onde 2 bastam. Docstring curto pelo
+# mesmo motivo da `Tripla`: ele viaja no schema.
 class TriplaHistoria(BaseModel):
-    """Tripla do modo história: os mesmos campos da `Tripla`, trocando o
-    índice único de sentença por `origens` — um código por matéria que
-    afirma o fato. É o que torna a corroboração auditável: código barato
-    confere que cada fonte apontada de fato contém a sentença.
-
-    Definida por inteiro em vez de herdar: a `Tripla` exige `sentenca`, que
-    aqui não existe — e schema explícito é mais honesto que herança com
-    campo morto. Mesmo fio magro da `Tripla` (aliases, omissão de
-    opcionais); `origens` compacta para códigos "A3" — o objeto
-    {fonte, sentenca} custava ~10 tokens onde 2 bastam."""
+    """Uma afirmação feita pela história, com as fontes que a afirmam."""
 
     model_config = ConfigDict(populate_by_name=True)
 
