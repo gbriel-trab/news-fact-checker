@@ -197,22 +197,27 @@ DEFINICOES: dict[Relacao, str] = {
     Relacao.PARTICIPOU_DE: "esteve em entrevista, sabatina, sessão ou evento",
     Relacao.DIVULGOU: "publicou ou tornou público um dado, estudo ou documento",
     Relacao.CONCEDEU: (
-        "autoridade deferiu pedido ou concedeu medida — liminar, recuperação "
-        "judicial, registro, habeas corpus. Quem CONCEDE é o sujeito; quem "
-        "pede é solicitou. Indeferir é rejeitou, NUNCA aqui"
+        "autoridade deferiu pedido ou concedeu medida. O objeto NOMEIA o "
+        "caso concreto — 'liminar sobre o Imposto de Exportação', 'habeas "
+        "corpus de Fulano' — nunca só o tipo da medida, senão dois casos "
+        "distintos casam no grafo. Quem CONCEDE é o sujeito; quem pede é "
+        "solicitou; indeferir é rejeitou, NUNCA aqui"
     ),
     Relacao.REJEITOU: (
         "autoridade indeferiu ou negou formalmente pedido, emenda ou "
-        "proposta. Ato formal — desaprovação em fala é criticou"
+        "proposta — inclusive derrubar EM VOTAÇÃO proposta, MP ou veto, "
+        "mesmo que vigorasse. Ato formal; desaprovação em fala é criticou"
     ),
     Relacao.SUSPENDEU: (
-        "fez cessar a vigência do que já valia — suspendeu, revogou, "
-        "derrubou, cassou. Quem suspende é o sujeito; a coisa cessada é o "
-        "objeto. Adiar evento futuro é adiou; criar medida é impos"
+        "fez cessar por ATO de autoridade a vigência do que já valia — "
+        "suspendeu, revogou, cassou norma, liminar ou decisão. Derrubar em "
+        "VOTAÇÃO é rejeitou; interromper julgamento para retomar depois "
+        "(pedido de vista) é adiou; criar medida é impos"
     ),
     Relacao.ADIOU: (
-        "empurrou para data futura evento já marcado — votação, depoimento, "
-        "julgamento, prazo. Mantém a validade; só desloca no tempo"
+        "empurrou para depois evento marcado ou em curso — votação, "
+        "depoimento, prazo, julgamento interrompido para retomar (pedido "
+        "de vista). Mantém a validade; só desloca no tempo"
     ),
     Relacao.EDITOU: (
         "editou, assinou ou baixou ato normativo — medida provisória, "
@@ -269,7 +274,8 @@ DEFINICOES: dict[Relacao, str] = {
     Relacao.TEM_PARENTESCO_COM: (
         "vínculo familiar ou conjugal; o TIPO ('pai', 'casada com', "
         "'filho') é obrigatório em valor_contexto. No vínculo vertical o "
-        "ascendente é o sujeito"
+        "ascendente é o sujeito; no simétrico (cônjuge, irmão) a ordem "
+        "não importa — o grafo a normaliza na leitura"
     ),
     Relacao.RETRATA: (
         "obra — filme, livro, série, documentário — retrata ou tem como "
@@ -288,6 +294,16 @@ DEFINICOES: dict[Relacao, str] = {
 }
 
 assert set(DEFINICOES) == set(Relacao), "toda relação precisa de definição"
+
+
+SIMETRICAS: frozenset[str] = frozenset({Relacao.TEM_PARENTESCO_COM.value})
+"""Relações SEM direção: (A, r, B) e (B, r, A) afirmam o mesmo fato.
+
+A chave do grafo ordena o par na LEITURA (princípio: normalização na
+leitura, nunca no registro) — sem isso, corroboração de vínculo conjugal
+ou fraterno seria estruturalmente impossível: cada veículo põe como
+sujeito quem a frase dele põe, e (A,r,B) jamais casaria com (B,r,A).
+Achado da revisão de 01/09/2026."""
 
 
 def resumo_para_prompt() -> str:

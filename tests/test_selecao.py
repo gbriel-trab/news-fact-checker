@@ -393,6 +393,35 @@ class TestJanelaTemporal:
         assert any(g.diverge for g in grupos)
 
 
+class TestRelacaoSimetrica:
+    def test_parentesco_horizontal_corrobora_nas_duas_ordens(self):
+        # (A, casada com, B) num veículo e (B, marido de, A) no outro são
+        # o MESMO fato — sem ordenar o par na chave, essa corroboração
+        # era estruturalmente impossível (revisão de 01/09/2026).
+        from src.grafo import Afirmacao
+
+        def vinculo(sujeito, objeto, veiculo, tipo):
+            return Afirmacao(
+                sujeito=sujeito, relacao="tem_parentesco_com",
+                objeto=objeto, valor=None, unidade=None, contexto=tipo,
+                data_fato=None, origem="EXTRACTED", veiculo=veiculo,
+                titulo="t", url=f"https://x/{veiculo}",
+            )
+
+        a = vinculo("Cilia Flores", "Nicolás Maduro", "G1", "mulher")
+        b = vinculo("Nicolás Maduro", "Cilia Flores", "Carta", "marido")
+        assert a.chave == b.chave
+
+        c = vinculo("Cilia Flores", "Nicolás Maduro", "G1", "mulher")
+        d = Afirmacao(
+            sujeito="Cilia Flores", relacao="afirmou",
+            objeto="Nicolás Maduro", valor=None, unidade=None,
+            contexto=None, data_fato=None, origem="EXTRACTED",
+            veiculo="G1", titulo="t", url="https://x/1")
+        # Relação direcional NÃO ordena: afirmar sobre alguém tem lado.
+        assert c.chave != d.chave
+
+
 class TestAgrupamentoPorMedida:
     """A correção do defeito que impedia qualquer número de corroborar.
 

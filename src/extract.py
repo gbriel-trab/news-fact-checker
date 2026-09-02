@@ -218,8 +218,12 @@ saiu limpa. Acima disso, sem medição."""
 
 
 def _parse_origem(codigo: str) -> tuple[str, int] | None:
-    """'A3' → ('A', 3). None quando o código não tem a forma letra+índice."""
-    if len(codigo) >= 2 and codigo[0].isalpha() and codigo[1:].isdigit():
+    """'A3' → ('A', 3). None quando o código não tem a forma letra+índice.
+
+    isdecimal, não isdigit: '²'.isdigit() é True mas int('²') estoura —
+    e a exceção derrubaria o lote DEPOIS da chamada paga, em vez de o
+    código malformado cair na porta do valida_origens."""
+    if len(codigo) >= 2 and codigo[0].isalpha() and codigo[1:].isdecimal():
         return codigo[0].upper(), int(codigo[1:])
     return None
 
@@ -510,7 +514,7 @@ Regras que importam mais que as outras:
    publicada. Elas divergem quando a matéria trata de algo antigo, e essa
    divergência é justamente o que o sistema precisa enxergar.
 
-   Para relação de ESTADO sem data explícita no texto, use null. Filiação
+   Para relação de ESTADO sem data explícita no texto, OMITA a data. Filiação
    partidária, cargo e propriedade duram anos; carimbá-los com a data da
    matéria inventa uma precisão que a fonte não deu, e faz duas matérias sobre
    o mesmo fato permanente parecerem separadas no tempo.
@@ -550,12 +554,12 @@ Regras que importam mais que as outras:
    contexto viraram divergência falsa).
 
 6. ATRIBUTO NÃO É RELAÇÃO. Quando a afirmação é uma PROPRIEDADE do sujeito e
-   não um vínculo com outra entidade, `objeto` e `objeto_canonico` são null.
+   não um vínculo com outra entidade, o objeto fica OMITIDO (nem ob nem oc).
 
    Errado: (Pesquisa X, teve_margem_de_erro, margem de erro)
    Errado: (Pesquisa X, custou, Instituto Y)
-   Certo:  (Pesquisa X, teve_margem_de_erro, null) valor 2 "pontos percentuais"
-   Certo:  (Pesquisa X, teve_custo, null)          valor 24000 "BRL"
+   Certo:  (Pesquisa X, teve_margem_de_erro, —) valor 2 "pontos percentuais"
+   Certo:  (Pesquisa X, teve_custo, —)          valor 24000 "BRL"
 
    Margem de erro, custo e nível de confiança são propriedades da pesquisa, não
    relações com algo. Inventar um objeto para preencher o campo produz tripla
@@ -565,7 +569,7 @@ Regras que importam mais que as outras:
    defendeu, chamou, declarou — SEMPRE tem objeto: é o conteúdo do que foi
    dito. Objeto nulo ali apaga a afirmação inteira.
 
-   Errado: (Ruas, afirmou, null)
+   Errado: (Ruas, afirmou, —)
    Certo:  (Ruas, afirmou, ADPF 635 transformou o Rio em resort para criminosos)
 
    Regra geral: toda tripla precisa carregar OU um objeto OU um valor
@@ -635,14 +639,14 @@ Exemplo:
        evento · EXTRACTED · fato 2026-08-19 · sent 0
        valor_numero 41 · valor_unidade "%"
     (Carlos Lima, integra, Partido Social Democrático)
-       estado · EXTRACTED · fato null · sent 0
+       estado · EXTRACTED · sem data · sent 0
     (Carlos Lima, candidatou_se_a, Governo do Estado de São Paulo)
-       estado · EXTRACTED · fato null · sent 0
+       estado · EXTRACTED · sem data · sent 0
     (Pesquisa Ibope SP agosto 2026, tem_atributo, null)
-       estado · EXTRACTED · fato null · sent 1
+       estado · EXTRACTED · sem data · sent 1
        valor_numero 30000 · valor_unidade "BRL" · valor_contexto "custo"
     (Pesquisa Ibope SP agosto 2026, tem_atributo, null)
-       estado · EXTRACTED · fato null · sent 1
+       estado · EXTRACTED · sem data · sent 1
        valor_numero 2000 · valor_unidade "pessoas" · valor_contexto "amostra"
     (Carlos Lima, afirmou, a segurança pública será prioridade absoluta)
        evento · EXTRACTED · fato 2026-08-19 · sent 2
@@ -651,7 +655,7 @@ Exemplo:
   - "nesta quarta-feira" virou data real, e o Ibope foi expandido no canônico
   - o percentual saiu do objeto e virou valor, para que outro veículo
     noticiando a mesma pesquisa chegue ao mesmo número
-  - filiação e candidatura são estado, e o texto não as data: fato null
+  - filiação e candidatura são estado, e o texto não as data: sem data
   - custo e amostra são atributos: objeto null, e o que eles medem vai em
     valor_contexto
   - a fala virou o CONTEÚDO dito, não o assunto
@@ -1288,11 +1292,16 @@ def main() -> None:
             print(f'    [{idx}] "{corte}"')
 
             for t in por_sentenca[idx]:
-                marca = " " if t.origem == "EXTRACTED" else "~"
+                # Em memória a origem é o fio magro ('e'/'i'); a grafia
+                # longa só existe no banco. Comparar com 'EXTRACTED' aqui
+                # marcava TUDO como inferido (revisão de 01/09/2026).
+                marca = " " if t.origem == "e" else "~"
                 alvo = t.objeto_canonico or "—"
                 print(f"      {marca} ({t.sujeito_canonico}, {t.relacao}, {alvo})")
 
-                meta = f"          {t.tipo_relacao} · {t.origem} · fato: {t.data_fato}"
+                legivel = "explícita" if t.origem == "e" else "inferida"
+                meta = (f"          {t.tipo_relacao} · {legivel} · "
+                        f"fato: {t.data_fato or '—'}")
                 if t.valor_numero is not None:
                     valor = f"{t.valor_numero:g} {t.valor_unidade or ''}".strip()
                     if t.valor_contexto:
@@ -1327,11 +1336,11 @@ def main() -> None:
             "WHERE e.vocab_versao = ?", (VOCAB_VERSAO,)
         ).fetchone()[0]
 
-        n_orfas, custo_orfas = orfas(conexao, VOCAB_VERSAO)
+        n_orfas, custo_orfas = orfas(conexao, vocabulario.COMPATIVEIS)
         if n_orfas:
             print()
-            print(f"ATENÇÃO: {n_orfas} matérias extraídas sob vocabulário "
-                  f"antigo (US$ {custo_orfas:.2f} pagos).")
+            print(f"ATENÇÃO: {n_orfas} matérias extraídas só sob vocabulário "
+                  f"INCOMPATÍVEL (US$ {custo_orfas:.2f} pagos).")
             print("O grafo as ignora — relação de vocabulários diferentes não "
                   "é comparável.")
             print("Elas voltaram para a fila: --historias e -n as oferecem de "

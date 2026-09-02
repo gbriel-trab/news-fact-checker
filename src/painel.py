@@ -61,26 +61,23 @@ def resumo() -> dict:
         "GROUP BY veiculo ORDER BY materias DESC")]
 
     custo = um("SELECT COALESCE(SUM(custo_usd),0) FROM extracoes")
-    # O recorte que o grafo lê: as versões COMPATÍVEIS de vocabulário
-    # (v3 é aditiva sobre a v2 — ver vocabulario.COMPATIVEIS). O total de
-    # todas as gerações (testes de modelo, vocabulários antigos) descreve
-    # gasto histórico, não o sistema de hoje — e induzia leitura errada.
-    from . import vocabulario
+    # O recorte que o grafo lê — LITERALMENTE: os contadores vêm do
+    # próprio grafo.carrega, não de SQL paralelo. A revisão de 01/09/2026
+    # pegou a versão SQL somando v2 E v3 do MESMO artigo (o grafo escolhe
+    # uma extração por matéria); duplicar a regra aqui era pedir para as
+    # duas divergirem de novo.
+    import collections
+
+    from . import grafo, vocabulario
     compat = ",".join(str(v) for v in sorted(vocabulario.COMPATIVEIS))
     vocab = um("SELECT COALESCE(MAX(vocab_versao),0) FROM extracoes")
     extraidas = um("SELECT COUNT(DISTINCT artigo_id) FROM extracoes "
                    f"WHERE vocab_versao IN ({compat})")
-    triplas_v = um(
-        "SELECT COUNT(*) FROM triplas t JOIN extracoes e "
-        f"ON e.id=t.extracao_id WHERE e.vocab_versao IN ({compat})")
-    outro_v = um(
-        "SELECT COUNT(*) FROM triplas t JOIN extracoes e "
-        f"ON e.id=t.extracao_id WHERE e.vocab_versao IN ({compat}) "
-        "AND t.relacao='outro'")
-    relacoes = [dict(r) for r in q(
-        "SELECT t.relacao, COUNT(*) n FROM triplas t JOIN extracoes e "
-        f"ON e.id=t.extracao_id WHERE e.vocab_versao IN ({compat}) "
-        "GROUP BY t.relacao ORDER BY n DESC LIMIT 12")]
+    acervo = grafo.carrega(con)
+    triplas_v = len(acervo)
+    outro_v = sum(1 for a in acervo if a.relacao == "outro")
+    contagem = collections.Counter(a.relacao for a in acervo)
+    relacoes = [{"relacao": r, "n": n} for r, n in contagem.most_common(12)]
     consultas = [dict(r) for r in q(
         "SELECT afirmacao, veredito, veiculos, custo_usd, consultado_em "
         "FROM consultas ORDER BY id DESC LIMIT 12")]

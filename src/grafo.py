@@ -90,9 +90,18 @@ class Afirmacao:
         triplas), e igualdade crua fazia o caso mais denso do grafo nunca
         se encontrar. A exibição continua usando o texto original — quem
         normaliza é a comparação, nunca o registro. Ver `canonico`.
+
+        Relação SIMÉTRICA ordena o par: (A, casada com, B) e (B, marido
+        de, A) são o mesmo fato, e sem a ordenação a corroboração de
+        parentesco horizontal era estruturalmente impossível — cada
+        veículo põe como sujeito quem a frase dele põe. Ver
+        `vocabulario.SIMETRICAS`.
         """
-        return (chave_canonica(self.sujeito), self.relacao,
-                chave_canonica(self.objeto) if self.objeto else "")
+        s = chave_canonica(self.sujeito)
+        o = chave_canonica(self.objeto) if self.objeto else ""
+        if o and self.relacao in vocabulario.SIMETRICAS:
+            s, o = sorted((s, o))
+        return (s, self.relacao, o)
 
 
 @dataclass(frozen=True, slots=True)

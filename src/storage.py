@@ -342,28 +342,35 @@ def salva_consulta(conexao: sqlite3.Connection, afirmacao: str, veredito: str,
 
 
 def orfas(conexao: sqlite3.Connection,
-          vocab_versao: int) -> tuple[int, float]:
+          compativeis: frozenset[int]) -> tuple[int, float]:
     """Matérias pagas cujo resultado o acervo não enxerga.
 
-    Extração sob vocabulário antigo é dinheiro gasto que não corrobora nada: o
-    grafo a exclui — corretamente, porque relação de vocabulários diferentes
-    não é comparável — e nada na saída dizia que ela existia.
+    Extração sob vocabulário INCOMPATÍVEL é dinheiro gasto que não corrobora
+    nada: o grafo a exclui — corretamente, porque relação que mudou de
+    significado não é comparável — e nada na saída dizia que ela existia.
 
     O sintoma é uma consulta responder "sem evidência" sobre matéria que está
     visivelmente no banco, e o sistema não ter como explicar a diferença. Foi
     exatamente o que aconteceu com a pesquisa do RS: o acervo tinha os 38% da
     Juliana Brizola, sob `liderou_pesquisa` e `obteve_percentual_em` de um
     vocabulário que não existe mais.
+
+    Recebe o CONJUNTO compatível, não a versão corrente: desde a v3
+    (aditiva), matéria só-v2 está DENTRO do grafo — contá-la como órfã
+    convidava o operador a pagar re-extração de acervo que o grafo já lê
+    (revisão de 01/09/2026).
     """
+    marcadores = ",".join("?" * len(compativeis))
+    valores = tuple(sorted(compativeis))
     linha = conexao.execute(
-        """
+        f"""
         SELECT COUNT(DISTINCT artigo_id) n, COALESCE(SUM(custo_usd), 0) c
         FROM extracoes
-        WHERE vocab_versao < ?
+        WHERE vocab_versao NOT IN ({marcadores})
           AND artigo_id NOT IN (SELECT artigo_id FROM extracoes
-                                WHERE vocab_versao = ?)
+                                WHERE vocab_versao IN ({marcadores}))
         """,
-        (vocab_versao, vocab_versao),
+        valores + valores,
     ).fetchone()
     return linha["n"], linha["c"]
 

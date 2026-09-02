@@ -204,9 +204,11 @@ def indexa_entidades(conexao: sqlite3.Connection) -> int:
     sob outro nome. Sujeito e objeto entram juntos: a mesma entidade aparece
     nos dois papéis conforme a frase.
     """
-    # Mesmo recorte do resto: so o modelo ativo, uma extracao por materia.
-    # Entidade canonizada por outro modelo entra com grafia diferente e
-    # concorre com a legitima na busca por semelhanca.
+    # Mesmo recorte do resto: so o modelo ativo, uma extracao por materia,
+    # versoes COMPATIVEIS convivendo (a revisao de 01/09/2026 pegou esta
+    # funcao presa no MAX antigo — a primeira extracao v3 escureceria as
+    # entidades do acervo v2). Entidade canonizada por outro modelo entra
+    # com grafia diferente e concorre com a legitima na busca.
     ativas = """
         SELECT t.sujeito_canonico s, t.objeto_canonico o
         FROM triplas t JOIN extracoes e ON e.id = t.extracao_id
@@ -216,19 +218,20 @@ def indexa_entidades(conexao: sqlite3.Connection) -> int:
                   -- vazio superar triplas boas (revisão de 01/09/2026).
                   SELECT (SELECT e3.id FROM extracoes e3
                           WHERE e3.artigo_id = e2.artigo_id
-                            AND e3.vocab_versao = e2.vocab_versao
+                            AND e3.vocab_versao IN ({compat})
                             AND e3.modelo = e2.modelo
                           ORDER BY (SELECT COUNT(*) FROM triplas t2
                                     WHERE t2.extracao_id = e3.id) > 0 DESC,
+                                   e3.vocab_versao DESC,
                                    e3.id DESC
                           LIMIT 1)
                   FROM extracoes e2
-                  WHERE e2.vocab_versao = (SELECT MAX(vocab_versao)
-                                           FROM extracoes)
+                  WHERE e2.vocab_versao IN ({compat})
                     AND e2.modelo = ?
                   GROUP BY e2.artigo_id
               )
-    """
+    """.format(compat=",".join(
+        str(v) for v in sorted(vocabulario.COMPATIVEIS)))
     linhas = conexao.execute(
         f"""
         SELECT nome, COUNT(*) AS n FROM (

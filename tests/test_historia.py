@@ -54,6 +54,13 @@ class TestValidaOrigens:
         boas, _ = valida_origens([t], {"A": 3, "B": 3})
         assert boas[0].origens == ["B1"]
 
+    def test_digito_unicode_nao_estoura_a_chamada_paga(self):
+        # '²'.isdigit() é True mas int('²') levanta — e a exceção viria
+        # DEPOIS da chamada paga (revisão de 01/09/2026). isdecimal fecha.
+        from src.extract import _parse_origem
+        assert _parse_origem("A²") is None
+        assert _parse_origem("A12") == ("A", 12)
+
 
 class TestFioMagro:
     """O contrato do schema magro (01/09/2026): aliases curtos no fio,
