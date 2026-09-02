@@ -34,12 +34,14 @@ class TestPrompt:
         # transcrição normal já basta. Mesma receita do EM RESPOSTA A.
         assert "CITANDO" in _prompt(("a",), 2)
 
-    def test_post_original_tem_prioridade_sobre_resposta(self):
-        # A charada de 01/09 (post-raiz) morreu de fome duas rodadas
-        # seguidas: a amostra da busca veio inteira de respostas mais
-        # novas. A API não filtra por tipo; o prompt dirige.
-        assert "NÃO são" in _prompt(("a",), 2)
-        assert "PRIORIDADE" in _prompt(("a",), 2)
+    def test_resposta_a_terceiro_fica_fora_e_thread_propria_entra(self):
+        # Decisão de 02/09/2026, sobre os dados do próprio usuário: a
+        # substância do handle vive em post, quote e thread própria;
+        # resposta a terceiro era a maioria do custo e do ruído (e a
+        # fome da charada). A API não filtra por tipo; o prompt dirige.
+        texto = _prompt(("a",), 2)
+        assert "NÃO TRANSCREVA respostas a outros usuários" in texto
+        assert "respondendo a si" in texto
 
     def test_corpo_carrega_filtro_e_janela(self):
         from datetime import datetime, timedelta, timezone
@@ -156,6 +158,21 @@ class TestParaSeparacao:
         assert "palavras do interlocutor, não do autor" in saida
         assert "(@grok): o índice subiu 40% no ano" in saida
         assert "Então falta muito?" in saida
+
+    def test_thread_propria_nao_vira_interlocutor(self):
+        # Com resposta a terceiros excluída da captura, EM RESPOSTA A
+        # passa a apontar o post anterior da PRÓPRIA thread — palavras do
+        # mesmo autor. Rotulá-las de "interlocutor" poria a premissa
+        # legítima (ex.: update de posição em thread) sob suspeita.
+        from src.radar import para_separacao
+        bloco = ("POST 1 (@mentalhedgebr, 01 Sep 2026):\n"
+                 "EM RESPOSTA A (@mentalhedgebr): MINERADORAS: tirando "
+                 "meio hedge 20% abaixo do topo.\n"
+                 "Update: retomando 25% da posição")
+        saida = para_separacao(bloco)
+        assert "post anterior do próprio autor na thread" in saida
+        assert "interlocutor" not in saida
+        assert "Update: retomando 25%" in saida
 
     def test_bloco_sem_linhas_novas_passa_intacto(self):
         from src.radar import para_separacao

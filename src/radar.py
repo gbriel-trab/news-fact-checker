@@ -82,9 +82,11 @@ def _prompt(handles: tuple[str, ...], dias: int) -> str:
         "<texto literal>\n---\n"
         "A linha URL de cada bloco tem de apontar para o post transcrito "
         "NAQUELE bloco, nunca para outro. "
-        "PRIORIDADE: transcreva PRIMEIRO todos os posts que NÃO são "
-        "respostas (posts originais da janela, sem exceção); as respostas "
-        "vêm depois, das mais substanciais para as mais curtas. "
+        "NÃO TRANSCREVA respostas a outros usuários — ignore-as por "
+        "completo. Transcreva apenas: posts originais, quote-posts, e "
+        "continuações de thread própria (o handle respondendo a si "
+        "mesmo — nesse caso a linha EM RESPOSTA A traz o post anterior "
+        "da própria thread). "
         "Se um handle não retornar nada, diga qual, numa linha à parte."
     )
 
@@ -195,18 +197,32 @@ def para_separacao(bloco: str) -> str:
     """O bloco como o separador de premissas deve vê-lo.
 
     A linha URL: sai (ruído de tokens); as linhas EM RESPOSTA A e CITANDO
-    viram contexto REATRIBUÍDO a quem falou. Sem a reatribuição, as
-    palavras do outro entram no separador como se fossem do autor do post
-    — o interlocutor pode estar afirmando fatos (caso medido: respostas
-    do @grok com números), e o post CITADO num quote seco idem. (Quando o
-    autor reescreve o citado no próprio corpo — caso RIOT, 02/09/2026 —
+    viram contexto com a ATRIBUIÇÃO certa. Desde 02/09/2026 a captura
+    exclui resposta a terceiros (decisão do usuário: neste domínio a
+    substância vive em post, quote e thread própria), então EM RESPOSTA A
+    normalmente aponta o post ANTERIOR DA PRÓPRIA THREAD — palavras do
+    mesmo autor, e rotulá-las de "interlocutor" poria premissa legítima
+    sob suspeita. A comparação de handle decide: mesmo handle do
+    cabeçalho → contexto do próprio autor; outro handle (o modelo
+    desobedeceu a exclusão, ou é quote) → reatribuído a quem falou.
+    (Quando o autor reescreve o citado no próprio corpo — caso RIOT —
     a linha nem aparece; a atribuição das aspas é problema do separador.)
-    Sem o contexto, resposta curta perde o referente.
     """
+    m_cab = re.match(r"^POST\s+\d+\s*\((@\w+)", bloco)
+    handle_autor = (m_cab.group(1).lower() if m_cab else "")
+
+    def _rotula_resposta(m: re.Match) -> str:
+        conteudo = m.group(1).strip()
+        m_quem = re.match(r"\((@\w+)", conteudo)
+        quem = m_quem.group(1).lower() if m_quem else ""
+        if quem and quem == handle_autor:
+            return ("(contexto — post anterior do próprio autor na "
+                    f"thread: {conteudo})")
+        return ("(contexto — palavras do interlocutor, não do autor "
+                f"do post: {conteudo})")
+
     sem_url = _RE_LINHA_URL.sub("", bloco)
-    com_resposta = _RE_RESPOSTA_CAPT.sub(
-        lambda m: ("(contexto — palavras do interlocutor, não do autor "
-                   f"do post: {m.group(1).strip()})"), sem_url)
+    com_resposta = _RE_RESPOSTA_CAPT.sub(_rotula_resposta, sem_url)
     return _RE_CITANDO_CAPT.sub(
         lambda m: ("(contexto — post citado pelo autor; as afirmações são "
                    f"de quem ele cita: {m.group(1).strip()})"), com_resposta)
