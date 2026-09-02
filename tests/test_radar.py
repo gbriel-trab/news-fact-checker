@@ -28,14 +28,14 @@ class TestPrompt:
 
     def test_quote_vem_transcrito(self):
         # Cobre o QUOTE SECO: autor comenta por cima de um embed sem
-        # reescrever o conteúdo (caso real de 02/09/2026: a pergunta que
+        # reescrever o conteúdo (caso real de 01/09/2026: a pergunta que
         # o post da confluência respondia ficava só no embed e se perdia).
         # Quando o autor reescreve o citado no corpo — caso RIOT — a
         # transcrição normal já basta. Mesma receita do EM RESPOSTA A.
         assert "CITANDO" in _prompt(("a",), 2)
 
     def test_resposta_a_terceiro_fica_fora_e_thread_propria_entra(self):
-        # Decisão de 02/09/2026, sobre os dados do próprio usuário: a
+        # Decisão de 01/09/2026, sobre os dados do próprio usuário: a
         # substância do handle vive em post, quote e thread própria;
         # resposta a terceiro era a maioria do custo e do ruído (e a
         # fome da charada). A API não filtra por tipo; o prompt dirige.
@@ -180,7 +180,7 @@ class TestParaSeparacao:
         assert para_separacao(bloco) == bloco
 
     def test_post_citado_e_reatribuido_a_quem_o_escreveu(self):
-        # Caso RIOT (02/09/2026): a tese com números era do analista
+        # Caso RIOT (01/09/2026): a tese com números era do analista
         # CITADO; o autor só comentou por cima. Sem reatribuir, os números
         # do citado virariam premissa do autor.
         from src.radar import para_separacao

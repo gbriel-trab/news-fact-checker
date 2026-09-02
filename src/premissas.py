@@ -49,7 +49,7 @@ from .storage import conecta
 class Premissa(BaseModel):
     """Uma afirmação isolada extraída de um texto argumentativo.
 
-    Desde 02/09/2026 a reescrita (`afirmacao`) é EXCLUSIVA do tipo fato:
+    Desde 01/09/2026 a reescrita (`afirmacao`) é EXCLUSIVA do tipo fato:
     é a consulta que o verificador consome, e só aí ela trabalha. Para
     opinião/previsão/relato a paráfrase era o maior custo de saída da
     separação (~80-90% das premissas de um post de análise) repetindo o

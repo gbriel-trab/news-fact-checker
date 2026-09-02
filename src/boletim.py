@@ -159,7 +159,7 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
     fatos = [p for p in analise.premissas if p.tipo == "fato"]
 
     for p in resto:
-        # p.texto: desde a evolução de 02/09/2026 o separador só reescreve
+        # p.texto: desde a evolução de 01/09/2026 o separador só reescreve
         # FATO; aqui vem o trecho literal do post — que é o que o leitor
         # quer ver, sem a paráfrase paga que repetia o post.
         partes.append(f"  [{p.tipo}] {p.texto} — nada a conferir")
@@ -294,7 +294,12 @@ def monta(dias: int, reenviar: bool = False,
             vistos |= chaves
             ineditos.append((p, chaves))
 
-        hoje = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+        # Data LOCAL, não UTC: é cabeçalho para o leitor, e às 21:30 de
+        # um dia o UTC já virou o outro — o digest chegava "datado de
+        # amanhã" (apontado pelo usuário em 01/09/2026 às 22h). UTC fica
+        # para os carimbos internos (estado, banco), onde comparação
+        # importa mais que leitura.
+        hoje = datetime.now().astimezone().strftime("%d/%m/%Y")
         handles = ", ".join("@" + h for h in config.HANDLES_RADAR)
         linhas = [f"RADAR · {handles} · {hoje}",
                   "transcrição de modelo — o registro é o post, no link",
@@ -473,8 +478,10 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
 
 def _grava(texto: str) -> "os.PathLike":
     DIR_BOLETINS.mkdir(parents=True, exist_ok=True)
+    # Dia LOCAL também no nome do arquivo: "o boletim de terça" tem que
+    # estar no arquivo de terça, não no de quarta por causa do UTC.
     caminho = DIR_BOLETINS / (
-        datetime.now(timezone.utc).strftime("%Y-%m-%d") + ".txt")
+        datetime.now().astimezone().strftime("%Y-%m-%d") + ".txt")
     # Append: duas rodadas no mesmo dia ficam no mesmo arquivo, separadas.
     with open(caminho, "a", encoding="utf-8") as arquivo:
         arquivo.write(texto + "\n\n" + "=" * 72 + "\n\n")

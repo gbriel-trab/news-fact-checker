@@ -197,7 +197,7 @@ def para_separacao(bloco: str) -> str:
     """O bloco como o separador de premissas deve vê-lo.
 
     A linha URL: sai (ruído de tokens); as linhas EM RESPOSTA A e CITANDO
-    viram contexto com a ATRIBUIÇÃO certa. Desde 02/09/2026 a captura
+    viram contexto com a ATRIBUIÇÃO certa. Desde 01/09/2026 a captura
     exclui resposta a terceiros (decisão do usuário: neste domínio a
     substância vive em post, quote e thread própria), então EM RESPOSTA A
     normalmente aponta o post ANTERIOR DA PRÓPRIA THREAD — palavras do

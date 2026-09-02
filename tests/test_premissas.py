@@ -39,7 +39,7 @@ class TestSchema:
 
 
 class TestReescritaSoParaFato:
-    """A evolução de 02/09/2026: a paráfrase é exclusiva do fato (é a
+    """A evolução de 01/09/2026: a paráfrase é exclusiva do fato (é a
     consulta do verificador); opinião/previsão/relato exibem o trecho
     literal — a reescrita deles era o maior custo de saída da separação."""
 
