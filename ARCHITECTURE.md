@@ -1003,6 +1003,20 @@ afirmações de acervo com 6.317 matérias:
 Veredito da régua de 30/08: apareceu divergência real com acervo maior —
 **o grafo fica.**
 
+**FECHAMENTO NO MESMO DIA (01/09/2026, após o pacote v3+schema magro)**:
+os três artefatos morreram pela causa, não pelo sintoma — o Bitcoin pela
+regra 4 com a matéria inteira (65.500 re-extraído saiu `2026-07`,
+"preço negociado ao fim da sequência"; a lição operacional: a âncora
+temporal estava DEPOIS do corte de 5 sentenças, e regra de prompt não
+data o que o modelo não vê), e os dois mono-veículo pelo detector que
+passou a exigir 2+ veículos no conflito. Estado final do acervo: 1.282
+fatos, 295 confirmados por 2+ veículos, **1 divergência — a real**
+(Himalaia). Validação do fio magro na mesma leva (3 chamadas, US$ 0,27):
+131 tokens de saída por tripla (era ~178, −26%), cache lido em 9.592
+tokens na 2ª chamada do lote, modo história explodindo códigos "fs" por
+fonte com nomes convergentes, e o v3 em campo (`ocorreu_em` no Trump
+National Golf Club, `tem_participacao_em` BlackRock→iShares).
+
 **2. Acurácia contra checador profissional.** Rodar ~50 afirmações já julgadas
 por Lupa, Aos Fatos ou Comprova, sem mostrar o veredito delas, e comparar.
 
