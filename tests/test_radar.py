@@ -26,6 +26,13 @@ class TestPrompt:
         assert "URL:" in texto
         assert "EM RESPOSTA A" in texto
 
+    def test_post_original_tem_prioridade_sobre_resposta(self):
+        # A charada de 01/09 (post-raiz) morreu de fome duas rodadas
+        # seguidas: a amostra da busca veio inteira de respostas mais
+        # novas. A API não filtra por tipo; o prompt dirige.
+        assert "NÃO são" in _prompt(("a",), 2)
+        assert "PRIORIDADE" in _prompt(("a",), 2)
+
     def test_corpo_carrega_filtro_e_janela(self):
         from datetime import datetime, timedelta, timezone
         hoje = datetime.now(timezone.utc).date()

@@ -80,6 +80,9 @@ def _prompt(handles: tuple[str, ...], dias: int) -> str:
         "<texto literal>\n---\n"
         "A linha URL de cada bloco tem de apontar para o post transcrito "
         "NAQUELE bloco, nunca para outro. "
+        "PRIORIDADE: transcreva PRIMEIRO todos os posts que NÃO são "
+        "respostas (posts originais da janela, sem exceção); as respostas "
+        "vêm depois, das mais substanciais para as mais curtas. "
         "Se um handle não retornar nada, diga qual, numa linha à parte."
     )
 
