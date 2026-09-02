@@ -119,7 +119,7 @@ class TestConferePostEstado:
         from src import boletim
 
         premissa = SimpleNamespace(tipo="fato", afirmacao="X fez Y",
-                                   trecho="X fez Y")
+                                   trecho="X fez Y", texto="X fez Y")
         analise = SimpleNamespace(premissas=[premissa])
         uso = SimpleNamespace(custo=0.0)
         monkeypatch.setattr("src.premissas.separa",

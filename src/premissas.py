@@ -40,14 +40,20 @@ import sys
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from . import check, config, grafo, llm
 from .storage import conecta
 
 
 class Premissa(BaseModel):
-    """Uma afirmação isolada extraída de um texto argumentativo."""
+    """Uma afirmação isolada extraída de um texto argumentativo.
+
+    Desde 02/09/2026 a reescrita (`afirmacao`) é EXCLUSIVA do tipo fato:
+    é a consulta que o verificador consome, e só aí ela trabalha. Para
+    opinião/previsão/relato a paráfrase era o maior custo de saída da
+    separação (~80-90% das premissas de um post de análise) repetindo o
+    que o trecho literal já diz — medido no boletim de 01/09."""
 
     tipo: Literal["fato", "previsao", "opiniao", "relato"] = Field(
         description=(
@@ -59,15 +65,32 @@ class Premissa(BaseModel):
             "fez, costuma fazer ou postou; a prova é o próprio texto."
         )
     )
-    afirmacao: str = Field(
+    afirmacao: str | None = Field(
+        None,
         description=(
-            "A afirmação reescrita como frase completa e autônoma, que faça "
-            "sentido sozinha. Quem lê não terá o texto original ao lado."
+            "APENAS quando tipo=fato: a afirmação reescrita como frase "
+            "completa e autônoma, que faça sentido sozinha — é o que será "
+            "verificado. Nos demais tipos, OMITA: o trecho literal basta."
         )
     )
     trecho: str = Field(
         description="O pedaço LITERAL do texto de onde ela saiu, sem reescrever."
     )
+
+    @property
+    def texto(self) -> str:
+        """O que exibir/verificar: a reescrita quando existe, senão o
+        trecho literal. Fato sempre tem reescrita (o validador garante)."""
+        return self.afirmacao or self.trecho
+
+    @model_validator(mode="after")
+    def _fato_tem_reescrita(self) -> "Premissa":
+        # Garantia, não pedido: se o modelo esquecer a reescrita num fato,
+        # o trecho literal vira a consulta — perder a premissa paga seria
+        # pior que verificar a frase crua.
+        if self.tipo == "fato" and not self.afirmacao:
+            self.afirmacao = self.trecho
+        return self
 
 
 class Analise(BaseModel):
@@ -97,11 +120,16 @@ Regras que importam mais que as outras:
    fato:      o desemprego está em 5,3%
    opiniao:   o Copom não tem escolha
 
-3. A AFIRMAÇÃO PRECISA SE SUSTENTAR SOZINHA. Quem vai lê-la não tem o texto
-   original ao lado. Resolva pronome, apelido e referência implícita.
+3. REESCRITA SÓ EM FATO — E ELA PRECISA SE SUSTENTAR SOZINHA. O campo
+   `afirmacao` existe apenas para tipo=fato: é o que vai ao verificador,
+   e quem o lê não tem o texto original ao lado. Resolva pronome, apelido
+   e referência implícita QUE O PRÓPRIO TEXTO permita resolver.
 
    Errado: "ela subiu 5,9%"
    Certo:  "o lucro da Caixa subiu 5,9% no 2º trimestre de 2026"
+
+   Para previsao, opiniao e relato, OMITA `afirmacao`: o `trecho` literal
+   é o registro, e parafrasear opinião é saída paga repetindo o post.
 
 4. O TRECHO É LITERAL. Copie do texto, não reescreva. É o que permite conferir
    que a separação não inventou nada.
@@ -127,6 +155,20 @@ Regras que importam mais que as outras:
 
    Texto:   "Eu disse ontem: o IPCA de julho veio em 5,2%."
    fato:    o IPCA de julho de 2026 foi de 5,2%
+
+8. FATO EXIGE REFERENTE DETERMINADO. Se o texto não permite saber DE QUEM
+   ou DO QUE a afirmação fala — "o empresário", "um encontro", "o cara",
+   "ele" sem antecedente NO PRÓPRIO texto — ela não é verificável:
+   conferir "ocorreu um encontro" contra um acervo confirma qualquer
+   encontro, e o veredito sai vazio de significado. Classifique como
+   opiniao (ou relato, se for sobre o autor). E NÃO adivinhe o referente:
+   resolver o que o texto não diz é inventar, mesmo quando parece óbvio.
+
+   Texto:   "O encontro que ocorreu muda mais o rumo do país que eleição."
+   opiniao: (trecho literal — nada de fato "ocorreu um encontro")
+
+   Texto:   "O cara tem banco dele, mídia dele, todos no bolso."
+   opiniao: (sujeito indeterminado — não vira fato verificável)
 """
 
 
@@ -250,7 +292,7 @@ def main() -> None:
         print("NÃO VERIFICÁVEL — e não deve ser")
         print("=" * 78)
         for p in resto:
-            print(f"  [{p.tipo}] {p.afirmacao}")
+            print(f"  [{p.tipo}] {p.texto}")
         print()
 
     if not fatos:
@@ -270,7 +312,7 @@ def main() -> None:
     print("=" * 78)
     for i, p in enumerate(fatos, 1):
         print(f"\n[{i}/{len(fatos)}] no texto: \"{p.trecho[:110]}\"")
-        check.verifica(p.afirmacao, verboso=args.v,
+        check.verifica(p.texto, verboso=args.v,
                        conexao=conexao, acervo=acervo)
     conexao.close()
 

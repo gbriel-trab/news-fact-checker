@@ -338,7 +338,7 @@ def _confere(post: str, custo_busca: float) -> None:
     if resto:
         print("NÃO VERIFICÁVEL — e não deve ser")
         for p in resto:
-            print(f"  [{p.tipo}] {p.afirmacao}")
+            print(f"  [{p.tipo}] {p.texto}")
         print()
 
     if not fatos:
@@ -346,7 +346,7 @@ def _confere(post: str, custo_busca: float) -> None:
     else:
         for i, p in enumerate(fatos, 1):
             print(f"[{i}/{len(fatos)}] no post: \"{p.trecho[:110]}\"")
-            check.verifica(p.afirmacao, conexao=conexao, acervo=acervo)
+            check.verifica(p.texto, conexao=conexao, acervo=acervo)
     conexao.close()
 
     print("\nIsto confere premissas contra o acervo, não avalia o autor.")

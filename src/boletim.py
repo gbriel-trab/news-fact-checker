@@ -157,8 +157,11 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
     fatos = [p for p in analise.premissas if p.tipo == "fato"]
 
     for p in resto:
-        partes.append(f"  [{p.tipo}] {p.afirmacao} — nada a conferir")
-        dados["nao_verificaveis"].append((p.tipo, p.afirmacao))
+        # p.texto: desde a evolução de 02/09/2026 o separador só reescreve
+        # FATO; aqui vem o trecho literal do post — que é o que o leitor
+        # quer ver, sem a paráfrase paga que repetia o post.
+        partes.append(f"  [{p.tipo}] {p.texto} — nada a conferir")
+        dados["nao_verificaveis"].append((p.tipo, p.texto))
 
     def _roda_check(afirmacao: str, forcar: bool):
         """Um check capturado + a linha de consulta que ele produziu."""
@@ -185,10 +188,10 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
         # com as matérias na mão. Proximidade casa entidade; quem sabe se
         # o FATO está coberto é o próprio veredito. O preço é um segundo
         # check quando a demanda dispara — só nesse caso.
-        saida, nova = _roda_check(p.afirmacao, forcar=False)
+        saida, nova = _roda_check(p.texto, forcar=False)
         if nova is not None and nova["veredito"] == "sem_evidencia":
             try:
-                r = demanda.garante(conexao, p.afirmacao,
+                r = demanda.garante(conexao, p.texto,
                                     estado["orcamento"])
             except Exception as erro:  # noqa: BLE001 — não derruba o check
                 r = None
@@ -209,14 +212,14 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
                               f"US$ {r.custo:.4f}")
                 # forcar: sem isso a janela de reuso devolveria o
                 # "sem evidência" que acabou de motivar a extração.
-                saida, nova = _roda_check(p.afirmacao, forcar=True)
+                saida, nova = _roda_check(p.texto, forcar=True)
             elif r is not None and r.motivo == "teto":
                 partes.append("  [DEMANDA] teto da rodada atingido — "
                               "fica o veredito só com o acervo")
-        partes.append(f'  premissa: "{p.afirmacao}"')
+        partes.append(f'  premissa: "{p.texto}"')
         evidencias = _RE_EVIDENCIA.findall(saida.getvalue())
         dados["checks"].append({
-            "afirmacao": p.afirmacao,
+            "afirmacao": p.texto,
             "veredito": nova["veredito"] if nova else "sem_evidencia",
             "justificativa": nova["justificativa"] if nova else "",
             "veiculos": nova["veiculos"] if nova else 0,

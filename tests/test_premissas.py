@@ -38,6 +38,37 @@ class TestSchema:
             Premissa(tipo="fato", afirmacao="x")
 
 
+class TestReescritaSoParaFato:
+    """A evolução de 02/09/2026: a paráfrase é exclusiva do fato (é a
+    consulta do verificador); opinião/previsão/relato exibem o trecho
+    literal — a reescrita deles era o maior custo de saída da separação."""
+
+    def test_nao_verificavel_sem_afirmacao_usa_o_trecho(self):
+        premissa = Premissa(tipo="opiniao",
+                            trecho="Confluência é macro.")
+        assert premissa.afirmacao is None
+        assert premissa.texto == "Confluência é macro."
+
+    def test_fato_sem_reescrita_cai_no_trecho_e_nao_se_perde(self):
+        premissa = Premissa(tipo="fato", trecho="o IPCA veio em 5,2%")
+        assert premissa.afirmacao == "o IPCA veio em 5,2%"
+        assert premissa.texto == "o IPCA veio em 5,2%"
+
+    def test_afirmacao_saiu_dos_obrigatorios_do_schema(self):
+        schema = Premissa.model_json_schema()
+        assert "afirmacao" not in schema["required"]
+        assert "trecho" in schema["required"]
+
+    def test_regra_do_referente_indeterminado_esta_no_prompt(self):
+        # O 'CONFIRMADO' absurdo de 01/09: "ocorreu um encontro" casou com
+        # uma sessão de comissão qualquer. Fato exige referente.
+        assert "REFERENTE DETERMINADO" in INSTRUCOES
+        assert "NÃO adivinhe o referente" in INSTRUCOES
+
+    def test_reescrita_de_nao_verificavel_e_proibida_no_prompt(self):
+        assert "OMITA `afirmacao`" in INSTRUCOES
+
+
 class TestFiltro:
     def test_so_fato_vai_para_verificacao(self):
         analise = Analise(premissas=[
