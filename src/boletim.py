@@ -371,6 +371,20 @@ _TAG_VEREDITO = {"confirmado": "CONFIRMADO", "contradito": "CONTRADITO",
                  "sem_evidencia": "SEM EVIDÊNCIA"}
 
 
+def _conta_tipos(nao_verificaveis) -> str:
+    """'OPINIÃO 8 · RELATO 2' — os tipos na ordem fixa do prompt, com a
+    contagem só quando passa de um. Um só sai '[OPINIÃO]', como antes."""
+    contagem: dict[str, int] = {}
+    for tipo, _ in nao_verificaveis:
+        contagem[tipo] = contagem.get(tipo, 0) + 1
+    ordem = [t for t in _TAG_TIPO if t in contagem]
+    ordem += [t for t in contagem if t not in _TAG_TIPO]
+    return " · ".join(
+        _TAG_TIPO.get(t, t.upper()) + (f" {contagem[t]}" if contagem[t] > 1
+                                       else "")
+        for t in ordem)
+
+
 def _formata_telegram(handles: str, hoje: str, estruturados, notas,
                       links, custo: float, custo_xai: float) -> str:
     """A rendição HTML do Telegram: os MESMOS dados do texto puro, com
@@ -382,7 +396,14 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
     Sem emoji, por pedido (01/09/2026): etiquetas textuais [RELATO],
     [CONFIRMADO] etc. O Telegram não aceita cor de texto — a paleta é
     negrito (veredito), itálico (texto de post) e `<code>` (etiquetas),
-    que os clientes renderizam num tom próprio: é a "cor" possível."""
+    que os clientes renderizam num tom próprio: é a "cor" possível.
+
+    Não-verificáveis saem CONTADOS, sem o texto (pedido de 02/09/2026):
+    desde a v2 do separador o que há para exibir é o trecho literal, e
+    a linha "[OPINIÃO] <trecho>" virava eco — num post de uma frase, o
+    post inteiro de novo logo abaixo dele; num post de análise, a
+    mensagem dobrada, frase a frase. O tipo continua nomeado (opinião e
+    relato não são descarte, são o texto); o trecho fica no arquivo."""
     from . import radar
 
     def tag(texto: str) -> str:
@@ -433,9 +454,9 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
         if citando:
             p.append(f"{tag('CITANDO')} <i>{_esc(citando)}</i>")
         p.append(f"<i>{_esc(corpo)}</i>")
-        for tipo, afirmacao in dados["nao_verificaveis"]:
-            p.append(f"{tag(_TAG_TIPO.get(tipo, tipo.upper()))} "
-                     f"{_esc(afirmacao)}")
+        if dados["nao_verificaveis"]:
+            p.append(f"{tag(_conta_tipos(dados['nao_verificaveis']))} "
+                     "nada a conferir")
         for c in dados["checks"]:
             rotulo = _TAG_VEREDITO.get(c["veredito"], c["veredito"].upper())
             if c.get("demanda"):

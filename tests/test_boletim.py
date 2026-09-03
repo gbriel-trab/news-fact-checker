@@ -130,9 +130,32 @@ class TestRendicaoTelegram:
             0.10, 0.03)
         for emoji in "📡💬🔮👤⚪✅❌🔗⚠️↳":
             assert emoji not in html
-        assert "<code>[RELATO]</code>" in html
-        assert "<code>[PREVISÃO]</code>" in html
+        assert "<code>[PREVISÃO · RELATO]</code>" in html
         assert "<code>[AVISO]</code>" in html
+
+    def test_nao_verificavel_nao_repete_o_post(self):
+        """Pedido de 02/09/2026: com o trecho literal da v2, a linha
+        [OPINIÃO] era o post de novo — num post de uma frase, o post
+        inteiro. Os tipos saem nomeados e contados, sem o texto; a trilha
+        completa fica no arquivo."""
+        from src.boletim import _conta_tipos, _formata_telegram
+        post = ("POST 1 (@x, 01 Sep 2026):\n"
+                "Charada: André se reune com Trump, todos os rumos mudam.")
+        html = _formata_telegram("@x", "02/09", [(1, post, {
+            "nao_verificaveis": [
+                ("opiniao", "todos os rumos mudam"),
+                ("relato", "convivi com ele"),
+                ("opiniao", "André se reune com Trump")],
+            "checks": [], "sem_premissas": False,
+        }, None)], [], [], 0.10, 0.03)
+        assert "<code>[OPINIÃO 2 · RELATO]</code> nada a conferir" in html
+        assert html.count("nada a conferir") == 1
+        assert "convivi com ele" not in html
+        # Um só continua "[OPINIÃO]", sem contagem — e a ordem é a do
+        # prompt (opinião, previsão, relato), não a de aparição.
+        assert _conta_tipos([("opiniao", "x")]) == "OPINIÃO"
+        assert _conta_tipos([("relato", "r"), ("opiniao", "a"),
+                             ("opiniao", "b")]) == "OPINIÃO 2 · RELATO"
 
     def test_post_com_url_validada_ganha_ancora_e_contexto(self):
         from src.boletim import _formata_telegram

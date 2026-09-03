@@ -177,11 +177,13 @@ def conferir_post(texto: str) -> dict:
                 continue
             saida = io.StringIO()
             with contextlib.redirect_stdout(saida):
-                check.verifica(p.afirmacao, conexao=con, acervo=acervo)
+                check.verifica(p.texto, conexao=con, acervo=acervo)
             conferencias.append({"trecho": p.trecho, "saida": saida.getvalue()})
     con.close()
     return {
-        "nao_verificaveis": [{"tipo": p.tipo, "afirmacao": p.afirmacao}
+        # p.texto, não p.afirmacao: desde a v2 do separador (01/09/2026)
+        # não-fato não tem reescrita, e o painel mostrava "null".
+        "nao_verificaveis": [{"tipo": p.tipo, "afirmacao": p.texto}
                              for p in analise.premissas if p.tipo != "fato"],
         "conferencias": conferencias,
         "custo_separacao_usd": round(uso.custo, 4),
