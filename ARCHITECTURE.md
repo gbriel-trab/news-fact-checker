@@ -309,6 +309,20 @@ grupo errado; agora leva a marca `recusada` e volta a ser elegível.
 
 ### A quarta saída: contexto, quando não há premissa para conferir
 
+**DESLIGADA em 03/09/2026, no mesmo dia em que entrou** (`contexto.LIGADO = False`). O código, os testes e os limiares medidos ficam; o que falta é o gate.
+
+Ela saiu em 4 dos 5 posts de um boletim entregue e errou em 3: "pessoas não identificadas teriam encontrado um erro de CEP" (11 matérias, 5 veículos), "analistas macroeconômicos não identificados" (64 matérias, 11 veículos), "uma ferramenta de IA não conseguiu resolver algo" (3 matérias, 2 veículos). Nenhuma é assunto.
+
+E o gate por CONTAGEM não pode funcionar — medido:
+
+|hipótese|matérias|veículos|% do acervo|
+|-|-|-|-|
+|C19, o caso BOM|10|7|0,10%|
+|erro de CEP, ruim|11|5|0,11%|
+|anunciaram topo, ruim|9|4|0,09%|
+
+Subir o piso mata o caso bom junto; baixar deixa tudo passar. A diferença é semântica, e contagem não vê semântica. Voltar exige um gate que julgue se a hipótese NOMEIA um assunto — chamada de modelo, com custo e com caso no gabarito.
+
 Implementada em 03/09/2026 (`src/contexto.py`). Nasce de um post real:
 
 > "Alguém consegue ainda manter as contas de quantas recuperações judiciais

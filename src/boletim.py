@@ -208,7 +208,8 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
         # Essa hipótese é do código, não do modelo, e foi TIRADA da tela
         # de propósito em 22f0ac9 — deixá-la voltar pelo [ACERVO] seria
         # reabrir, um commit depois, o eco que motivou tudo isto.
-        if (p.tipo != "nao_verificavel" or not p.hipotese or p.roteado
+        if (not contexto.LIGADO
+                or p.tipo != "nao_verificavel" or not p.hipotese or p.roteado
                 or p.hipotese in vistos
                 or estado.get("buscas_contexto", 0)
                 >= contexto.TETO_POR_RODADA):

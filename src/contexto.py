@@ -85,6 +85,37 @@ AMOSTRA = 5
 """Quantos títulos mostrar. Ver a nota em `do_assunto`: com três, o post
 das recuperações judiciais não exibia marca nenhuma."""
 
+LIGADO = False
+"""A quarta saída está DESLIGADA desde 03/09/2026, e o motivo é uma
+medição, não desânimo.
+
+Ela saiu em 4 dos 5 posts de um boletim entregue e errou em 3:
+
+  "pessoas não identificadas teriam encontrado um erro de CEP em
+   processos judiciais"          -> 11 matérias em 5 veículos
+  "analistas macroeconômicos não identificados"
+                                 -> 64 matérias em 11 veículos
+  "o autor parece dizer que uma ferramenta de IA não conseguiu
+   resolver algo"                -> 3 matérias em 2 veículos
+
+Nenhuma é assunto. E o gate que eu tinha — piso de matérias e veículos —
+NÃO PODE funcionar, porque o caso bom e os ruins são indistinguíveis por
+contagem:
+
+  C19, o caso bom .......... 10 matérias ·  7 veículos · 0,10% do acervo
+  erro de CEP, ruim ........ 11 matérias ·  5 veículos · 0,11%
+  anunciaram topo, ruim .....  9 matérias ·  4 veículos · 0,09%
+
+Subir o piso mata o caso bom junto; baixar deixa tudo passar. A
+diferença é SEMÂNTICA — "recuperações judiciais em marcas conhecidas" é
+assunto, "pessoas não identificadas acharam erro de CEP" não é — e
+contagem não vê semântica.
+
+Para voltar, precisa de um gate que julgue se a hipótese NOMEIA um
+assunto. Isso é chamada de modelo, com custo e com caso no gabarito. O
+código, os testes e os limiares medidos ficam aqui inteiros: o que falta
+é o gate, não a máquina."""
+
 TETO_POR_RODADA = 8
 """Buscas de contexto por rodada do boletim. A busca é local e não custa
 API, mas vetorizar não é grátis em tempo e um post com dez

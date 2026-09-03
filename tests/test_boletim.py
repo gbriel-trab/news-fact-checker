@@ -282,7 +282,8 @@ class TestSoFatoCustaDinheiro:
         busca uma vez só, e nada disso vira linha de veredito. A busca é
         INJETADA — sem isso o teste leria a coleção de PRODUÇÃO e mudaria
         de resultado com o acervo do dia."""
-        from src import boletim, check, demanda, premissas
+        from src import contexto, boletim, check, demanda, premissas
+        monkeypatch.setattr(contexto, "LIGADO", True)
         from src.indice import Achado
         from src.storage import conecta
 
@@ -334,7 +335,8 @@ class TestSoFatoCustaDinheiro:
         hipótese é do código, não do modelo, e foi tirada da tela em
         22f0ac9 — deixá-la voltar pelo [ACERVO] reabriria o eco que
         motivou tudo isto."""
-        from src import boletim, premissas
+        from src import contexto, boletim, premissas
+        monkeypatch.setattr(contexto, "LIGADO", True)
         from src.storage import conecta
 
         buscas = []
@@ -361,6 +363,7 @@ class TestSoFatoCustaDinheiro:
                                                    tmp_path):
         """O ARCHITECTURE pede teto próprio para a quarta saída."""
         from src import boletim, contexto, premissas
+        monkeypatch.setattr(contexto, "LIGADO", True)
         from src.storage import conecta
 
         buscas = []
