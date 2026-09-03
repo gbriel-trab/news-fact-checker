@@ -752,11 +752,27 @@ def verifica(texto: str, verboso: bool = False,
                        # (veículo, título, url) do que o JUIZ citou — não
                        # do que foi recuperado. É o que o princípio 2
                        # exige poder mostrar de novo depois.
-                       evidencias=[
-                           {"veiculo": a.meta.get("veiculo", ""),
-                            "titulo": a.meta.get("titulo", ""),
-                            "url": a.meta.get("url", "")}
-                           for a in citadas])
+                       evidencias=_fontes_citadas(citadas))
+
+
+def _fontes_citadas(citadas) -> list[dict]:
+    """(veículo, título, url, data) do que o juiz citou, UMA vez por URL.
+
+    Uma matéria rende várias triplas e o juiz cita mais de uma; sem a
+    dedup o boletim mostrava "2 veículo(s)" e QUATRO linhas, Valor e G1
+    repetidos. A contagem de veículos já era por veículo — o que estava
+    fora de passo era a lista de fontes."""
+    vistas, saida = set(), []
+    for a in citadas:
+        url = a.meta.get("url", "")
+        if url in vistas:
+            continue
+        vistas.add(url)
+        saida.append({"veiculo": a.meta.get("veiculo", ""),
+                      "titulo": a.meta.get("titulo", ""),
+                      "url": url,
+                      "data": a.meta.get("data_fato", "")})
+    return saida
 
 
 def main() -> None:

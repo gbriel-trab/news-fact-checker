@@ -51,7 +51,7 @@ from datetime import datetime, timezone
 
 import requests
 
-from . import config
+from . import config, normalize
 
 DIR_BOLETINS = config.DIR_DADOS / "boletins"
 LIMITE_TELEGRAM = 4096
@@ -123,7 +123,8 @@ def _evidencias_gravadas(linha) -> list[tuple[str, str]]:
         itens = _json.loads(bruto or "[]")
     except (ValueError, TypeError):
         return []
-    return [(i.get("veiculo", ""), i.get("url", ""))
+    return [(i.get("veiculo", ""), i.get("url", ""),
+             i.get("titulo", ""), i.get("data", ""))
             for i in itens if isinstance(i, dict) and i.get("url")]
 
 
@@ -570,9 +571,29 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
                 p.append(f"<b>[{rotulo}]</b> {razao} · "
                          f"<i>{_esc(c['afirmacao'])}</i>")
             else:
-                fontes = " · ".join(
-                    f'<a href="{_esc(url)}">{_esc(veiculo)}</a>'
-                    for veiculo, url in c["evidencias"][:4])
+                # O TÍTULO, não só o nome do veículo: "CNN · Folha · G1"
+                # não diz O QUE confirma. Cada linha é uma manchete
+                # clicável, com a data do fato quando o acervo a tem.
+                # (Achado do usuário no digest de 03/09/2026.)
+                # Duas formas chegam aqui: o raspão do stdout dá
+                # (veículo, url), e a coluna `evidencias` dá
+                # (veículo, url, título, data). Aceitar as duas, porque a
+                # primeira é o que existe para veredito antigo.
+                def _fonte(e):
+                    veiculo, url = e[0], e[1]
+                    titulo = e[2] if len(e) > 2 else ""
+                    data = e[3] if len(e) > 3 else ""
+                    linha = f'   <a href="{_esc(url)}">{_esc(veiculo)}</a>'
+                    if titulo:
+                        linha += f': {_esc(titulo)}'
+                    if data:
+                        linha += f' <i>· {_esc(str(data)[:10])}</i>'
+                    if normalize.e_live(url):
+                        linha += ' <i>· live search</i>'
+                    return linha
+
+                fontes = chr(10).join(
+                    _fonte(e) for e in c["evidencias"][:4] if len(e) >= 2)
                 p.append(f"<b>[{rotulo}]</b> · {c['veiculos']} veículo(s) — "
                          f"<i>{_esc(c['afirmacao'])}</i>")
                 p.append(f"    {_esc(c['justificativa'])}")

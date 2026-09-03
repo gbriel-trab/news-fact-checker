@@ -68,3 +68,30 @@ def hash_conteudo(titulo: str, resumo: str, conteudo: str) -> str:
     """
     bruto = "\x00".join((titulo, resumo, conteudo))
     return hashlib.sha256(bruto.encode("utf-8")).hexdigest()
+
+PADROES_LIVE = ("aovivo", "ao-vivo", "ao_vivo", "tempo-real", "tempo_real",
+                "liveblog", "live-blog", "minuto-a-minuto", "acompanhe-ao-vivo",
+                "-ao-vivo-", "/live/")
+"""Marcas de URL de página ROLANTE: liveblog, cobertura minuto a minuto.
+
+Medido em 03/09/2026, o problema é triplo e nenhum é cosmético:
+
+* o link NÃO prova o fato — o leitor tem de rolar a página até achar a
+  entrada. O princípio 2 pede fonte rastreável, e liveblog é rastreável
+  só de nome. Achado pelo usuário conferindo uma fonte da Folha citada
+  num CONFIRMADO: a URL abria uma cobertura de mercado ao vivo;
+* a mesma URL é recoletada sem parar e vira N "matérias" — o Ibovespa ao
+  vivo do InfoMoney está 31 vezes no acervo, a Folha do caso 19;
+* a `data_publicacao` é a de ABERTURA da cobertura, não a do fato, e
+  alimenta a regra de data do juiz com data errada.
+
+Fica em `normalize` porque quem precisa saber são três: o índice (para
+não contar N vezes), o boletim (para avisar o leitor) e, se um dia for
+decidido, a contagem de veículos independentes."""
+
+
+def e_live(url: str) -> bool:
+    """A URL é de página rolante? Compara em minúsculas, sem exigir
+    domínio: o padrão está no CAMINHO, e cada veículo escreve o seu."""
+    u = (url or "").lower()
+    return any(p in u for p in PADROES_LIVE)
