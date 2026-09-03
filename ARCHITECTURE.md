@@ -404,7 +404,13 @@ escrita à mão (revisão assinada pelo conteúdo — editar o esperado invalida
 revisão), posts reais com o bloco bruto do radar, `fronteira` para lacuna
 conhecida, `[repr]` para caso que é exemplo literal do prompt (passar prova
 reprodução, não regra), `--vezes N` porque `temperature` não existe no Opus 5
-e a variância se mede repetindo, e `--historico` que aplica o esperado de hoje
+e a variância se mede repetindo — e, desde 03/09/2026, a distinção entre
+**regressão** (falhou em TODAS as vezes) e **instável** (falhou em algumas):
+C13 e C25 apareceram como regressão numa bateria de uma passada e deram 2/3
+e 3/3 quando repetidos, sem o prompt ter mudado. Chamar variância de
+regressão é falso positivo dentro da ferramenta que existe para evitar falso
+positivo, e é caro nas duas pontas — bloqueia mudança boa e ensina a ignorar
+a bateria. Instável não é aprovação: entra no relatório com a contagem, e `--historico` que aplica o esperado de hoje
 às separações de produção gravadas, de graça — foi assim que o comparador foi
 validado antes de custar um centavo. A bateria não toca `separacoes`: grava
 em `gabarito_rodadas`. Regra de processo, decidida em 03/09: **prompt do

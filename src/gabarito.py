@@ -451,18 +451,37 @@ def _imprime_vez(caso: dict, vez: int, vezes: int, r: Resultado,
         print(r.obtido)
 
 
-def resume(resultados: list[Resultado], casos: list[dict]) -> tuple[int, int, int]:
-    """(regressões, fronteiras que falharam, casos sem revisão válida).
-    Regressão = caso não-fronteira que falhou em QUALQUER vez."""
+def resume(resultados: list[Resultado],
+           casos: list[dict]) -> tuple[int, int, int, list[str]]:
+    """(regressões, fronteiras que falharam, sem revisão, instáveis).
+
+    REGRESSÃO é caso não-fronteira que falhou em TODAS as vezes. Caso que
+    falhou em algumas e passou em outras é INSTÁVEL, e a distinção nasceu
+    de um caso concreto (03/09/2026): C13 e C25 apareceram como regressão
+    numa bateria de uma passada e, repetidos três vezes, deram 2/3 e 3/3
+    — o prompt não tinha mudado, só o roteador em código.
+
+    Chamar variância de regressão é falso positivo dentro da ferramenta
+    que existe para evitar falso positivo. E é o erro caro nas duas
+    direções: bloqueia mudança boa, e ensina a ignorar a bateria.
+
+    Instável não é aprovação: aparece no relatório com a contagem, porque
+    caso que só passa às vezes é caso que o prompt não determina — só não
+    é motivo para barrar um commit que não mexeu no prompt."""
     por_caso: dict[str, list[Resultado]] = {}
     for r in resultados:
         por_caso.setdefault(r.caso, []).append(r)
     regressoes = sum(1 for rs in por_caso.values()
-                     if not rs[0].fronteira and any(not r.passou for r in rs))
+                     if not rs[0].fronteira and all(not r.passou for r in rs))
     fronteiras = sum(1 for rs in por_caso.values()
-                     if rs[0].fronteira and any(not r.passou for r in rs))
+                     if rs[0].fronteira and all(not r.passou for r in rs))
+    instaveis = sorted(
+        f"{caso} ({sum(r.passou for r in rs)}/{len(rs)})"
+        for caso, rs in por_caso.items()
+        if not rs[0].fronteira and any(r.passou for r in rs)
+        and any(not r.passou for r in rs))
     sem_revisao = sum(1 for c in casos if not revisado(c))
-    return regressoes, fronteiras, sem_revisao
+    return regressoes, fronteiras, sem_revisao, instaveis
 
 
 def _filtra(casos: list[dict], so: str | None) -> list[dict]:
@@ -569,10 +588,16 @@ def main() -> None:
     finally:
         conexao.close()
 
-    regressoes, fronteiras, sem_revisao = resume(resultados, casos)
+    regressoes, fronteiras, sem_revisao, instaveis = resume(resultados,
+                                                            casos)
     custo = sum(r.custo for r in resultados)
     print(f"\n{len(casos)} caso(s) · {regressoes} regressão(ões) · "
           f"{fronteiras} fronteira(s) falhando · custo real US$ {custo:.4f}")
+    if instaveis:
+        print(f"{len(instaveis)} caso(s) INSTÁVEIS (passam às vezes): "
+              f"{', '.join(instaveis)}. Não barram a bateria, mas são caso "
+              "que o prompt não determina — rode com --vezes antes de "
+              "concluir qualquer coisa sobre eles.")
     if repr_:
         print(f"{len(repr_)} caso(s) são exemplo literal do prompt e medem "
               f"reprodução, não regra: {', '.join(repr_)}")

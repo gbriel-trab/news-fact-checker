@@ -183,12 +183,41 @@ class TestRevisao:
 class TestResumo:
     def test_fronteira_nao_conta_como_regressao(self):
         resultados = [
-            Resultado("C1", [], "", 0.01),
-            Resultado("C1", ["x"], "", 0.01),            # falhou 1 de 2
+            Resultado("C1", ["x"], "", 0.01),
+            Resultado("C1", ["x"], "", 0.01),            # falhou nas DUAS
             Resultado("C7", ["x"], "", 0.01, fronteira=True),
         ]
         casos = [{"id": "C1", "texto": "t", "esperado": []}, {"id": "C7"}]
-        assert resume(resultados, casos) == (1, 1, 2)
+        assert resume(resultados, casos) == (1, 1, 2, [])
+
+    def test_caso_que_passa_as_vezes_e_instavel_e_nao_regressao(self):
+        """C13 e C25, 03/09/2026: apareceram como regressão numa bateria
+        de uma passada e deram 2/3 e 3/3 quando repetidos. O prompt não
+        tinha mudado. Chamar variância de regressão é falso positivo
+        dentro da ferramenta que existe para evitar falso positivo."""
+        resultados = [
+            Resultado("C13", ["x"], "", 0.01),
+            Resultado("C13", [], "", 0.01),
+            Resultado("C13", [], "", 0.01),              # 2 de 3
+        ]
+        casos = [{"id": "C13", "texto": "t", "esperado": []}]
+        regressoes, _, _, instaveis = resume(resultados, casos)
+        assert regressoes == 0
+        assert instaveis == ["C13 (2/3)"]
+
+    def test_falhar_em_todas_continua_regressao(self):
+        """O pareado: instável não pode virar porta dos fundos."""
+        resultados = [Resultado("C13", ["x"], "", 0.01) for _ in range(3)]
+        casos = [{"id": "C13", "texto": "t", "esperado": []}]
+        regressoes, _, _, instaveis = resume(resultados, casos)
+        assert regressoes == 1 and instaveis == []
+
+    def test_uma_passada_que_falha_continua_regressao(self):
+        """Com --vezes 1 o comportamento não muda: falhou na única vez é
+        falhar em TODAS. A distinção só existe quando há repetição."""
+        resultados = [Resultado("C13", ["x"], "", 0.01)]
+        casos = [{"id": "C13", "texto": "t", "esperado": []}]
+        assert resume(resultados, casos)[0] == 1
 
     def test_vezes_menor_que_um_e_erro(self):
         import argparse
