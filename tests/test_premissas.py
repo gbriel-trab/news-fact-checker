@@ -65,6 +65,18 @@ class TestReescritaSoParaFato:
         assert "REFERENTE DETERMINADO" in INSTRUCOES
         assert "NÃO adivinhe o referente" in INSTRUCOES
 
+    def test_nome_incompleto_e_referente_e_nao_se_completa(self):
+        """O boletim de 02/09/2026: "André se reune com Trump, todos os
+        rumos mudam" saiu como UMA opinião, sem fato — "André" sem
+        sobrenome foi lido como referente indeterminado, e o acervo tinha
+        o encontro. Nome incompleto é referente e a reescrita não o
+        completa; e o predicado precisa estar no texto tanto quanto o
+        sujeito ("André foi lá" segue sem fato). A terceira âncora prende
+        o exemplo trabalhado — se ele for trocado, ela muda junto."""
+        assert "COMO O TEXTO ESCREVE" in INSTRUCOES
+        assert "O nome resolve QUEM" in INSTRUCOES
+        assert 'não "André Esteves"' in INSTRUCOES
+
     def test_reescrita_de_nao_verificavel_e_proibida_no_prompt(self):
         assert "OMITA `afirmacao`" in INSTRUCOES
 

@@ -99,7 +99,7 @@ class Analise(BaseModel):
 
 INSTRUCOES = """\
 Você separa as afirmações de um texto que argumenta — análise, comentário,
-opinião — em três tipos, para que só o verificável seja conferido depois.
+opinião — em quatro tipos, para que só o verificável seja conferido depois.
 
   fato       algo já ocorrido, ou um estado presente NO MUNDO. Outra fonte
              poderia confirmar ou desmentir. É o único tipo que será
@@ -123,7 +123,8 @@ Regras que importam mais que as outras:
 3. REESCRITA SÓ EM FATO — E ELA PRECISA SE SUSTENTAR SOZINHA. O campo
    `afirmacao` existe apenas para tipo=fato: é o que vai ao verificador,
    e quem o lê não tem o texto original ao lado. Resolva pronome, apelido
-   e referência implícita QUE O PRÓPRIO TEXTO permita resolver.
+   e referência implícita QUE O PRÓPRIO TEXTO permita resolver — e só
+   isso: nome que o texto dá incompleto vai incompleto (regra 8).
 
    Errado: "ela subiu 5,9%"
    Certo:  "o lucro da Caixa subiu 5,9% no 2º trimestre de 2026"
@@ -156,13 +157,29 @@ Regras que importam mais que as outras:
    Texto:   "Eu disse ontem: o IPCA de julho veio em 5,2%."
    fato:    o IPCA de julho de 2026 foi de 5,2%
 
-8. FATO EXIGE REFERENTE DETERMINADO. Se o texto não permite saber DE QUEM
-   ou DO QUE a afirmação fala — "o empresário", "um encontro", "o cara",
-   "ele" sem antecedente NO PRÓPRIO texto — ela não é verificável:
-   conferir "ocorreu um encontro" contra um acervo confirma qualquer
-   encontro, e o veredito sai vazio de significado. Classifique como
-   opiniao (ou relato, se for sobre o autor). E NÃO adivinhe o referente:
-   resolver o que o texto não diz é inventar, mesmo quando parece óbvio.
+8. FATO EXIGE REFERENTE DETERMINADO — determinado pelo PRÓPRIO texto. Nome
+   próprio (mesmo incompleto), sigla ou cargo com instituição determinam:
+   "André", "Trump", "Lula", "a Selic", "o presidente do BC". O que o
+   texto não identifica — "o empresário", "um encontro", "o cara", "ele"
+   sem antecedente — não é verificável: conferir "ocorreu um encontro"
+   contra um acervo confirma qualquer encontro, e o veredito sai vazio de
+   significado. Classifique como opiniao (ou relato, se for sobre o autor).
+
+   NÃO adivinhe o referente, em nenhum sentido: nem sujeito para "o cara",
+   nem sobrenome para "André". Na reescrita o nome vai COMO O TEXTO ESCREVE,
+   mesmo quando o completo parece óbvio. O nome resolve QUEM; o QUÊ também
+   tem de estar no texto (outra entidade, número, lugar ou data): "André
+   foi lá" não tem o que conferir — opiniao. Detalhe que falta (o mês de
+   um IPCA) fica faltando, sem inventar e sem derrubar o fato. Condicional
+   ou regra geral ("sempre que X se reúne com Y, Z") não afirma que
+   ocorreu — nenhum fato. E referente não basta: "Lula errou de novo" é
+   juízo, opiniao.
+
+   Texto:   "Charada: André se reune com Trump, todos os rumos mudam
+             imediatamente. Quem manda no Brasil?"
+   fato:    André se reuniu com Trump   (não "André Esteves"; o resto sai
+            pelas regras 2 e 6)
+   opiniao: todos os rumos mudam imediatamente
 
    Texto:   "O encontro que ocorreu muda mais o rumo do país que eleição."
    opiniao: (trecho literal — nada de fato "ocorreu um encontro")
@@ -180,9 +197,16 @@ def versao_prompt() -> str:
     alguém lembrar de incrementar fica errada exatamente quando importa.
     O hash carimba cada separação gravada em `separacoes` — é o que torna
     medível, depois, se uma regra nova reduziu desperdício.
+
+    O id do MODELO entra no material (revisão de 02/09/2026): sem ele, uma
+    troca de Opus para Sonnet manteria o hash, o boletim reusaria
+    separações de um modelo como se fossem do outro, e o gabarito poria
+    as duas saídas sob a mesma versão — impossível saber se foi o prompt
+    ou o modelo.
     """
     material = INSTRUCOES + json.dumps(
         {"schema": Analise.model_json_schema(),
+         "modelo": llm.VERIFICACAO.id,
          "esforco": llm.VERIFICACAO.esforco},
         sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
