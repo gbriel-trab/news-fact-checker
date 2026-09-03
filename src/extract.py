@@ -118,15 +118,19 @@ class Tripla(BaseModel):
     objeto: str | None = Field(
         None, alias="ob",
         description=(
-            "objeto: segunda entidade como apareceu no texto. Omita quando "
-            "a afirmação é um ATRIBUTO do sujeito e não uma relação com "
-            "outra entidade — margem de erro, custo, nível de confiança."
+            "objeto: segunda entidade COMO APARECEU no texto — APENAS "
+            "quando diferir de oc; omita quando idêntico, exatamente como "
+            "em sj. Omita também quando a afirmação é um ATRIBUTO do "
+            "sujeito e não uma relação com outra entidade — margem de "
+            "erro, custo, nível de confiança."
         )
     )
     objeto_canonico: str | None = Field(
         None, alias="oc",
-        description=("objeto_canonico: nome canônico da segunda entidade — "
-                     "APENAS quando diferir de ob; omita quando idêntico."))
+        description=("objeto_canonico: nome canônico da segunda entidade. "
+                     "SEMPRE presente quando há objeto que é entidade; "
+                     "omita só quando o objeto for uma frase (fala citada, "
+                     "conteúdo de uma proposta), que não tem canônico."))
     tipo_relacao: Literal["evento", "estado"] = Field(
         alias="t",
         description=(
@@ -269,8 +273,8 @@ class TriplaHistoria(BaseModel):
                      "servir."))
     objeto: str | None = Field(
         None, alias="ob",
-        description=("objeto: segunda entidade como apareceu; omita em "
-                     "atributo."))
+        description=("objeto: segunda entidade como apareceu — só quando "
+                     "diferir de oc; omita em atributo do sujeito."))
     objeto_canonico: str | None = Field(
         None, alias="oc",
         description=("objeto_canonico: nome canônico — APENAS quando "
@@ -539,8 +543,9 @@ FORMATO DE SAÍDA: as chaves do schema são curtas — sc/sj (sujeito canônico
 / como apareceu), r (relação), oc/ob (objeto canônico / como apareceu),
 t (tipo), og (origem: 'e' explícito, 'i' inferido), v/u/cx (valor, unidade
 e contexto do valor), d (data do fato), n (sentença). Omita campo opcional
-que não se aplica — nunca escreva null. Omita sj quando idêntico a sc, e
-oc quando idêntico a ob.
+que não se aplica — nunca escreva null. A regra de omissão é a MESMA nos
+dois lados: omita a forma de SUPERFÍCIE (sj, ob) quando for idêntica ao
+canônico (sc, oc). O canônico nunca se omite quando há entidade.
 
 Regras que importam mais que as outras:
 

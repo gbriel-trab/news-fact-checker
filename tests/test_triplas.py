@@ -149,6 +149,32 @@ class TestIntegridade:
                 "VALUES (1, 0, 'x', 'x', 'integra', 'processo', "
                 "'EXTRACTED')")
 
+    def test_simetria_do_par_superficie_canonico(self):
+        """Patch 3, e a medicao mudou o que ele era. A ASSIMETRIA vivia so
+        no TEXTO do prompt -- "omita sj quando identico a sc, e oc quando
+        identico a ob" -- e o codigo ja era simetrico desde 29/08/2026:
+        `_pares_andam_juntos` preenche o campo ausente com o irmao dos
+        DOIS lados. Entao o patch 3 foi conserto de prosa, e a "quebra do
+        consumidor" prevista pelo diagnostico externo eram 18 linhas no
+        acervo, das quais 6 sao fala citada."""
+        from src.extract import Tripla
+        so_canonico = Tripla(sujeito_canonico="Lula",
+                             relacao="participou_de",
+                             objeto="Reuniao do G20", tipo_relacao="evento",
+                             origem="EXTRACTED", sentenca=0)
+        assert so_canonico.objeto_canonico == "Reuniao do G20"
+        assert so_canonico.sujeito == "Lula"
+
+    def test_medido_o_modelo_nunca_omitia_o_sujeito(self):
+        """0 de 2.984 triplas tinham `sujeito` nulo, embora a regra
+        mandasse omitir quando identico. Regra ignorada e texto morto --
+        o mesmo diagnostico do `og`."""
+        from src.extract import Tripla
+        t = Tripla(sujeito="o presidente Lula", sujeito_canonico="Lula",
+                   relacao="afirmou", objeto="algo", tipo_relacao="evento",
+                   origem="EXTRACTED", sentenca=0)
+        assert t.sujeito == "o presidente Lula"
+
     def test_propriedade_e_recorte_sao_gravados(self, conexao):
         """Patch 5: os campos que decidem se dois numeros medem a MESMA
         coisa. Sem persistir, a chave nao existe na leitura e o grafo cai
