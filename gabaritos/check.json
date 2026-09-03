@@ -375,7 +375,7 @@
     ],
     "esperado": "sem_evidencia",
     "nota": "Dois motivos, cada um suficiente: o referente da afirmação não está determinado ('o empresário descrito no texto') e presidir não é ser proprietário (regra 2). Lado do juiz do incidente C3.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #1c9416ac",
     "sujeitos_estruturados": [
       "Empresário brasileiro descrito no texto",
       "banco"

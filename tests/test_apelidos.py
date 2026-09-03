@@ -142,12 +142,12 @@ class TestPeneiras:
 
     def test_dois_veiculos_aprovam(self, tmp_path):
         con = self._banco(tmp_path, [
-            ("Lula", "Luiz Inácio Lula da Silva", "G1", "EXTRACTED"),
-            ("Lula", "Luiz Inácio Lula da Silva", "Folha", "EXTRACTED"),
+            ("Zebrinha", "Zebrinha Futebol Clube", "G1", "EXTRACTED"),
+            ("Zebrinha", "Zebrinha Futebol Clube", "Folha", "EXTRACTED"),
         ])
         aprovados, _ = candidatos(con)
         assert [(c, l) for c, l, *_ in aprovados] == [
-            ("lula", "luiz inacio lula da silva")]
+            ("zebrinha", "zebrinha futebol clube")]
 
     def test_ambiguidade_recusa_e_aparece_na_lista(self, tmp_path):
         """O filho: "Lula" também casa com "Fábio Luís Lula da Silva"."""
@@ -214,12 +214,16 @@ class TestPromocao:
 
 class TestCanonicoEChecagem:
     def test_apelido_promovido_muda_a_chave_e_a_assinatura(self, monkeypatch):
+        """Entidade fictícia de propósito: teste não pode depender do que
+        está promovido em apelidos.json, que muda por promoção — três
+        testes quebraram na primeira promoção real, em 03/09/2026."""
         from src import canonico
         antes = canonico.assinatura_apelidos()
-        monkeypatch.setitem(canonico.APELIDOS, "lula",
-                            "luiz inacio lula da silva")
+        assert canonico.chave_canonica("Zebrinha") == "zebrinha"
+        monkeypatch.setitem(canonico.APELIDOS, "zebrinha",
+                            "zebrinha futebol clube")
         canonico.chave_canonica.cache_clear()
-        assert canonico.chave_canonica("Lula") == "luiz inacio lula da silva"
+        assert canonico.chave_canonica("Zebrinha") == "zebrinha futebol clube"
         assert canonico.assinatura_apelidos() != antes
         canonico.chave_canonica.cache_clear()
 
@@ -247,13 +251,16 @@ class TestCanonicoEChecagem:
         assert sujeito_casa("BC", "Banco Central do Brasil")
         canonico.chave_canonica.cache_clear()
 
-    def test_contencao_ja_resolvia_o_nome_parcial(self):
-        """Nome parcial não dependia de apelido: a contenção do freio já o
-        aceitava. O apelido serve à rota por CHAVE, que exige igualdade."""
+    def test_contencao_resolve_nome_parcial_sem_apelido(self):
+        """Nome parcial não depende de apelido: a contenção do freio já o
+        aceita. O apelido serve à rota por CHAVE, que exige igualdade —
+        e por isso a sigla é o caso que só ele resolve."""
         from src.check import sujeito_casa
-        assert sujeito_casa("Lula", "Luiz Inácio Lula da Silva")
-        assert (canonico_chave("Lula") != canonico_chave(
-            "Luiz Inácio Lula da Silva"))
+        assert sujeito_casa("Zebrinha", "Zebrinha Futebol Clube")
+        assert canonico_chave("Zebrinha") != canonico_chave(
+            "Zebrinha Futebol Clube")
+        # Sigla: contenção não resolve, apelido resolve.
+        assert not sujeito_casa("ZFC", "Zebrinha Futebol Clube")
 
 
 def canonico_chave(nome):
