@@ -62,3 +62,7 @@ Desktop.ini
 .DS_Store
 # Boletins do radar: conteudo pessoal (o que voce acompanha), nao artefato
 data/boletins/
+
+# Procedência dos casos do gabarito: URLs reais dos posts.
+# Fora do Git porque o repositório é público e o link resolve para o tuíte.
+gabaritos/procedencia.local.json
