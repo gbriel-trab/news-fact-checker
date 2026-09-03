@@ -135,6 +135,23 @@ def candidatas(conexao: sqlite3.Connection, texto: str) -> list[sqlite3.Row]:
     return grupo
 
 
+TETO_RECUSAS = 3
+"""Quantas recusas de grupo uma matéria pode acumular antes de deixar de
+ser recomprada.
+
+Não pode ser 1: isso é literalmente o comportamento de antes de
+03/09/2026, quando a primeira recusa tornava a matéria invisível e a G1
+"Joesley Batista se reuniu com Trump" sumiu do acervo. O erro caro aqui
+é o falso NEGATIVO de cobertura — deixar de ver matéria que existe —,
+então o teto é folgado de propósito: três grupos ruins seguidos é
+evidência de que a matéria atrai agrupamento errado, não acidente.
+
+O teto é POR VERSÃO DE PROMPT, não vitalício: `ja_extraida` já filtra por
+`prompt_versao`, e todo bump perdoa o histórico. Coerente com o resto (a
+órfã de versão antiga também volta ao mercado), mas dito em voz alta
+porque não é o que "teto" sugere."""
+
+
 def ja_extraida(conexao: sqlite3.Connection, artigo_id: int) -> bool:
     """Extração ATUAL da matéria que conte como 'já teve a vez'.
 
@@ -142,13 +159,19 @@ def ja_extraida(conexao: sqlite3.Connection, artigo_id: int) -> bool:
     errado, não que a matéria não tinha nada. Até 03/09/2026 contava, e a
     G1 "Joesley Batista se reuniu com Trump", puxada por engano para o
     grupo da premissa "o empresário", ficou invisível para o acervo até um
-    bump de versão. O custo da reelegibilidade tem teto: a demanda só a
-    recompra quando outra premissa a puxar, dentro de TETO_USD."""
+    bump de versão.
+
+    Mas a marca sozinha não fechava o ciclo, só o amortecia: `TETO_USD` é
+    da RODADA e nasce de novo a cada boletim, então a mesma matéria podia
+    ser recomprada e recusada indefinidamente, uma vez por rodada, para
+    sempre. Desde 03/09/2026 conta-se QUANTAS vezes: passado
+    `TETO_RECUSAS`, a matéria volta a valer como 'já teve a vez'."""
     return conexao.execute(
         "SELECT COUNT(*) FROM extracoes WHERE artigo_id = ? "
-        "AND prompt_versao IN (?, ?) AND COALESCE(recusada, 0) = 0",
+        "AND prompt_versao IN (?, ?) "
+        "AND (COALESCE(recusada, 0) = 0 OR COALESCE(recusas, 0) >= ?)",
         (artigo_id, extract.PROMPT_VERSAO,
-         extract.PROMPT_VERSAO_HISTORIA)).fetchone()[0] > 0
+         extract.PROMPT_VERSAO_HISTORIA, TETO_RECUSAS)).fetchone()[0] > 0
 
 
 def garante(conexao: sqlite3.Connection, texto: str,

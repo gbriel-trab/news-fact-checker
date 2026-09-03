@@ -11,7 +11,7 @@ fragmentação de entidade produz o mesmo resultado que ausência de contradiç�
 A correção é código na leitura, não prompt melhor nem re-extração: o banco
 continua registrando o que o modelo afirmou — acervo catalogado, não editado —
 e só a COMPARAÇÃO passa pela chave. É o precedente de
-`grafo._relacao_normalizada`, aplicado ao outro lado da tripla.
+`grafo.relacao_normalizada`, aplicado ao outro lado da tripla.
 
 Medido antes de escrever, sobre as 269 formas canônicas do acervo:
 

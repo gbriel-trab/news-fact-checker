@@ -22,10 +22,11 @@ from src.indice import Achado
 
 
 def evidencia(texto, veiculo="G1", sujeito="", objeto="", valor="",
-              distancia=0.1):
+              distancia=0.1, relacao="afirmou", unidade="", contexto=""):
     return Achado(texto, distancia,
                   {"veiculo": veiculo, "sujeito": sujeito or texto.split()[0],
-                   "objeto": objeto, "valor": valor})
+                   "objeto": objeto, "valor": valor, "relacao": relacao,
+                   "unidade": unidade, "contexto": contexto})
 
 
 def julgamento(veredito="confirmado", **lacunas):
@@ -230,6 +231,76 @@ class TestAplicaAlinhamento:
         for v in ("contradito", "sem_evidencia"):
             j = julgamento(v, quem=("x", None))
             assert aplica_alinhamento(j, [ESTEVES], ["x"], ["y"]) is j
+
+
+class TestRotaDupla:
+    """A mesma tripla chegando pelas duas rotas tem de virar UMA candidata.
+
+    O índice grava o texto com a relação CRUA; a rota por chave o
+    renderiza com a NORMALIZADA. Enquanto a identidade era o texto, as
+    duas grafias eram duas candidatas — corroboração inflada, princípio
+    5. Barreira nova entra com caso positivo pareado (princípio 9): o
+    primeiro teste é o que tem de FUNDIR, o segundo o que tem de
+    CONTINUAR separado."""
+
+    def _achado(self, relacao, texto):
+        return Achado(texto, 0.0,
+                      {"veiculo": "G1", "sujeito": "Caixa", "objeto": "",
+                       "valor": 3.9e9, "relacao": relacao,
+                       "unidade": "BRL", "contexto": "lucro"})
+
+    def test_positivo_mesma_tripla_pelas_duas_rotas_funde(self):
+        semantica = self._achado("outro", "Caixa outro 3900000000 BRL (lucro)")
+        por_chave = self._achado("tem_atributo",
+                                 "Caixa tem atributo 3900000000 BRL (lucro)")
+        assert _chave_candidata(semantica) == _chave_candidata(por_chave)
+
+    def test_negativo_triplas_de_verdade_diferentes_nao_fundem(self):
+        lucro = self._achado("tem_atributo",
+                             "Caixa tem atributo 3900000000 BRL (lucro)")
+        outra = Achado("Caixa tem atributo 5000000000 BRL (lucro)", 0.0,
+                       {"veiculo": "G1", "sujeito": "Caixa", "objeto": "",
+                        "valor": 5.0e9, "relacao": "tem_atributo",
+                        "unidade": "BRL", "contexto": "lucro"})
+        veiculo = self._achado("tem_atributo",
+                               "Caixa tem atributo 3900000000 BRL (lucro)")
+        veiculo.meta["veiculo"] = "Valor"
+        assert _chave_candidata(lucro) != _chave_candidata(outra)
+        assert _chave_candidata(lucro) != _chave_candidata(veiculo)
+
+    def test_alvo_da_relacao_passa_pela_mesma_normalizacao(self):
+        """O buraco de verdade: o acervo vem normalizado e o estruturador
+        vem cru. Sob `obteve_percentual_em` com número e sem objeto, a
+        rota por chave devolvia VAZIO sem erro nenhum."""
+        from src import grafo
+        from src.check import AfirmacaoRecebida, Relacao, _por_chave
+        acervo = [grafo.Afirmacao(
+            "Juliana Brizola", grafo.relacao_normalizada(
+                "obteve_percentual_em", None, 38.0),
+            None, 38.0, "%", "intencao de voto", None, "EXTRACTED", "G1",
+            "t", "u")]
+        assert acervo[0].relacao == "tem_atributo"
+        pedido = AfirmacaoRecebida(
+            sujeito_canonico="Juliana Brizola",
+            relacao=Relacao("obteve_percentual_em"),
+            objeto_canonico=None, valor_numero=38.0,
+            valor_unidade="%", busca="Juliana Brizola tem 38%")
+        assert len(_por_chave(pedido, acervo)) == 1
+
+    def test_caso_positivo_pareado_relacao_diferente_segue_sem_casar(self):
+        """O pareado do anterior: normalizar o alvo não pode fazer
+        relação de verdade diferente passar a casar."""
+        from src import grafo
+        from src.check import AfirmacaoRecebida, Relacao, _por_chave
+        acervo = [grafo.Afirmacao(
+            "Juliana Brizola", "se_reuniu_com", "Trump", None, None, None,
+            None, "EXTRACTED", "G1", "t", "u")]
+        pedido = AfirmacaoRecebida(
+            sujeito_canonico="Juliana Brizola",
+            relacao=Relacao("obteve_percentual_em"),
+            objeto_canonico=None, valor_numero=38.0,
+            valor_unidade="%", busca="Juliana Brizola tem 38%")
+        assert _por_chave(pedido, acervo) == []
 
 
 class TestCandidatas:

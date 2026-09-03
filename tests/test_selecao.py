@@ -487,8 +487,8 @@ class TestAgrupamentoPorMedida:
     def test_valor_sem_objeto_vira_tem_atributo_na_leitura(self):
         """`outro` com número e sem objeto é o modelo deixando de aplicar a
         regra 6, não uma distinção real."""
-        from src.grafo import _relacao_normalizada
+        from src.grafo import relacao_normalizada
 
-        assert _relacao_normalizada("outro", None, 3.9e9) == "tem_atributo"
-        assert _relacao_normalizada("outro", "Braskem", None) == "outro"
-        assert _relacao_normalizada("afirmou", "algo", None) == "afirmou"
+        assert relacao_normalizada("outro", None, 3.9e9) == "tem_atributo"
+        assert relacao_normalizada("outro", "Braskem", None) == "outro"
+        assert relacao_normalizada("afirmou", "algo", None) == "afirmou"

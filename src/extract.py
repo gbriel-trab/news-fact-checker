@@ -426,6 +426,7 @@ def salva_historia(conexao: sqlite3.Connection,
     errado da premissa "o empresário"). O lote continua pulando a
     matéria, porque lá o gasto não tem teto por premissa."""
     n = len(blocos)
+    escreveu_contador = False
     for i, (rotulo, (linha, _)) in enumerate(zip(ROTULOS_FONTE, blocos)):
         do_artigo = [
             _tripla_da_fonte(t, par[1])
@@ -449,6 +450,15 @@ def salva_historia(conexao: sqlite3.Connection,
             print(f"  mantida a extração anterior de {linha['id']}: a nova "
                   f"veio vazia e a antiga tem triplas")
             continue
+        # O contador de recusas é lido ANTES do DELETE e regravado
+        # depois. Escrito como "+1 sobre a linha nova" ele travaria em 1
+        # para sempre, o teto nunca dispararia e a correção seria
+        # silenciosamente inútil — é o único jeito plausível de errar
+        # este trecho, e por isso está dito aqui.
+        recusas = conexao.execute(
+            "SELECT COALESCE(MAX(recusas), 0) FROM extracoes "
+            "WHERE artigo_id = ? AND modelo = ? AND prompt_versao = ?",
+            (linha["id"], llm.EXTRACAO.id, prompt_versao)).fetchone()[0]
         conexao.execute(
             "DELETE FROM extracoes WHERE artigo_id = ? AND modelo = ? "
             "AND prompt_versao = ?",
@@ -467,10 +477,19 @@ def salva_historia(conexao: sqlite3.Connection,
                        llm.EXTRACAO.id, prompt_versao, VOCAB_VERSAO, rateio)
         if recusada:
             conexao.execute(
-                "UPDATE extracoes SET recusada = 1 WHERE artigo_id = ? "
+                "UPDATE extracoes SET recusada = 1, recusas = ? "
+                "WHERE artigo_id = ? AND modelo = ? AND prompt_versao = ?",
+                (recusas + 1, linha["id"], llm.EXTRACAO.id, prompt_versao))
+            escreveu_contador = True
+        elif recusas:
+            # Extração que rendeu não apaga o histórico de recusas: a
+            # matéria pode voltar a ser puxada para outro grupo ruim.
+            conexao.execute(
+                "UPDATE extracoes SET recusas = ? WHERE artigo_id = ? "
                 "AND modelo = ? AND prompt_versao = ?",
-                (linha["id"], llm.EXTRACAO.id, prompt_versao))
-    if recusada:
+                (recusas, linha["id"], llm.EXTRACAO.id, prompt_versao))
+            escreveu_contador = True
+    if escreveu_contador:
         conexao.commit()
 
 

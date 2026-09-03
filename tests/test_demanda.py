@@ -153,12 +153,13 @@ class TestJaExtraida:
     03/09/2026, a G1 'Joesley Batista se reuniu com Trump' entrou por
     engano no grupo da premissa 'o empresário' e sumiu do acervo."""
 
-    def _extracao(self, con, artigo_id, versao, recusada=None):
+    def _extracao(self, con, artigo_id, versao, recusada=None, recusas=None):
         con.execute(
             "INSERT INTO extracoes (artigo_id, modelo, prompt_versao, "
             "vocab_versao, tokens_entrada, tokens_saida, custo_usd, "
-            "extraido_em, recusada) VALUES (?, 'm', ?, 1, 0, 0, 0.0, 't', ?)",
-            (artigo_id, versao, recusada))
+            "extraido_em, recusada, recusas) "
+            "VALUES (?, 'm', ?, 1, 0, 0, 0.0, 't', ?, ?)",
+            (artigo_id, versao, recusada, recusas))
         con.commit()
 
     def test_recusada_nao_conta_como_extraida(self, tmp_path):
@@ -181,3 +182,53 @@ class TestJaExtraida:
         con = conecta(tmp_path / "t.db")
         self._extracao(con, 4, "versao-antiga")
         assert not demanda.ja_extraida(con, 4)
+
+    def test_positivo_recusas_abaixo_do_teto_seguem_recompraveis(self, tmp_path):
+        """O lado que NÃO pode quebrar. Duas recusas ainda é acidente de
+        agrupamento — a matéria continua elegível, que é a correção de
+        03/09 que este teto não pode desfazer."""
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        for n in (1, demanda.TETO_RECUSAS - 1):
+            con.execute("DELETE FROM extracoes")
+            self._extracao(con, 5, demanda.extract.PROMPT_VERSAO_HISTORIA,
+                           recusada=1, recusas=n)
+            assert not demanda.ja_extraida(con, 5), n
+
+    def test_negativo_no_teto_a_materia_para_de_ser_recomprada(self, tmp_path):
+        """O moto-perpétuo: TETO_USD é da RODADA e renasce a cada boletim,
+        então sem contador a mesma matéria era recomprada e recusada uma
+        vez por rodada, para sempre."""
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        self._extracao(con, 6, demanda.extract.PROMPT_VERSAO_HISTORIA,
+                       recusada=1, recusas=demanda.TETO_RECUSAS)
+        assert demanda.ja_extraida(con, 6)
+
+    def test_teto_nunca_pode_ser_um(self):
+        """1 é exatamente o comportamento de antes da correção de 03/09."""
+        assert demanda.TETO_RECUSAS >= 2
+
+    def test_contador_sobrevive_ao_delete_de_salva_historia(self, tmp_path):
+        """O único jeito plausível de errar o patch: incrementar DEPOIS do
+        DELETE trava o contador em 1 e o teto nunca dispara."""
+        from src.storage import conecta
+        from src import extract, llm
+        con = conecta(tmp_path / "t.db")
+        con.execute(
+            "INSERT INTO artigos (id, url_norm, url_original, veiculo, "
+            "editoria, titulo, resumo, conteudo, hash_conteudo, coletado_em) "
+            "VALUES (9,'u','u','G1','x','t','r','c','h','hoje')")
+        con.commit()
+        linha = con.execute("SELECT * FROM artigos WHERE id = 9").fetchone()
+        uso = llm.Uso(modelo=llm.EXTRACAO, entrada=0, saida=0,
+                      cache_leitura=0, cache_escrita=0)
+        for esperado in (1, 2, 3):
+            extract.salva_historia(
+                con, [(linha, [])], [], uso,
+                extract.PROMPT_VERSAO_HISTORIA, recusada=True)
+            n = con.execute(
+                "SELECT recusas FROM extracoes WHERE artigo_id = 9"
+            ).fetchone()[0]
+            assert n == esperado, f"travou em {n}, esperado {esperado}"
+        assert demanda.ja_extraida(con, 9)

@@ -220,7 +220,7 @@ class Corroboracao:
         return bool(self.divergencias)
 
 
-def _relacao_normalizada(relacao: str, objeto: str | None,
+def relacao_normalizada(relacao: str, objeto: str | None,
                          valor: float | None) -> str:
     """Tripla com número e sem objeto é `tem_atributo`, diga o modelo o que
     disser.
@@ -237,6 +237,12 @@ def _relacao_normalizada(relacao: str, objeto: str | None,
 
     Normalizado na LEITURA, não na gravação: assim vale também para o que já
     está no banco, e nenhuma extração paga é reescrita.
+
+    Nome público desde 03/09/2026 porque passou a ter DOIS donos: aqui, na
+    leitura do grafo, e no check — que precisa aplicar a MESMA normalização
+    ao lado do estruturador antes de comparar. Enquanto era privada, o check
+    comparava normalizado contra cru e a rota por chave devolvia vazio em
+    silêncio. Regra que mora em dois lugares diverge; esta agora mora em um.
     """
     if valor is not None and not objeto:
         return Relacao.TEM_ATRIBUTO.value
@@ -325,7 +331,7 @@ def carrega(conexao: sqlite3.Connection,
             (llm.EXTRACAO.id, desde) if desde else (llm.EXTRACAO.id,)),
     ).fetchall()
     return [
-        Afirmacao(l["s"], _relacao_normalizada(l["r"], l["o"], l["vn"]),
+        Afirmacao(l["s"], relacao_normalizada(l["r"], l["o"], l["vn"]),
                   l["o"], l["vn"], l["vu"], l["vc"],
                   l["df"], l["og"], l["veiculo"], l["titulo"], l["url_norm"],
                   l["dp"])

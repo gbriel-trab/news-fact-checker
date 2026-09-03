@@ -425,9 +425,21 @@ def _por_chave(afirmacao: AfirmacaoRecebida,
     if mapa:
         alvos |= {chave_canonica(x) for x in
                   apelidos.equivalentes(afirmacao.sujeito_canonico, mapa)}
+    # A relação do ACERVO já vem normalizada — `grafo.carrega` aplica
+    # `relacao_normalizada` na leitura. A do estruturador NÃO passa por
+    # nada. Comparar os dois lados crus contra normalizados fazia a rota
+    # devolver lista VAZIA, sem erro, exatamente no caso que ela existe
+    # para cobrir: afirmação com número e sem objeto. Se o estruturador
+    # escolhesse `obteve_percentual_em` para "Juliana Brizola tem 38%" —
+    # e o vocabulário permite, "número no valor" —, a tripla gravada como
+    # `tem_atributo` nunca casava. Só o prompt segurava isso; agora o
+    # código segura. (Achado da revisão de 03/09/2026.)
+    alvo_relacao = grafo.relacao_normalizada(
+        afirmacao.relacao.value, afirmacao.objeto_canonico,
+        afirmacao.valor_numero)
     for a in acervo:
         if (chave_canonica(a.sujeito) in alvos
-                and a.relacao == afirmacao.relacao.value):
+                and a.relacao == alvo_relacao):
             achados.append(indice.Achado(
                 texto=indice.texto_da_tripla(a.sujeito, a.relacao, a.objeto,
                                              a.valor, a.unidade, a.contexto),
@@ -505,8 +517,8 @@ def _diversifica(ordenadas: list[indice.Achado],
     return sorted(escolhidas, key=lambda a: a.distancia)
 
 
-def _chave_candidata(a: indice.Achado) -> tuple[str, str, str]:
-    """Identidade de uma candidata: VEÍCULO + sujeito canônico + texto.
+def _chave_candidata(a: indice.Achado) -> tuple:
+    """Identidade de uma candidata: VEÍCULO + os CAMPOS da tripla.
 
     Até 03/09/2026 o veículo não entrava, e o modo história grava a
     mesma tripla, com o mesmo texto, para cada veículo que a afirma —
@@ -514,9 +526,36 @@ def _chave_candidata(a: indice.Achado) -> tuple[str, str, str]:
     reunião Esteves–Trump saía 'CONFIRMADO · 1 veículo' com dois veículos
     no acervo. Corroboração é contada por veículo; a dedup tem de ser.
     Caixa fora: re-extração do mesmo artigo difere em "Reunião" ×
-    "reunião", e as duas rotas traziam a mesma tripla duas vezes."""
-    return (a.meta.get("veiculo", ""),
-            chave_canonica(a.meta.get("sujeito", "")), a.texto.casefold())
+    "reunião", e as duas rotas traziam a mesma tripla duas vezes.
+
+    O TEXTO saiu da identidade em 03/09/2026, e essa é a correção que
+    fecha a rota dupla. O índice grava o texto com a relação CRUA
+    (`indice.indexa_afirmacoes` lê `t.relacao` do banco) e a rota por
+    chave o renderiza com a NORMALIZADA (`grafo.carrega` normaliza na
+    leitura). Para uma tripla com valor e sem objeto gravada sob outra
+    relação, o Chroma guarda "Caixa outro 3,9 bi" e a rota por chave
+    produz "Caixa tem atributo 3,9 bi": textos diferentes, chaves
+    diferentes, dedup não dispara, e a MESMA tripla ocupa uma vaga em
+    cada rota — corroboração inflada, que é o falso positivo do
+    princípio 5.
+
+    Consertar do lado do índice seria normalizar na GRAVAÇÃO, contra o
+    que a própria `relacao_normalizada` existe para evitar, e obrigaria
+    a reindexar o acervo a cada mudança da regra. Então a identidade
+    passa a sair dos CAMPOS do metadado, que as duas rotas gravam
+    iguais, com a relação normalizada na leitura — aqui. Nada se perde:
+    são os mesmos campos que `texto_da_tripla` renderiza."""
+    m = a.meta
+    valor = m.get("valor")
+    return (m.get("veiculo", ""),
+            chave_canonica(m.get("sujeito", "")),
+            grafo.relacao_normalizada(
+                m.get("relacao", ""), m.get("objeto") or None,
+                valor if valor not in (None, "") else None),
+            chave_canonica(m.get("objeto", "")),
+            str(valor if valor is not None else ""),
+            (m.get("unidade") or "").casefold(),
+            (m.get("contexto") or "").casefold())
 
 
 _ORIGEM_LEGIVEL = {"EXTRACTED": "explícita", "INFERRED": "inferida",

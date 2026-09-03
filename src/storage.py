@@ -187,6 +187,12 @@ MIGRACOES: tuple[tuple[str, str], ...] = (
     # Confirmação retida pelo freio de alinhamento (03/09/2026): é
     # sem_evidencia com evidência na mão, e a demanda não deve disparar.
     ("consultas", "retida INTEGER"),
+    # Quantas vezes o grupo desta matéria já foi recusado (03/09/2026). A
+    # flag `recusada` acima é de UM bit e o DELETE de salva_historia apaga
+    # a linha anterior, então cada recusa nova zerava a memória da
+    # anterior: a matéria voltava ao mercado para sempre. O contador
+    # sobrevive ao DELETE porque é lido ANTES dele e regravado depois.
+    ("extracoes", "recusas INTEGER"),
 )
 
 
