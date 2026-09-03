@@ -24,6 +24,9 @@ e a montagem da resposta. Nada decide, em tempo de execução, qual é o próxim
 passo — por isso não há ciclo, e por isso não há agente.
 """
 
+import hashlib
+import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -34,6 +37,9 @@ from . import config, grafo, indice, llm, vocabulario
 from .canonico import chave_canonica
 from .storage import conecta, salva_consulta
 from .vocabulario import Relacao
+
+LACUNAS = ("quem", "o_que", "quando", "onde", "quanto")
+"""As lacunas de uma afirmação, na ordem em que o juiz as alinha."""
 
 MIN_PROXIMIDADE = 0.55
 """Piso de similaridade para uma afirmação do acervo virar evidência candidata.
@@ -66,9 +72,37 @@ class AfirmacaoRecebida(BaseModel):
     )
 
 
-class Julgamento(BaseModel):
-    """O veredito sobre a afirmação, dada a evidência recuperada."""
+class Alinhamento(BaseModel):
+    """Uma lacuna da afirmação e a contraparte que a evidência citada dá."""
 
+    lacuna: Literal["quem", "o_que", "quando", "onde", "quanto"]
+    na_afirmacao: str | None = Field(
+        description="O que a afirmação diz nesta lacuna; null se ela não diz."
+    )
+    na_evidencia: str | None = Field(
+        description=(
+            "O trecho da evidência citada que responde a esta lacuna; null "
+            "se nenhuma evidência responde."
+        )
+    )
+
+
+class Julgamento(BaseModel):
+    """O veredito sobre a afirmação, dada a evidência recuperada.
+
+    O alinhamento vem ANTES do veredito no schema de propósito: o modelo
+    preenche lacuna a lacuna e só então decide. Desde 03/09/2026 a
+    confirmação passa por `aplica_alinhamento`, em código: sujeito sem
+    contraparte, ou que não casa pela chave canônica, não confirma —
+    a consulta 82 confirmou 'ocorreu um encontro' com uma sessão de
+    comissão qualquer, e prosa não impediu (J2 falhou três vezes)."""
+
+    alinhamento: list[Alinhamento] = Field(
+        description=(
+            "As cinco lacunas (quem, o_que, quando, onde, quanto), "
+            "preenchidas antes do veredito. Sem contraparte = null."
+        )
+    )
     veredito: Literal["confirmado", "contradito", "sem_evidencia"]
     evidencias: list[int] = Field(
         description=(
@@ -133,7 +167,98 @@ Regras que importam mais que as outras:
 
 5. CITE APENAS AS EVIDÊNCIAS QUE USOU, pelo número. Veredito sem evidência
    citada não pode ser conferido, e este sistema só afirma o que pode mostrar.
+
+6. ALINHE ANTES DE JULGAR. Para cada lacuna — quem, o quê, quando, onde,
+   quanto — diga o que a afirmação afirma e qual trecho da evidência citada
+   responde. Lacuna que a afirmação preenche e a evidência não: não pode
+   confirmar. Evidência COMPATÍVEL não é evidência que SUSTENTA: "ocorreu
+   um encontro" é satisfeito por qualquer reunião do mundo, e por isso não
+   é confirmável — o QUEM da afirmação precisa de contraparte na evidência.
+
+7. NOME INCOMPLETO CASA COM NOME COMPLETO quando outra lacuna fecha o
+   referente: "André se reuniu com Trump" é sustentado por "André Esteves
+   participou de reunião com Donald Trump" — o QUEM é contido e o O QUÊ
+   coincide. Sozinho, sem outra lacuna, o nome parcial não confirma.
 """
+
+
+def versao_prompt() -> str:
+    """Identidade do julgamento e da estruturação, como hash curto — o
+    mesmo mecanismo do `premissas.versao_prompt`, e pelo mesmo motivo:
+    veredito de prompt (ou modelo) diferente não é comparável, e a
+    coluna `prompt_versao` de `consultas` é o que permite ao gabarito
+    dizer 'isto já falhava antes ou é novo'."""
+    material = INSTRUCOES_ESTRUTURA + INSTRUCOES_JULGAMENTO + json.dumps(
+        {"estrutura": AfirmacaoRecebida.model_json_schema(),
+         "julgamento": Julgamento.model_json_schema(),
+         "modelo": llm.VERIFICACAO.id,
+         "esforco": llm.VERIFICACAO.esforco},
+        sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
+
+
+PROMPT_VERSAO = versao_prompt()
+
+
+_PALAVRAS_VAZIAS = frozenset(
+    "o a os as um uma uns umas de do da dos das e em no na nos nas".split())
+
+
+def _tokens(nome: str) -> set[str]:
+    # Pontuação fora: o juiz escreve "André (e Trump)" e "o desemprego
+    # (taxa de desemprego no Brasil)" — e com parênteses colados nenhum
+    # token casava (primeira rodada do gabarito v4, 03/09/2026).
+    limpo = re.sub(r"[^\w\s]", " ", chave_canonica(nome))
+    return {t for t in limpo.split() if t not in _PALAVRAS_VAZIAS}
+
+
+def sujeito_casa(afirmacao: str, evidencia: str) -> bool:
+    """O sujeito da afirmação e o da evidência nomeiam a mesma coisa?
+
+    Contenção de tokens pela chave canônica, nos dois sentidos: "André"
+    ⊂ "André Esteves", "desemprego" ⊂ "taxa de desemprego no Brasil",
+    "Braskem" = "Braskem S.A.". "um encontro" contra "sessão da comissão
+    mista" não casa — é o que retém a confirmação vazia. Contenção é
+    frouxa de propósito e por isso NÃO basta sozinha: quem chama exige
+    também outra lacuna alinhada (ver `aplica_alinhamento`)."""
+    ta, te = _tokens(afirmacao), _tokens(evidencia)
+    if not ta or not te:
+        return False
+    return ta <= te or te <= ta
+
+
+def aplica_alinhamento(julgamento: Julgamento,
+                       sujeito_afirmacao: str | None = None) -> Julgamento:
+    """Retém, em código, confirmação que o alinhamento não sustenta.
+
+    Só toca `confirmado` — é o único veredito que pode ser falso positivo
+    (princípio 5). Três condições, todas necessárias: o QUEM tem
+    contraparte na evidência; a contraparte nomeia o mesmo sujeito
+    (`sujeito_casa`); e ao menos outra lacuna também tem contraparte.
+    `sujeito_afirmacao` é o sujeito que o estruturador já extraiu — vem
+    de cima, pré-preenchido, para que o juiz não possa "compatibilizar"
+    um sujeito genérico escrevendo-o ele mesmo; sem ele, vale o que o
+    juiz pôs em `quem`. Retida vira sem_evidencia com a justificativa do
+    juiz preservada: o leitor vê o que ele achou e por que não valeu."""
+    if julgamento.veredito != "confirmado":
+        return julgamento
+    por_lacuna = {a.lacuna: a for a in julgamento.alinhamento}
+    quem = por_lacuna.get("quem")
+    sujeito = sujeito_afirmacao or (quem.na_afirmacao if quem else None)
+    contraparte = quem.na_evidencia if quem else None
+    if not sujeito or not contraparte:
+        motivo = "o sujeito da afirmação não tem contraparte na evidência"
+    elif not sujeito_casa(sujeito, contraparte):
+        motivo = f'o sujeito "{sujeito}" não é "{contraparte}"'
+    elif not any(a.na_afirmacao and a.na_evidencia
+                 for a in julgamento.alinhamento if a.lacuna != "quem"):
+        motivo = "só o sujeito alinha; nenhuma outra lacuna tem contraparte"
+    else:
+        return julgamento
+    return julgamento.model_copy(update={
+        "veredito": "sem_evidencia", "evidencias": [],
+        "justificativa": (f"Confirmação retida: {motivo}. O juiz havia "
+                          f"escrito: {julgamento.justificativa}")})
 
 
 def estrutura(texto: str) -> tuple[AfirmacaoRecebida, llm.Uso]:
@@ -206,16 +331,27 @@ def recupera(afirmacao: AfirmacaoRecebida,
     onde a evidência certa estava caindo.
     """
     achados = _por_chave(afirmacao, acervo or [])
-    vistos = {a.meta.get("sujeito", "") + a.texto for a in achados}
+    vistos = {_chave_candidata(a) for a in achados}
 
     for a in indice.busca("afirmacoes", afirmacao.busca, QUANTAS_CANDIDATAS):
-        chave = a.meta.get("sujeito", "") + a.texto
+        chave = _chave_candidata(a)
         if a.proximidade >= MIN_PROXIMIDADE and chave not in vistos:
             a.meta.setdefault("rota", "semantica")
             achados.append(a)
             vistos.add(chave)
 
     return achados
+
+
+def _chave_candidata(a: indice.Achado) -> tuple[str, str, str]:
+    """Identidade de uma candidata: VEÍCULO + sujeito + texto.
+
+    Até 03/09/2026 o veículo não entrava, e o modo história grava a
+    mesma tripla, com o mesmo texto, para cada veículo que a afirma —
+    a cópia do Valor era descartada como duplicata da do G1, e a
+    reunião Esteves–Trump saía 'CONFIRMADO · 1 veículo' com dois veículos
+    no acervo. Corroboração é contada por veículo; a dedup tem de ser."""
+    return (a.meta.get("veiculo", ""), a.meta.get("sujeito", ""), a.texto)
 
 
 _ORIGEM_LEGIVEL = {"EXTRACTED": "explícita", "INFERRED": "inferida",
@@ -331,10 +467,14 @@ def verifica(texto: str, verboso: bool = False,
         if conexao is not None:
             salva_consulta(conexao, texto, "sem_evidencia",
                            "Nenhuma candidata acima do piso de proximidade.",
-                           0, 0, 0, llm.VERIFICACAO.id, uso1.custo)
+                           0, 0, 0, llm.VERIFICACAO.id, uso1.custo,
+                           prompt_versao=PROMPT_VERSAO)
         return
 
     julgamento, uso2 = julga(texto, evidencias)
+    # O sujeito vem do estruturador, pré-preenchido: o juiz não decide
+    # sozinho se "um encontro" é um sujeito.
+    julgamento = aplica_alinhamento(julgamento, afirmacao.sujeito_canonico)
     citadas = [evidencias[i - 1] for i in julgamento.evidencias
                if 1 <= i <= len(evidencias)]
     veiculos = {e.meta["veiculo"] for e in citadas}
@@ -343,6 +483,13 @@ def verifica(texto: str, verboso: bool = False,
               "sem_evidencia": "SEM EVIDÊNCIA"}[julgamento.veredito]
     print(f"VEREDITO\n  {rotulo} · {len(veiculos)} "
           f"{'veículo' if len(veiculos) == 1 else 'veículos'}\n")
+
+    if verboso:
+        print("ALINHAMENTO")
+        for a in julgamento.alinhamento:
+            print(f"  {a.lacuna:<7} {a.na_afirmacao or '—'}  ⇄  "
+                  f"{a.na_evidencia or '—'}")
+        print()
 
     if citadas:
         print("EVIDÊNCIA")
@@ -375,7 +522,7 @@ def verifica(texto: str, verboso: bool = False,
         salva_consulta(conexao, texto, julgamento.veredito,
                        julgamento.justificativa, len(evidencias),
                        len(citadas), len(veiculos), llm.VERIFICACAO.id,
-                       uso1.custo + uso2.custo)
+                       uso1.custo + uso2.custo, prompt_versao=PROMPT_VERSAO)
 
 
 def main() -> None:

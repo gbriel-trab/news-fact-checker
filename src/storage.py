@@ -177,6 +177,13 @@ CREATE TABLE IF NOT EXISTS gabarito_rodadas (
 MIGRACOES: tuple[tuple[str, str], ...] = (
     ("extracoes", "tokens_cache_leitura INTEGER"),
     ("extracoes", "tokens_cache_escrita INTEGER"),
+    # Versão do prompt do check (03/09/2026): sem ela, veredito de prompt
+    # antigo e novo ficam indistinguíveis no livro-caixa.
+    ("consultas", "prompt_versao TEXT"),
+    # Recusa de grupo no modo história (03/09/2026): a linha vazia existe
+    # para o grupo não voltar, mas não pode valer como "matéria extraída"
+    # para a demanda — ver extract.salva_historia.
+    ("extracoes", "recusada INTEGER"),
 )
 
 
@@ -342,17 +349,19 @@ def salva_extracao(conexao: sqlite3.Connection, artigo_id: int, triplas,
 
 def salva_consulta(conexao: sqlite3.Connection, afirmacao: str, veredito: str,
                    justificativa: str, candidatas: int, citadas: int,
-                   veiculos: int, modelo: str, custo: float) -> int:
+                   veiculos: int, modelo: str, custo: float,
+                   prompt_versao: str | None = None) -> int:
     """Grava a consulta e o veredito. Devolve o id."""
     cursor = conexao.execute(
         """
         INSERT INTO consultas (afirmacao, veredito, justificativa, candidatas,
                                citadas, veiculos, modelo, custo_usd,
-                               consultado_em)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               consultado_em, prompt_versao)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (afirmacao, veredito, justificativa, candidatas, citadas, veiculos,
-         modelo, custo, datetime.now(timezone.utc).isoformat()),
+         modelo, custo, datetime.now(timezone.utc).isoformat(),
+         prompt_versao),
     )
     conexao.commit()
     return cursor.lastrowid

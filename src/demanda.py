@@ -122,12 +122,7 @@ def candidatas(conexao: sqlite3.Connection, texto: str) -> list[sqlite3.Row]:
         linha = linhas.get(i)
         if linha is None:
             continue
-        extraida = conexao.execute(
-            "SELECT COUNT(*) FROM extracoes WHERE artigo_id = ? "
-            "AND prompt_versao IN (?, ?)",
-            (i, extract.PROMPT_VERSAO,
-             extract.PROMPT_VERSAO_HISTORIA)).fetchone()[0]
-        if extraida:
+        if ja_extraida(conexao, i):
             continue
         por_veiculo.setdefault(linha["veiculo"], linha)
     grupo = list(por_veiculo.values())[:MAX_MATERIAS]
@@ -138,6 +133,22 @@ def candidatas(conexao: sqlite3.Connection, texto: str) -> list[sqlite3.Row]:
         grupo = [l for l, v in zip(grupo, vetores)
                  if float(v @ base) >= agrupa.LIMIAR_COESAO]
     return grupo
+
+
+def ja_extraida(conexao: sqlite3.Connection, artigo_id: int) -> bool:
+    """Extração ATUAL da matéria que conte como 'já teve a vez'.
+
+    Linha marcada `recusada` não conta: o modelo disse que o GRUPO estava
+    errado, não que a matéria não tinha nada. Até 03/09/2026 contava, e a
+    G1 "Joesley Batista se reuniu com Trump", puxada por engano para o
+    grupo da premissa "o empresário", ficou invisível para o acervo até um
+    bump de versão. O custo da reelegibilidade tem teto: a demanda só a
+    recompra quando outra premissa a puxar, dentro de TETO_USD."""
+    return conexao.execute(
+        "SELECT COUNT(*) FROM extracoes WHERE artigo_id = ? "
+        "AND prompt_versao IN (?, ?) AND COALESCE(recusada, 0) = 0",
+        (artigo_id, extract.PROMPT_VERSAO,
+         extract.PROMPT_VERSAO_HISTORIA)).fetchone()[0] > 0
 
 
 def garante(conexao: sqlite3.Connection, texto: str,

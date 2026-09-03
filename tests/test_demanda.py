@@ -141,3 +141,39 @@ class TestConferePostEstado:
             boletim._confere_post("post", _ConexaoFalsa(), estado)
         assert estado["orcamento"] == pytest.approx(demanda.TETO_USD - 0.20)
         assert estado["acervo"] == ["novo"]
+
+
+class TestJaExtraida:
+    """Recusa de grupo (mesma_historia=false) deixa linha vazia para o grupo
+    não voltar, mas a matéria não pode ficar invisível para a demanda:
+    03/09/2026, a G1 'Joesley Batista se reuniu com Trump' entrou por
+    engano no grupo da premissa 'o empresário' e sumiu do acervo."""
+
+    def _extracao(self, con, artigo_id, versao, recusada=None):
+        con.execute(
+            "INSERT INTO extracoes (artigo_id, modelo, prompt_versao, "
+            "vocab_versao, tokens_entrada, tokens_saida, custo_usd, "
+            "extraido_em, recusada) VALUES (?, 'm', ?, 1, 0, 0, 0.0, 't', ?)",
+            (artigo_id, versao, recusada))
+        con.commit()
+
+    def test_recusada_nao_conta_como_extraida(self, tmp_path):
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        self._extracao(con, 1, demanda.extract.PROMPT_VERSAO_HISTORIA,
+                       recusada=1)
+        assert not demanda.ja_extraida(con, 1)
+
+    def test_extracao_normal_conta(self, tmp_path):
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        self._extracao(con, 2, demanda.extract.PROMPT_VERSAO_HISTORIA)
+        self._extracao(con, 3, demanda.extract.PROMPT_VERSAO, recusada=0)
+        assert demanda.ja_extraida(con, 2)
+        assert demanda.ja_extraida(con, 3)
+
+    def test_versao_antiga_nao_conta(self, tmp_path):
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        self._extracao(con, 4, "versao-antiga")
+        assert not demanda.ja_extraida(con, 4)

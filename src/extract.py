@@ -410,13 +410,21 @@ def _tripla_da_fonte(t: TriplaHistoria, sentenca: int) -> Tripla:
 def salva_historia(conexao: sqlite3.Connection,
                    blocos: list[tuple[sqlite3.Row, list[str]]],
                    triplas: list[TriplaHistoria],
-                   uso: llm.Uso, prompt_versao: str) -> None:
+                   uso: llm.Uso, prompt_versao: str,
+                   recusada: bool = False) -> None:
     """Explode a extração da história em linhas POR FONTE, no formato que o
     banco já conhece: cada origem vira uma tripla comum presa ao artigo e à
     sentença dela. Grafo, índice, digest e check não mudam uma linha — a
     corroboração aparece como triplas idênticas de artigos distintos, que
     agora casam porque nasceram na mesma chamada. O custo é rateado por
-    igual entre os artigos: a soma bate com a fatura."""
+    igual entre os artigos: a soma bate com a fatura.
+
+    `recusada` marca a linha quando o modelo devolveu mesma_historia=false:
+    o grupo estava errado, não a matéria. A demanda deixa de tratar a
+    marca como "já extraída" (03/09/2026: a G1 "Joesley Batista se reuniu
+    com Trump" ficou invisível para o acervo porque entrou num grupo
+    errado da premissa "o empresário"). O lote continua pulando a
+    matéria, porque lá o gasto não tem teto por premissa."""
     n = len(blocos)
     for i, (rotulo, (linha, _)) in enumerate(zip(ROTULOS_FONTE, blocos)):
         # História que ganhou membro novo é re-extraída inteira (é a
@@ -445,6 +453,13 @@ def salva_historia(conexao: sqlite3.Connection,
         )
         salva_extracao(conexao, linha["id"], do_artigo,
                        llm.EXTRACAO.id, prompt_versao, VOCAB_VERSAO, rateio)
+        if recusada:
+            conexao.execute(
+                "UPDATE extracoes SET recusada = 1 WHERE artigo_id = ? "
+                "AND modelo = ? AND prompt_versao = ?",
+                (linha["id"], llm.EXTRACAO.id, prompt_versao))
+    if recusada:
+        conexao.commit()
 
 
 INSTRUCOES = f"""\
@@ -832,7 +847,8 @@ def _roda_historias(conexao: sqlite3.Connection, grupos, args,
             # para a história não voltar, e o caso realimenta a calibração.
             print("  MESMA_HISTORIA=FALSE — o modelo recusou o grupo. "
                   "Gravado vazio; conferir o agrupamento.")
-            salva_historia(conexao, blocos, [], resultado.uso, prompt_versao)
+            salva_historia(conexao, blocos, [], resultado.uso, prompt_versao,
+                           recusada=True)
             continue
 
         n_sentencas = {ROTULOS_FONTE[i]: len(s)
@@ -897,7 +913,7 @@ def extrai_grupo(conexao: sqlite3.Connection,
     resultado = extrai_historia(blocos)
     if not resultado.dados.mesma_historia:
         salva_historia(conexao, blocos, [], resultado.uso,
-                       PROMPT_VERSAO_HISTORIA)
+                       PROMPT_VERSAO_HISTORIA, recusada=True)
         return 0, resultado.uso.custo, True
 
     n_sentencas = {ROTULOS_FONTE[i]: len(s) for i, (_, s) in enumerate(blocos)}
