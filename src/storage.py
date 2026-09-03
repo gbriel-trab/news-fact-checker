@@ -151,6 +151,23 @@ CREATE TABLE IF NOT EXISTS separacoes (
     separado_em    TEXT NOT NULL,
     UNIQUE (texto_hash, prompt_versao)
 );
+
+-- Gabarito (src/gabarito.py): uma linha POR VEZ de cada caso, com o que o
+-- modelo devolveu e o custo. Separado de `separacoes` de proposito: a
+-- bateria mede o modelo, e gravar ali semearia o cache de producao com a
+-- ultima vez -- inclusive uma que falhou.
+CREATE TABLE IF NOT EXISTS gabarito_rodadas (
+    id             INTEGER PRIMARY KEY,
+    qual           TEXT    NOT NULL,
+    caso           TEXT    NOT NULL,
+    prompt_versao  TEXT    NOT NULL,
+    vez            INTEGER NOT NULL,
+    passou         INTEGER NOT NULL,
+    falhas         TEXT    NOT NULL,
+    obtido         TEXT    NOT NULL,
+    custo_usd      REAL    NOT NULL,
+    rodado_em      TEXT    NOT NULL
+);
 """
 
 

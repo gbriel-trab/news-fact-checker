@@ -1,0 +1,230 @@
+[
+  {
+    "id": "J1",
+    "tipo": "julgamento",
+    "origem": "sintético a partir da consulta 72 de 01/09/2026 (que julgou a afirmação com NOME COMPLETO e confirmou com 2 veículos) — aqui a afirmação está na forma que o separador v3 emite: nome incompleto. Esta forma nunca foi julgada",
+    "afirmacao": "André se reuniu com Trump",
+    "evidencias": [
+      {"texto": "André Esteves participou de Reunião entre André Esteves e Donald Trump", "veiculo": "G1", "titulo": "Em meio a negociações sobre tarifaço, André Esteves, do BTG, se reúne com Trump nos EUA", "data_fato": "2026-08-29", "origem": "e"},
+      {"texto": "Banco BTG Pactual afirmou confirmou ao g1 a reunião de André Esteves com Donald Trump", "veiculo": "G1", "titulo": "Em meio a negociações sobre tarifaço, André Esteves, do BTG, se reúne com Trump nos EUA", "data_fato": "2026-08-31", "origem": "e"},
+      {"texto": "André Esteves participou de reunião entre André Esteves e Donald Trump", "veiculo": "Valor", "titulo": "Estreia de André Esteves na 'diplomacia privada' com Trump é pautada por Brasil, Venezuela e data centers", "data_fato": "2026-08-29", "origem": "e"}
+    ],
+    "esperado": "confirmado",
+    "cita_minimo": 1,
+    "fronteira": true,
+    "nota": "DECISÃO DE DESENHO pendente: a v3 do separador manda o nome como escrito e delega ao juiz casar 'André' com 'André Esteves' pela evidência. INSTRUCOES_JULGAMENTO não tem regra para isso — a regra 1 (não preencha lacuna) sustenta sem_evidencia e 'afirma o mesmo' sustenta confirmado. Fronteira até o juiz ganhar a regra ('nome incompleto casa com a evidência que o completa quando o resto da afirmação — outra entidade, número, lugar ou data — coincide; sozinho, não'). Se J1 falhar, a correção da charada é nula de ponta a ponta: o fato sai do separador e morre no juiz. Evidências: render do índice das triplas 2828, 2868 e 2853.",
+    "revisado_por": null
+  },
+  {
+    "id": "J2",
+    "tipo": "julgamento",
+    "origem": "consulta 82 de 02/09/2026 00:28 — o juiz CONFIRMOU esta afirmação vazia com uma sessão de comissão qualquer; a consulta 81, um minuto antes, deu sem_evidencia",
+    "afirmacao": "Ocorreu um encontro (não especificado no texto) até 01/09/2026",
+    "evidencias": [
+      {"texto": "Sessão da Comissão Mista da Medida Provisória 1357/2026 de 28 de agosto de 2026 preve Relatoria da Medida Provisória 1357/2026", "veiculo": "CNN Brasil", "titulo": "Governo mira acelerar fim da taxa das blusinhas e comissão é antecipada", "data_fato": "2026-08-28", "origem": "e"},
+      {"texto": "Comissão Mista da Medida Provisória 1357/2026 outro Sessão da Comissão Mista da Medida Provisória 1357/2026 de 28 de agosto de 2026", "veiculo": "CNN Brasil", "titulo": "Governo mira acelerar fim da taxa das blusinhas e comissão é antecipada", "data_fato": "2026-08-28", "origem": "e"}
+    ],
+    "esperado": "sem_evidencia",
+    "fronteira": true,
+    "nota": "Tautologia com carimbo. O veredito certo pelos princípios 3 e 5 é sem_evidencia, mas ele NÃO decorre da regra 2 como escrita: uma sessão de comissão É um encontro, e a consulta 82 leu assim (a 81 leu o contrário). Fronteira até INSTRUCOES_JULGAMENTO ter regra de vacuidade ('afirmação que qualquer evidência do gênero satisfaz não se confirma'). A regra 8 do separador impede esta afirmação de chegar aqui; o caso vigia o juiz caso ela volte.",
+    "revisado_por": null
+  },
+  {
+    "id": "J3",
+    "tipo": "julgamento",
+    "origem": "sintético sobre evidência REAL do acervo (tripla 899, Agência Brasil) — regra 4: valor diferente na mesma medida, unidade e período é contradição",
+    "afirmacao": "O desemprego ficou em 5,8% no trimestre encerrado em julho de 2026",
+    "evidencias": [
+      {"texto": "Taxa de desemprego no Brasil tem atributo 5.3 % (trimestre terminado em julho de 2026)", "veiculo": "Agência Brasil", "titulo": "Desemprego cai para 5,3%, o menor para o trimestre terminado em julho", "data_fato": "2026-07", "origem": "e"}
+    ],
+    "esperado": "contradito",
+    "cita_minimo": 1,
+    "nota": "Mesma medida, mesma unidade, MESMO período, valores diferentes — regra 4 sem brecha temporal. Evidência no formato de texto_da_tripla e coerente com o acervo (5,3 em julho/2026). A versão sem período na afirmação é o J9.",
+    "revisado_por": null
+  },
+  {
+    "id": "J4",
+    "tipo": "julgamento",
+    "origem": "sintético — regra 2: mesma empresa, fato diferente",
+    "afirmacao": "A Braskem pediu recuperação extrajudicial",
+    "evidencias": [
+      {"texto": "Braskem S.A. divulgou balanço do 2º trimestre de 2026 com prejuízo de R$ 1,2 bilhão", "veiculo": "Valor", "titulo": "Braskem tem prejuízo de R$ 1,2 bi no 2º trimestre", "data_fato": "2026-08-12", "origem": "e"}
+    ],
+    "esperado": "sem_evidencia",
+    "nota": "Prejuízo não confirma nem contradiz pedido de recuperação.",
+    "revisado_por": null
+  },
+  {
+    "id": "J5",
+    "tipo": "julgamento",
+    "origem": "sintético — o outro lado do J1: 'Trump' bate, 'André' não",
+    "afirmacao": "André se reuniu com Trump",
+    "evidencias": [
+      {"texto": "Donald Trump afirmou quer se reunir com Vladimir Putin quando ele estiver pronto para um acordo de paz", "veiculo": "CNN Brasil", "titulo": "Trump diz querer se reunir quando Putin estiver pronto para acordo de paz", "data_fato": "2026-09-01", "origem": "e"}
+    ],
+    "esperado": "sem_evidencia",
+    "nota": "Reunião de Trump com outra pessoa não é a reunião afirmada.",
+    "revisado_por": null
+  },
+  {
+    "id": "J6",
+    "tipo": "julgamento",
+    "origem": "sintético — outro André, outro fato",
+    "afirmacao": "André se reuniu com Trump",
+    "evidencias": [
+      {"texto": "André Mendonça rejeitou pedido da Polícia Federal de acesso a dados bancários", "veiculo": "Metrópoles", "titulo": "Despacho de Mendonça irrita cúpula da PF e azeda tentativa de trégua", "data_fato": "2026-09-01", "origem": "e"}
+    ],
+    "esperado": "sem_evidencia",
+    "nota": "Regra 2: a evidência não trata de reunião nenhuma, então é sem_evidencia independentemente de o juiz casar 'André' com 'André Mendonça'. Isto NÃO testa homônimo — testaria se outro André se reunisse com Trump na evidência, e nesse caso a letra da afirmação parcial dá confirmado: é o custo do nome incompleto, registrado no E1.",
+    "revisado_por": null
+  },
+  {
+    "id": "J7",
+    "tipo": "julgamento",
+    "origem": "sintético — regra 3: incompatibilidade não numérica é contradição",
+    "afirmacao": "O programa Pé-de-Meia foi cancelado",
+    "evidencias": [
+      {"texto": "Governo federal ampliou o programa Pé-de-Meia para 4 milhões de estudantes", "veiculo": "Agência Brasil", "titulo": "Pé-de-Meia é ampliado e passa a atender 4 milhões de estudantes", "data_fato": "2026-08-27", "origem": "e"}
+    ],
+    "esperado": "contradito",
+    "cita_minimo": 1,
+    "nota": "Cancelado vs ampliado: incompatível, não 'sem evidência'. ATENÇÃO: é o exemplo literal da regra 3 — passar aqui prova reprodução; a generalização é o J10. Evidência em frase livre, não no formato texto_da_tripla (ver J2 para o formato real).",
+    "revisado_por": null
+  },
+  {
+    "id": "J9",
+    "tipo": "julgamento",
+    "origem": "sintético sobre evidência REAL (triplas 899 e 902) — evolução vs contradição: mesma medida em datas diferentes, afirmação sem período",
+    "afirmacao": "O desemprego está em 5,8%",
+    "evidencias": [
+      {"texto": "Taxa de desemprego no Brasil tem atributo 5.3 % (trimestre terminado em julho de 2026)", "veiculo": "Agência Brasil", "titulo": "Desemprego cai para 5,3%, o menor para o trimestre terminado em julho", "data_fato": "2026-07", "origem": "e"},
+      {"texto": "Taxa de desemprego no Brasil tem atributo 5.8 % (trimestre terminado em abril de 2026)", "veiculo": "Agência Brasil", "titulo": "Desemprego fica em 5,8% no trimestre até abril", "data_fato": "2026-04", "origem": "e"}
+    ],
+    "esperado": "contradito",
+    "cita_minimo": 1,
+    "fronteira": true,
+    "nota": "A lição do Bitcoin (ARCHITECTURE, 'Detecção de contradição'): valor diferente em data diferente é evolução, não contradição — entre evidências. Para uma AFIRMAÇÃO no presente ('está em'), o dado mais recente (5,3, julho) contradiz; mas 'confirmado por abril' e 'sem_evidencia por falta de período' são leituras honestas do prompt, que não fala de data na regra 4. Fronteira até o juiz ter regra temporal.",
+    "revisado_por": null
+  },
+  {
+    "id": "J10",
+    "tipo": "julgamento",
+    "origem": "sintético — paráfrase da regra 3 fora do exemplo literal: mede generalização; par do J7",
+    "afirmacao": "O programa Desenrola foi encerrado",
+    "evidencias": [
+      {"texto": "Governo federal prorrogou o programa Desenrola até dezembro de 2026", "veiculo": "Agência Brasil", "titulo": "Desenrola é prorrogado até dezembro", "data_fato": "2026-08-26", "origem": "e"}
+    ],
+    "esperado": "contradito",
+    "cita_minimo": 1,
+    "nota": "Regra 3 sem o vocabulário do exemplo: 'encerrado' vs 'prorrogado até dezembro de 2026' são incompatíveis em qualquer data anterior a dezembro. Se J7 passa e J10 falha, a regra 3 só funciona por memorização do exemplo.",
+    "revisado_por": null
+  },
+  {
+    "id": "J11",
+    "tipo": "julgamento",
+    "origem": "sintético — os dois nomes do J1 batem, o fato não: guarda contra casar por nome e ignorar o predicado (regra 2)",
+    "afirmacao": "André se reuniu com Trump",
+    "evidencias": [
+      {"texto": "André Esteves criticou tarifaço imposto por Donald Trump ao Brasil", "veiculo": "Valor", "titulo": "Esteves critica tarifaço e vê risco para exportadores", "data_fato": "2026-08-20", "origem": "e"}
+    ],
+    "esperado": "sem_evidencia",
+    "nota": "Regra 2: mesmas entidades, outro fato. Crítica pública não é reunião. Se confirmar aqui, o juiz está casando por nomes — o segundo apoio da decisão J1 tem de ser o FATO (reunião com Trump), não só a presença de 'Trump'.",
+    "revisado_por": null
+  },
+  {
+    "id": "J12",
+    "tipo": "julgamento",
+    "origem": "sintético — dito de terceiro com negação (par de C7/E5): a negação dentro do dito decide o veredito",
+    "afirmacao": "Galípolo disse que não vai cortar os juros em setembro",
+    "evidencias": [
+      {"texto": "Gabriel Galípolo afirmou que o Copom vai cortar a Selic na reunião de setembro", "veiculo": "Valor", "titulo": "Galípolo sinaliza corte da Selic em setembro", "data_fato": "2026-08-28", "origem": "e"}
+    ],
+    "esperado": "contradito",
+    "cita_minimo": 1,
+    "nota": "Regra 3 aplicada a DITOS: o mesmo Galípolo, 'não vai cortar' vs 'vai cortar'. O juízo é sobre o que ele disse, não sobre a Selic. Se sair sem_evidencia, o juiz não está lendo a negação dentro do dito. A guarda do conteúdo do dito vive aqui, porque no estruturador (E5) ela não se pina por substring.",
+    "revisado_por": null
+  },
+  {
+    "id": "J13",
+    "tipo": "julgamento",
+    "origem": "consultas 73 e 74 de 02/09/2026 00:25 — sem_evidencia, mas com a evidência errada à mão (Trabuco preside Bradesco). Aqui o juiz recebe a evidência que ENCAIXA (Esteves, que o post de fato descrevia) e o referente segue indeterminado — lado do juiz do incidente 'o empresário' (C3)",
+    "afirmacao": "O empresário brasileiro descrito no texto é proprietário de um banco.",
+    "evidencias": [
+      {"texto": "André Esteves preside Banco BTG Pactual", "veiculo": "G1", "titulo": "Em meio a negociações sobre tarifaço, André Esteves, do BTG, se reúne com Trump nos EUA", "data_fato": "", "origem": "e"},
+      {"texto": "André Esteves preside Banco BTG Pactual", "veiculo": "Valor", "titulo": "Estreia de André Esteves na 'diplomacia privada' com Trump é pautada por Brasil, Venezuela e data centers", "data_fato": "", "origem": "e"}
+    ],
+    "esperado": "sem_evidencia",
+    "nota": "Dois motivos, cada um suficiente: o referente da afirmação não está determinado ('o empresário descrito no texto' — qual?), e presidir não é ser proprietário (regra 2). Se confirmar, o juiz está resolvendo o referente por conhecimento próprio — princípio 1.",
+    "revisado_por": null
+  },
+  {
+    "id": "J14",
+    "tipo": "julgamento",
+    "origem": "consultas 3 e 4 de 27/08/2026 e 44 de 31/08/2026 — CONTRADITO 3 de 3 ('instituto distinto'). Primeiro contradito do sistema e demonstração-padrão do projeto; nenhum caso o prendia",
+    "afirmacao": "a Braskem pediu recuperação judicial",
+    "evidencias": [
+      {"texto": "Braskem S.A. outro Recuperação extrajudicial da Braskem", "veiculo": "G1", "titulo": "Braskem protocola pedido de recuperação extrajudicial para reestruturar dívida de R$ 56 bilhões", "data_fato": "2026-08-24", "origem": "e"},
+      {"texto": "Braskem S.A. solicitou recuperação extrajudicial (dívida de R$ 56 bilhões)", "veiculo": "Valor", "titulo": "Braskem pede recuperação extrajudicial e busca reestruturar R$ 56 bi", "data_fato": "2026-08-24", "origem": "e"}
+    ],
+    "esperado": "contradito",
+    "cita_minimo": 1,
+    "nota": "Judicial e extrajudicial são institutos distintos: o acervo afirma um e a afirmação diz o outro — regra 3. Regressão para confirmado é o falso positivo do princípio 5 sobre o fato mais corroborado do acervo.",
+    "revisado_por": null
+  },
+  {
+    "id": "E1",
+    "tipo": "estrutura",
+    "origem": "a afirmação que o separador v3 emite para a charada — como o estruturador a transforma em chave de busca",
+    "afirmacao": "André se reuniu com Trump",
+    "esperado": {"relacao": "participou_de", "sujeito_contem": "André"},
+    "fronteira": true,
+    "nota": "participou_de é o que a EXTRAÇÃO escolheu para reunião (triplas 2828/2838/2853/2861) — não decorre do vocabulário, que pede evento como objeto e oferece 'outro' sem hesitar. Fronteira até DEFINICOES[PARTICIPOU_DE] dizer que reunião ou encontro entre pessoas é evento com objeto 'reunião entre X e Y'. Sobre o nome: 'sujeito_contem: André' passa com 'André' e com 'André Esteves'; o schema (sujeito_canonico = 'nome completo e oficial') MANDA completar, e isso é load-bearing — _por_chave compara chave_canonica, e 'andre' ≠ 'andre esteves': com nome incompleto a rota por chave nunca casa, só a semântica. Decisão registrada: a v3 do separador não completa; o estruturador completa um passo depois. Completar errado produz falso negativo, não falso positivo.",
+    "revisado_por": null
+  },
+  {
+    "id": "E2",
+    "tipo": "estrutura",
+    "origem": "sintético — atributo numérico",
+    "afirmacao": "A Selic está em 15% ao ano",
+    "esperado": {"relacao": "tem_atributo", "sujeito_contem": "Selic"},
+    "nota": "tem_atributo é a única relação para número sem objeto. Só relação e sujeito são conferidos; objeto/valor/unidade não são medidos pelo comparador nem usados pelo pipeline (recupera usa sujeito+relacao+busca; julga recebe o texto cru).",
+    "revisado_por": null
+  },
+  {
+    "id": "E3",
+    "tipo": "estrutura",
+    "origem": "sintético — negação: o acervo guarda o fato positivo",
+    "afirmacao": "O Copom não manteve a Selic em 15%",
+    "esperado": {"busca_sem": ["não"]},
+    "nota": "INSTRUCOES_ESTRUTURA: afirmação negativa vira fato positivo, e a busca também. SÓ a negação é conferida: relação e sujeito ficam livres — (Copom, outro, Selic) e (Selic, tem_atributo) são estruturações honestas do mesmo fato positivo, e o schema pode devolver 'Comitê de Política Monetária'. 'não' já cobre 'nao' (o comparador normaliza acento).",
+    "revisado_por": null
+  },
+  {
+    "id": "E4",
+    "tipo": "estrutura",
+    "origem": "consulta 72 de 01/09/2026 — a mesma reunião com nome completo; par do E1",
+    "afirmacao": "O banqueiro André Esteves, do BTG Pactual, se reuniu com Donald Trump nos Estados Unidos",
+    "esperado": {"relacao": "participou_de", "sujeito_contem": "Esteves"},
+    "fronteira": true,
+    "nota": "Par do E1 com nome completo: aqui a rota por chave exata casa com o acervo, e a relação decide a recuperação. participou_de é a escolha da EXTRAÇÃO, não do vocabulário. Fronteira até a definição de PARTICIPOU_DE nomear reunião entre pessoas — aí E1 e E4 caem na mesma relação por regra, e a marca sai dos dois.",
+    "revisado_por": null
+  },
+  {
+    "id": "E5",
+    "tipo": "estrutura",
+    "origem": "sintético — dito de terceiro com conteúdo negativo; par do C7 e do J12",
+    "afirmacao": "Galípolo disse que não vai cortar os juros em setembro",
+    "esperado": {"relacao": "afirmou", "sujeito_contem": "Galípolo"},
+    "nota": "Relação afirmou e sujeito Galípolo decorrem do vocabulário ('declarou algo, sem valoração'; 'defendeu' pede apoio, 'preve' pede projeto como sujeito) — não é fronteira. A lacuna real é outra e NÃO está medida aqui: a regra de negação e a descrição do campo busca ('sem negação, sem quem disse') podem apagar o 'não' de DENTRO do dito. Retenção de negação não se pina por substring ('descartou corte' é paráfrase honesta sem 'não'); a guarda do conteúdo do dito é o J12, no juiz.",
+    "revisado_por": null
+  },
+  {
+    "id": "E6",
+    "tipo": "estrutura",
+    "origem": "sintético sobre fato REAL do acervo (24/08/2026) — relação derivável da definição de SOLICITOU, que nomeia 'recuperação judicial'",
+    "afirmacao": "A Braskem pediu recuperação extrajudicial",
+    "esperado": {"relacao": "solicitou", "sujeito_contem": "Braskem"},
+    "nota": "SOLICITOU: 'pediu formalmente algo PARA SI a quem pode conceder — recuperação judicial'. Única relação que a definição licencia. O acervo tem este fato como 'outro' (extraído sob vocab v1) — a rota por chave não casa por defasagem do ACERVO, não por erro daqui; não 'corrigir' o esperado para outro.",
+    "revisado_por": null
+  }
+]
