@@ -159,8 +159,23 @@ class Tripla(BaseModel):
     )
     valor_contexto: str | None = Field(
         None, alias="cx",
-        description=("valor_contexto: o que o número mede, curto: "
-                     "'1º turno', 'margem de erro', '2º cenário'."))
+        description=("valor_contexto: o que o número mede, em prosa curta. "
+                     "É o que aparece na tela; quem CASA duas medidas são "
+                     "os dois campos abaixo."))
+    valor_propriedade: str | None = Field(
+        None, alias="vp",
+        description=(
+            "valor_propriedade: O QUE é o número, em snake_case sem acento "
+            "e sem recorte: lucro_recorrente, margem_de_erro, "
+            "intencao_de_voto, divida, salario_minimo. Duas matérias sobre "
+            "a mesma medida têm de escrever IGUAL — este campo é chave, "
+            "não descrição."))
+    valor_recorte: str | None = Field(
+        None, alias="vr",
+        description=(
+            "valor_recorte: a FATIA a que o número se refere, em snake_case "
+            "sem acento: 2t2026, 1s2026_vs_1s2025, 1o_turno, cenario_2, "
+            "2027. Omita se o número não tiver recorte. Também é chave."))
     data_fato: str | None = Field(
         None, alias="d",
         description=(
@@ -276,7 +291,15 @@ class TriplaHistoria(BaseModel):
         description="valor_unidade: unidade curta ('%', 'BRL', 'votos').")
     valor_contexto: str | None = Field(
         None, alias="cx",
-        description="valor_contexto: o que o número mede, curto.")
+        description="valor_contexto: o que o número mede, prosa curta.")
+    valor_propriedade: str | None = Field(
+        None, alias="vp",
+        description=("valor_propriedade: O QUE é o número, snake_case sem "
+                     "acento e sem recorte. É chave de casamento."))
+    valor_recorte: str | None = Field(
+        None, alias="vr",
+        description=("valor_recorte: a FATIA do número, snake_case sem "
+                     "acento. Omita se não houver. É chave."))
     data_fato: str | None = Field(
         None, alias="d",
         description=("data_fato: quando o fato ocorreu (AAAA-MM-DD/"

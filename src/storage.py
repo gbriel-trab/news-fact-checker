@@ -203,6 +203,13 @@ MIGRACOES: tuple[tuple[str, str], ...] = (
     # partir do que já estava gravado, que saiu com "CONFIRMADO · 4
     # veículos" e nenhum link.
     ("consultas", "evidencias TEXT"),
+    # A medida deixa de ser prosa e vira CHAVE (03/09/2026). Medido: a
+    # mesma medida da Caixa saiu em 6 redações diferentes, e o mecanismo
+    # que existia — embedding a 0,95 — SEPAROU 9 dos 15 pares. Dois
+    # veículos publicando o mesmo número deixavam de se confirmar, em
+    # silêncio. `valor_contexto` continua, para a tela.
+    ("triplas", "valor_propriedade TEXT"),
+    ("triplas", "valor_recorte TEXT"),
 )
 
 
@@ -349,8 +356,9 @@ def salva_extracao(conexao: sqlite3.Connection, artigo_id: int, triplas,
             INSERT INTO triplas (
                 extracao_id, sentenca, sujeito, sujeito_canonico, relacao,
                 objeto, objeto_canonico, tipo_relacao, origem,
-                valor_numero, valor_unidade, valor_contexto, data_fato
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                valor_numero, valor_unidade, valor_contexto, data_fato,
+                valor_propriedade, valor_recorte
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (extracao_id, t.sentenca, t.sujeito, t.sujeito_canonico,
@@ -365,7 +373,9 @@ def salva_extracao(conexao: sqlite3.Connection, artigo_id: int, triplas,
                  # o CHECK do esquema e o acervo antigo não mudam.
                  {"e": "EXTRACTED", "i": "INFERRED"}.get(t.origem, t.origem),
                  t.valor_numero, t.valor_unidade, t.valor_contexto,
-                 t.data_fato)
+                 t.data_fato,
+                 getattr(t, "valor_propriedade", None),
+                 getattr(t, "valor_recorte", None))
                 for t in triplas
             ],
         )

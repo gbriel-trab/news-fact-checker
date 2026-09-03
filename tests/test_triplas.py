@@ -149,6 +149,28 @@ class TestIntegridade:
                 "VALUES (1, 0, 'x', 'x', 'integra', 'processo', "
                 "'EXTRACTED')")
 
+    def test_propriedade_e_recorte_sao_gravados(self, conexao):
+        """Patch 5: os campos que decidem se dois numeros medem a MESMA
+        coisa. Sem persistir, a chave nao existe na leitura e o grafo cai
+        no embedding, que separou 9 de 15 pares da mesma medida."""
+        t = tripla()
+        object.__setattr__(t, "valor_numero", 1741.0)
+        object.__setattr__(t, "valor_propriedade", "salario_minimo")
+        object.__setattr__(t, "valor_recorte", "2027")
+        salva_extracao(conexao, artigo_id(conexao), [t],
+                       "claude-opus-5", "abc123", 0, USO)
+        r = conexao.execute(
+            "SELECT valor_propriedade, valor_recorte FROM triplas").fetchone()
+        assert (r[0], r[1]) == ("salario_minimo", "2027")
+
+    def test_tripla_sem_os_campos_novos_continua_gravando(self, conexao):
+        """A safra antiga e o modelo que omitir: nao pode quebrar."""
+        salva_extracao(conexao, artigo_id(conexao), [tripla()],
+                       "claude-opus-5", "abc123", 0, USO)
+        r = conexao.execute(
+            "SELECT valor_propriedade FROM triplas").fetchone()
+        assert r[0] is None
+
     def test_outro_mantem_o_palpite_do_modelo(self, conexao):
         """`outro` é a válvula de escape — 397 evento e 225 estado no
         acervo — e não há o que derivar. É a única exceção."""

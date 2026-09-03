@@ -201,6 +201,13 @@ def valida_expectativa(caso: dict) -> list[str]:
     corpo = " ".join(str(x) for x in
                      [caso.get("titulo", "")] + list(caso.get("sentencas", [])))
     avisos = []
+    for pedido in caso.get("medida_esperada", []):
+        for campo in ("propriedade_contem", "recorte_contem"):
+            pedaco = pedido.get(campo)
+            if pedaco and (" " in pedaco or pedaco != pedaco.lower()):
+                avisos.append(
+                    f"{caso['id']}: \"{pedaco}\" ({campo}) tem espaço ou "
+                    f"maiúscula — estes campos são chave em snake_case")
     for pedido in caso.get("deve_conter", []):
         for campo in ("sujeito_contem", "objeto_contem"):
             pedaco = pedido.get(campo)
@@ -268,7 +275,9 @@ def confere_extracao(caso: dict, triplas: list) -> list[str]:
                 f"{_txt(t, 'objeto_canonico')[:28]})")
 
     teto = caso.get("max_outro")
-    if teto is not None:
+    # Proporção com denominador pequeno não mede nada: 1 `outro` em 4
+    # triplas dá 25% e estoura qualquer teto razoável. Piso de 8.
+    if teto is not None and len(triplas) >= 8:
         n_outro = sum(1 for t in triplas if _txt(t, "relacao") == "outro")
         proporcao = n_outro / len(triplas)
         if proporcao > teto:
@@ -282,6 +291,29 @@ def confere_extracao(caso: dict, triplas: list) -> list[str]:
                     falhas.append(f"canônico proibido: \"{nome}\" "
                                   f"(em {campo})")
                     break
+
+    for pedido in caso.get("medida_esperada", []):
+        alvo = [t for t in triplas
+                if getattr(t, "valor_numero", None) == pedido["valor"]]
+        if not alvo:
+            falhas.append(f"faltou valor {pedido['valor']:g} (medida)")
+            continue
+        prop = [str(getattr(t, "valor_propriedade", "") or "") for t in alvo]
+        rec = [str(getattr(t, "valor_recorte", "") or "") for t in alvo]
+        # Substring crua, NÃO `_contem`: propriedade e recorte são chaves
+        # em snake_case, e `_` conta como caractere de palavra — a busca
+        # com fronteira fazia "salario" não casar "salario_minimo", que é
+        # a resposta certa. Foi o sexto tropeço no mesmo mecanismo em
+        # 03/09/2026.
+        if not any(_normaliza(pedido["propriedade_contem"]) in _normaliza(x)
+                   for x in prop):
+            falhas.append(f"valor {pedido['valor']:g} sem propriedade "
+                          f"contendo \"{pedido['propriedade_contem']}\" "
+                          f"(veio {prop})")
+        if pedido.get("recorte_contem") and not any(
+                pedido["recorte_contem"] in x for x in rec):
+            falhas.append(f"valor {pedido['valor']:g} sem recorte contendo "
+                          f"\"{pedido['recorte_contem']}\" (veio {rec})")
 
     for valor in caso.get("valor_esperado", []):
         if not any(getattr(t, "valor_numero", None) == valor

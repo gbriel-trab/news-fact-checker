@@ -164,3 +164,29 @@ def chave_canonica(nome: str) -> str:
     """
     n = _normaliza(nome)
     return APELIDOS.get(n, n)
+
+
+def chave_medida(propriedade: str | None, recorte: str | None) -> str:
+    """A chave que decide se dois números medem a MESMA coisa.
+
+    Nasceu em 03/09/2026 de uma medição: a mesma medida da Caixa saiu em
+    SEIS redações diferentes ("alta do lucro recorrente do 2º trimestre
+    de 2026 ante o 2º trimestre de 2025", "alta do lucro recorrente sobre
+    o mesmo período", "alta do lucro líquido recorrente na base anual"…),
+    e o mecanismo que existia — proximidade de embedding a 0,95 sobre a
+    prosa — SEPAROU 9 dos 15 pares, com proximidades de 0,79 a 0,90.
+
+    O efeito era falso negativo de corroboração, e silencioso: dois
+    veículos publicavam o mesmo número e deixavam de se confirmar. É o
+    avesso do princípio 5 e igualmente caro, porque o produto do sistema
+    é justamente dizer que duas fontes independentes batem.
+
+    Normaliza aqui, na LEITURA, pelo mesmo motivo de `chave_canonica`: o
+    modelo propõe a forma, o código impõe a chave. Acento, caixa,
+    pontuação e ordem de underscore não podem separar duas medidas."""
+    def _limpa(x: str | None) -> str:
+        n = _normaliza(x or "")
+        n = re.sub(r"[^a-z0-9]+", "_", n).strip("_")
+        return re.sub(r"_+", "_", n)
+
+    return f"{_limpa(propriedade)}|{_limpa(recorte)}"

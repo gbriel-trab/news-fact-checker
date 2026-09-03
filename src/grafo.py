@@ -22,7 +22,7 @@ import sys
 from dataclasses import dataclass
 
 from . import config, llm, vocabulario
-from .canonico import chave_canonica
+from .canonico import chave_canonica, chave_medida
 from .vocabulario import Relacao
 from .storage import conecta
 
@@ -64,6 +64,11 @@ class Afirmacao:
     titulo: str
     url: str
     data_publicacao: str | None = None
+    medida: str | None = None
+    """A chave de medida (propriedade|recorte), quando a tripla é da safra
+    nova. Vazia nas 2.984 anteriores a 03/09/2026, que caem no embedding
+    — ver `_mesma_medida`. No FIM do dataclass porque campo com default
+    não pode preceder campo sem."""
 
     @property
     def chave(self) -> tuple[str, str, str]:
@@ -299,6 +304,7 @@ def carrega(conexao: sqlite3.Connection,
         f"""
         SELECT t.sujeito_canonico s, t.relacao r, t.objeto_canonico o,
                t.valor_numero vn, t.valor_unidade vu, t.valor_contexto vc,
+               t.valor_propriedade vp, t.valor_recorte vr,
                t.data_fato df, t.origem og,
                a.veiculo, a.titulo, a.url_norm, a.data_publicacao dp
         FROM triplas t
@@ -334,7 +340,11 @@ def carrega(conexao: sqlite3.Connection,
         Afirmacao(l["s"], relacao_normalizada(l["r"], l["o"], l["vn"]),
                   l["o"], l["vn"], l["vu"], l["vc"],
                   l["df"], l["og"], l["veiculo"], l["titulo"], l["url_norm"],
-                  l["dp"])
+                  l["dp"],
+                  # A chave só existe quando o modelo deu a propriedade:
+                  # sem ela, `_mesma_medida` cai no embedding, que é o
+                  # comportamento da safra antiga.
+                  medida=chave_medida(l["vp"], l["vr"]) if l["vp"] else None)
         for l in linhas
     ]
 
@@ -380,6 +390,14 @@ def _mesma_medida(a: Afirmacao, b: Afirmacao, proximidade: float) -> bool:
     E os dígitos sozinhos não veem "capital votante" contra "capital total",
     onde não há número nenhum. Por isso as duas.
     """
+    # A CHAVE vence, quando as duas têm. Medido em 03/09/2026: a mesma
+    # medida da Caixa saiu em seis redações e o embedding SEPAROU 9 dos
+    # 15 pares (0,79 a 0,90) — dois veículos publicando o mesmo número
+    # deixavam de se confirmar, em silêncio. Com propriedade e recorte
+    # em snake_case a comparação é exata e não depende de limiar.
+    if a.medida and b.medida:
+        return a.medida == b.medida
+    # Safra antiga (ou o modelo omitiu): as duas travas de sempre.
     da, db = _digitos(a.contexto), _digitos(b.contexto)
     if not (da <= db or db <= da):
         return False

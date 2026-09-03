@@ -1138,6 +1138,33 @@ e o handle chega cortado — exigir o parêntese de fechamento fazia a barreira
 falhar ABERTO. O que fica: post próprio, quote, e continuação de thread
 própria (o C25 depende dela).
 
+### A medida como chave, não como prosa
+
+Patch de 03/09/2026, e a medição que o justifica é o tipo de coisa que só
+aparece quando se olha o acervo em vez do código.
+
+`valor_contexto` sempre foi prosa livre, e o grafo comparava dois contextos
+por EMBEDDING a 0,95. Medido sobre as 2.984 triplas: a mesma medida da Caixa
+saiu em SEIS redações — "alta do lucro recorrente do 2º trimestre de 2026
+ante o 2º trimestre de 2025", "alta do lucro recorrente sobre o mesmo
+período", "alta do lucro líquido recorrente na base anual" — e o embedding
+**separou 9 dos 15 pares**, com proximidades de 0,79 a 0,90.
+
+O efeito é falso negativo de CORROBORAÇÃO, e é silencioso: dois veículos
+publicam o mesmo número e deixam de se confirmar. É o avesso do princípio 5 e
+custa igual, porque o produto do sistema é justamente dizer que duas fontes
+independentes batem.
+
+A medida passa a ter dois campos que são CHAVE, não descrição:
+`valor_propriedade` (o que o número é: `lucro_recorrente`, `margem_de_erro`)
+e `valor_recorte` (a fatia: `2t2026_vs_2t2025`, `1o_turno`). Ambos em
+snake_case, e `canonico.chave_medida` normaliza na LEITURA — mesmo padrão de
+`chave_canonica`: o modelo propõe a forma, o código impõe a chave.
+
+`valor_contexto` fica, para a tela. E o embedding fica como reserva: as 2.984
+triplas anteriores não têm os campos novos e continuam comparadas como antes,
+sem migração e sem reextração.
+
 ## Princípios de projeto
 
 Funcionalidade nova que contrarie qualquer um destes está errada, ou exige

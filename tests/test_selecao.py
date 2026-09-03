@@ -492,3 +492,59 @@ class TestAgrupamentoPorMedida:
         assert relacao_normalizada("outro", None, 3.9e9) == "tem_atributo"
         assert relacao_normalizada("outro", "Braskem", None) == "outro"
         assert relacao_normalizada("afirmou", "algo", None) == "afirmou"
+
+
+class TestChaveDeMedida:
+    """O patch 5, e ele nasce de uma medicao (03/09/2026): a MESMA medida
+    da Caixa saiu em SEIS redacoes e o embedding a 0,95 separou 9 dos 15
+    pares, com proximidades de 0,79 a 0,90. Dois veiculos publicando o
+    mesmo numero deixavam de se confirmar, em silencio -- falso negativo
+    de corroboracao, que e o avesso do principio 5 e igualmente caro."""
+
+    def _af(self, contexto, medida=None, valor=5.9):
+        from src.grafo import Afirmacao
+        return Afirmacao("Caixa Economica Federal", "tem_atributo", None,
+                         valor, "%", contexto, None, "EXTRACTED", "G1",
+                         "t", "u", None, medida)
+
+    def test_positivo_prosa_diferente_MESMA_chave_funde(self):
+        """As duas redacoes reais que o embedding separava a 0,79."""
+        from src.canonico import chave_medida
+        from src.grafo import _mesma_medida
+        k = chave_medida("alta_do_lucro_recorrente", "2t2026_vs_2t2025")
+        a = self._af("alta do lucro recorrente do 2o trimestre de 2026", k)
+        b = self._af("alta do lucro recorrente sobre o mesmo periodo", k)
+        assert _mesma_medida(a, b, proximidade=0.79)
+
+    def test_negativo_recorte_diferente_NAO_funde(self):
+        """O pareado, e o que nao pode quebrar: mesma propriedade, fatia
+        diferente, sao dois fatos. Fundir inventaria divergencia."""
+        from src.canonico import chave_medida
+        from src.grafo import _mesma_medida
+        a = self._af("lucro do 2o trimestre",
+                     chave_medida("lucro_recorrente", "2t2026"))
+        b = self._af("lucro do 1o trimestre",
+                     chave_medida("lucro_recorrente", "1t2026"))
+        assert not _mesma_medida(a, b, proximidade=0.99)
+
+    def test_safra_antiga_sem_chave_cai_no_embedding(self):
+        """As 2.984 triplas anteriores nao tem os campos. O
+        comportamento delas nao pode mudar."""
+        from src.grafo import _mesma_medida
+        a = self._af("lucro do 2o trimestre de 2026")
+        b = self._af("lucro do 2o trimestre de 2026")
+        assert _mesma_medida(a, b, proximidade=0.99)
+        assert not _mesma_medida(a, b, proximidade=0.80)
+
+    def test_uma_so_com_chave_tambem_cai_no_embedding(self):
+        from src.grafo import _mesma_medida
+        from src.canonico import chave_medida
+        a = self._af("lucro", chave_medida("lucro", "2t2026"))
+        b = self._af("lucro")
+        assert _mesma_medida(a, b, proximidade=0.99)
+
+    def test_a_chave_ignora_acento_caixa_e_pontuacao(self):
+        from src.canonico import chave_medida as k
+        assert k("Lucro Recorrente", "2T2026") == k("lucro_recorrente", "2t2026")
+        assert k("margem de erro", None) == k("margem_de_erro", "")
+        assert k("lucro", "2t2026") != k("lucro", "1t2026")

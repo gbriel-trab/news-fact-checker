@@ -62,7 +62,14 @@
       1741.0
     ],
     "max_outro": 0.2,
-    "nota": "Valor com unidade e recorte temporal. O 1741 e de 2027 e o 1621 e o atual: se os dois sairem sem recorte distinguivel no valor_contexto, o grafo funde dois fatos diferentes. CORRIGIDO: pedia \"alário mínimo\" e _contem ancora no inicio da palavra. Mesmo erro do \"recupera\"."
+    "nota": "Valor com unidade e recorte temporal. O 1741 e de 2027 e o 1621 e o atual: se os dois sairem sem recorte distinguivel no valor_contexto, o grafo funde dois fatos diferentes. CORRIGIDO: pedia \"alário mínimo\" e _contem ancora no inicio da palavra. Mesmo erro do \"recupera\". PATCH 5: passa a cobrar valor_propriedade e valor_recorte. O 1741 e de 2027 e o 1621 e o atual -- sem recorte, o grafo funde dois fatos diferentes.",
+    "medida_esperada": [
+      {
+        "valor": 1741.0,
+        "propriedade_contem": "salario",
+        "recorte_contem": "2027"
+      }
+    ]
   },
   {
     "id": "X3",
@@ -213,6 +220,6 @@
       "A companhia",
       "a empresa"
     ],
-    "nota": "Materia longa. `Braskem` puro e proibido porque o acervo ja usa `Braskem S.A.` -- fragmentar a entidade e o que canonico.py existe para remendar na leitura. E o caso com mais `outro` do lote (3 nas 3 primeiras triplas). CORRIGIDO 2x: proibir o canonico \"Braskem\" era rigor meu. chave_canonica(\"Braskem\") == chave_canonica(\"Braskem S.A.\") porque SUFIXOS_SOCIETARIOS tira o sufixo na LEITURA -- a fusao ja acontece. O que resta proibido e sobrenome puro e cargo, que a chave NAO resolve."
+    "nota": "Materia longa. `Braskem` puro e proibido porque o acervo ja usa `Braskem S.A.` -- fragmentar a entidade e o que canonico.py existe para remendar na leitura. E o caso com mais `outro` do lote (3 nas 3 primeiras triplas). CORRIGIDO 2x: proibir o canonico \"Braskem\" era rigor meu. chave_canonica(\"Braskem\") == chave_canonica(\"Braskem S.A.\") porque SUFIXOS_SOCIETARIOS tira o sufixo na LEITURA -- a fusao ja acontece. O que resta proibido e sobrenome puro e cargo, que a chave NAO resolve. O max_outro deste caso nao dispara: ele rende 4 triplas e proporcao com denominador pequeno nao mede nada."
   }
 ]
