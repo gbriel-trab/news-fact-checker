@@ -305,15 +305,26 @@ def resposta_a_terceiro(bloco: str, handles: tuple[str, ...]) -> str | None:
     m_resp = _RE_RESPOSTA_CAPT.search(bloco)
     if not m_resp:
         return None
-    m_quem = re.search(r"\((@\w+)\)", m_resp.group(0))
+    # Sem exigir o parentese de fechamento: `boletim_posts.resumo` guarda
+    # `resumo[:120]`, entao o handle pode chegar CORTADO ("@corte",
+    # "@vuvie"). Exigir o ")" fazia a funcao falhar ABERTO justamente no
+    # dado truncado — e falhar aberto aqui e deixar passar o que se quer
+    # barrar.
+    m_quem = re.search(r"\(@(\w+)", m_resp.group(0))
     if not m_quem:
         return None
-    quem = m_quem.group(1).lower().lstrip("@")
+    quem = m_quem.group(1).lower()
     proprios = {h.lower().lstrip("@") for h in handles}
     m_cab = re.match(r"^POST\s+\d+\s*\(@(\w+)", bloco)
     if m_cab:
         proprios.add(m_cab.group(1).lower())
-    return None if quem in proprios else "@" + quem
+    # Prefixo nos DOIS sentidos, por causa do corte: "@perfil_t" e o
+    # proprio autor truncado e tem de FICAR; "@grok" nao e prefixo de
+    # ninguem monitorado e SAI. Comparar por igualdade crua descartaria a
+    # thread propria truncada — o caso vizinho que o C25 depende.
+    if any(quem.startswith(p) or p.startswith(quem) for p in proprios):
+        return None
+    return "@" + quem
 
 
 def _posts_de(texto: str) -> tuple[tuple[str, ...], tuple[str, ...]]:

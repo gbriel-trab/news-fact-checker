@@ -410,6 +410,19 @@ class TestRespostaATerceiro:
         assert self._bloco(
             "EM RESPOSTA A (@Perfil_Teste): anterior\ncontinuacao") is None
 
+
+    def test_handle_truncado_sai(self):
+        """`boletim_posts.resumo` guarda resumo[:120], entao o handle
+        chega cortado. Exigir o ")" fazia a funcao falhar ABERTO — e
+        falhar aberto aqui e deixar passar o que se quer barrar."""
+        assert self._bloco("EM RESPOSTA A (@corte") == "@corte"
+
+    def test_positivo_thread_propria_TRUNCADA_fica(self):
+        """O pareado do anterior, e o que a igualdade crua quebraria: o
+        proprio autor cortado no meio continua sendo o proprio autor."""
+        assert self._bloco("EM RESPOSTA A (@perfil_t") is None
+        assert self._bloco("EM RESPOSTA A (@perfil") is None
+
     def test_busca_descarta_e_CONTA_na_nota(self, monkeypatch):
         """Descarte silencioso e o que esconde defeito: se o modelo
         passar a obedecer, ou a marcar errado, a contagem muda e
