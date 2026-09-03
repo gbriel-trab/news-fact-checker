@@ -337,6 +337,31 @@ def _id_do_pai(bloco: str) -> str | None:
     return id_status(m.group(0)) if m else None
 
 
+def dedup_por_status(posts) -> tuple[tuple, int]:
+    """Um post por status ID na rodada. Devolve (posts, quantos caíram).
+
+    A busca devolve o MESMO post mais de uma vez — janelas que se
+    sobrepõem, thread buscada duas vezes. O estado "já entregue" só
+    dedupe ENTRE rodadas, e `--reenviar` o desliga; dentro de uma rodada
+    não havia nada. Medido em 03/09/2026 numa janela de 9 dias: 134
+    blocos para 88 IDs distintos — 46 repetidos, cada um pagando
+    separação (~US$ 0,50 na rodada) e ocupando espaço no Telegram.
+
+    Fica ANTES do filtro de resposta, para não gastar nem o filtro com
+    repetido. Bloco sem URL não tem identidade e passa — descartá-lo
+    perderia post por falta de metadado, que é o erro caro."""
+    vistos, ficam, caidos = set(), [], 0
+    for bloco in posts:
+        sid = _id_proprio(bloco)
+        if sid and sid in vistos:
+            caidos += 1
+            continue
+        if sid:
+            vistos.add(sid)
+        ficam.append(bloco)
+    return tuple(ficam), caidos
+
+
 def filtra_respostas(posts, handles) -> tuple[tuple, list]:
     """Descarta resposta a terceiro, SEGUINDO A CADEIA. (fica, descartado)
 
@@ -506,6 +531,11 @@ def busca(handles: tuple[str, ...], dias: int = 2) -> Rodada:
     # e o modelo transcreve assim mesmo; aqui elas sao descartadas ANTES
     # de custar separacao, check e demanda. O descarte e CONTADO e vai
     # para as notas: descarte silencioso e o que esconde defeito.
+    posts, repetidos = dedup_por_status(posts)
+    if repetidos:
+        notas = tuple(notas) + (
+            f"{repetidos} bloco(s) repetido(s) da mesma busca descartado(s) "
+            f"antes de custar",)
     posts, descartadas = filtra_respostas(posts, handles)
     if descartadas:
         motivos = ", ".join(sorted({m for _, m in descartadas}))

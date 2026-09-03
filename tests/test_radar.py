@@ -527,3 +527,36 @@ class TestCadeiaDeRespostas:
                            "nem o grok deu conta"]),)
         ficam, fora = filtra_respostas(posts, self.H)
         assert ficam == () and fora[0][1] == "@grok"
+
+
+class TestDedupNaRodada:
+    """134 blocos para 88 IDs numa janela de 9 dias (03/09/2026). O
+    estado 'ja entregue' dedupe ENTRE rodadas e `--reenviar` o desliga;
+    DENTRO da rodada nao havia nada."""
+
+    def _b(self, n, sid, corpo):
+        return chr(10).join([f"POST {n} (@perfil_teste, 03 Sep 2026):",
+                             f"URL: https://x.com/perfil_teste/status/{sid}",
+                             corpo])
+
+    def test_mesmo_id_conta_uma_vez(self):
+        from src.radar import dedup_por_status
+        posts = (self._b(1, "111", "a"), self._b(7, "111", "a"),
+                 self._b(2, "222", "b"))
+        ficam, caidos = dedup_por_status(posts)
+        assert len(ficam) == 2 and caidos == 1
+
+    def test_bloco_sem_url_nao_e_descartado(self):
+        """Sem URL nao ha identidade. Descartar perderia post por falta
+        de metadado -- o erro caro e o falso negativo de cobertura."""
+        from src.radar import dedup_por_status
+        posts = ("POST 1 (@x, 03 Sep 2026):" + chr(10) + "sem url",
+                 "POST 2 (@x, 03 Sep 2026):" + chr(10) + "tambem sem url")
+        ficam, caidos = dedup_por_status(posts)
+        assert len(ficam) == 2 and caidos == 0
+
+    def test_ids_diferentes_todos_ficam(self):
+        from src.radar import dedup_por_status
+        posts = tuple(self._b(i, str(i), "x") for i in range(1, 6))
+        ficam, caidos = dedup_por_status(posts)
+        assert len(ficam) == 5 and caidos == 0
