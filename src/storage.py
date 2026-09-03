@@ -184,6 +184,9 @@ MIGRACOES: tuple[tuple[str, str], ...] = (
     # para o grupo não voltar, mas não pode valer como "matéria extraída"
     # para a demanda — ver extract.salva_historia.
     ("extracoes", "recusada INTEGER"),
+    # Confirmação retida pelo freio de alinhamento (03/09/2026): é
+    # sem_evidencia com evidência na mão, e a demanda não deve disparar.
+    ("consultas", "retida INTEGER"),
 )
 
 
@@ -350,18 +353,23 @@ def salva_extracao(conexao: sqlite3.Connection, artigo_id: int, triplas,
 def salva_consulta(conexao: sqlite3.Connection, afirmacao: str, veredito: str,
                    justificativa: str, candidatas: int, citadas: int,
                    veiculos: int, modelo: str, custo: float,
-                   prompt_versao: str | None = None) -> int:
-    """Grava a consulta e o veredito. Devolve o id."""
+                   prompt_versao: str | None = None,
+                   retida: bool = False) -> int:
+    """Grava a consulta e o veredito. Devolve o id.
+
+    `retida` distingue 'sem evidência porque o acervo não cobre' de
+    'confirmação retida pelo freio de alinhamento' — sem a coluna, o
+    boletim dispara extração paga para cobrir o que já está coberto."""
     cursor = conexao.execute(
         """
         INSERT INTO consultas (afirmacao, veredito, justificativa, candidatas,
                                citadas, veiculos, modelo, custo_usd,
-                               consultado_em, prompt_versao)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               consultado_em, prompt_versao, retida)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (afirmacao, veredito, justificativa, candidatas, citadas, veiculos,
          modelo, custo, datetime.now(timezone.utc).isoformat(),
-         prompt_versao),
+         prompt_versao, int(retida)),
     )
     conexao.commit()
     return cursor.lastrowid

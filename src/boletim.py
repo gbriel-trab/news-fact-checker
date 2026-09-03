@@ -108,6 +108,15 @@ def _marca_entregue(conexao, hash_: str, resumo: str) -> None:
     conexao.commit()
 
 
+def _retida(linha) -> bool:
+    """A consulta é confirmação retida pelo freio de alinhamento? Linha
+    antiga não tem a coluna — vale False, que é o comportamento de antes."""
+    try:
+        return bool(linha["retida"])
+    except (IndexError, KeyError):
+        return False
+
+
 _RE_EVIDENCIA = re.compile(
     r"^\s*\[([^\]]+)\][^\n]*\n\s+(https?://\S+)", re.MULTILINE)
 
@@ -161,8 +170,10 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
     for p in resto:
         # p.texto: desde a evolução de 01/09/2026 o separador só reescreve
         # FATO; aqui vem o trecho literal do post — que é o que o leitor
-        # quer ver, sem a paráfrase paga que repetia o post.
-        partes.append(f"  [{p.tipo}] {p.texto} — nada a conferir")
+        # quer ver, sem a paráfrase paga que repetia o post. A anotação
+        # (motivo do roteador, hipótese não conferida) fica na trilha.
+        partes.append(f"  [{p.tipo}] {p.texto} — nada a conferir"
+                      f"{premissas.anotacao(p)}")
         dados["nao_verificaveis"].append((p.tipo, p.texto))
 
     def _roda_check(afirmacao: str, forcar: bool):
@@ -191,7 +202,12 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
         # o FATO está coberto é o próprio veredito. O preço é um segundo
         # check quando a demanda dispara — só nesse caso.
         saida, nova = _roda_check(p.texto, forcar=False)
-        if nova is not None and nova["veredito"] == "sem_evidencia":
+        # Retida NÃO é "o acervo não cobre": a evidência está lá e o freio
+        # de alinhamento não a conferiu. Disparar a demanda aqui pagaria
+        # extração para cobrir o que já está coberto, e o segundo check
+        # seria retido de novo (achado da revisão de 03/09/2026).
+        if (nova is not None and nova["veredito"] == "sem_evidencia"
+                and not _retida(nova)):
             try:
                 r = demanda.garante(conexao, p.texto,
                                     estado["orcamento"])
@@ -228,12 +244,15 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
             "custo": nova["custo_usd"] if nova else 0.0,
             "evidencias": evidencias,
             "demanda": nota_demanda,
+            "retida": bool(nova is not None and _retida(nova)),
         })
         # Sem evidência vira UMA linha: a enumeração do que foi olhado e
         # rejeitado é trilha de auditoria — mora em `consultas` e no
         # painel, não no bolso.
         if nova and nova["veredito"] == "sem_evidencia":
-            partes.append(f"    → SEM EVIDÊNCIA — o acervo não cobre · "
+            razao = ("a evidência não foi conferida (confirmação retida)"
+                     if _retida(nova) else "o acervo não cobre")
+            partes.append(f"    → SEM EVIDÊNCIA — {razao} · "
                           f"US$ {nova['custo_usd']:.4f}")
         else:
             partes.append("    " + "\n    ".join(
@@ -366,7 +385,7 @@ def _esc(texto: str) -> str:
 
 
 _TAG_TIPO = {"opiniao": "OPINIÃO", "previsao": "PREVISÃO",
-             "relato": "RELATO"}
+             "relato": "RELATO", "nao_verificavel": "NÃO VERIFICÁVEL"}
 _TAG_VEREDITO = {"confirmado": "CONFIRMADO", "contradito": "CONTRADITO",
                  "sem_evidencia": "SEM EVIDÊNCIA"}
 
@@ -462,7 +481,9 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
             if c.get("demanda"):
                 p.append(f"{tag('DEMANDA')} {_esc(c['demanda'])}")
             if c["veredito"] == "sem_evidencia":
-                p.append(f"<b>[{rotulo}]</b> o acervo não cobre · "
+                razao = ("evidência não conferida" if c.get("retida")
+                         else "o acervo não cobre")
+                p.append(f"<b>[{rotulo}]</b> {razao} · "
                          f"<i>{_esc(c['afirmacao'])}</i>")
             else:
                 fontes = " · ".join(

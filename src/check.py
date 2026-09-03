@@ -32,6 +32,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from pydantic.json_schema import SkipJsonSchema
 
 from . import config, grafo, indice, llm, vocabulario
 from .canonico import chave_canonica
@@ -49,6 +50,19 @@ contra material irrelevante — que é como se produz veredito confiante e errad
 """
 
 QUANTAS_CANDIDATAS = 10
+
+FATOR_BUSCA = 3
+RESERVA_DIVERSIDADE = 2
+"""Quantas candidatas buscar antes de escolher, e quantas vagas ficam
+RESERVADAS para veículos ainda não representados.
+
+Corroboração é contada por veículo, então diversidade no ranking é
+condição necessária para o veredito poder dizer "2 veículos" — e medido
+em 03/09/2026 um único veículo ocupava 7 das 10 vagas com triplas do
+mesmo evento. A reserva no fim é melhor que teto por veículo: testei as
+duas na busca da charada, e o teto trocava a confirmação do BTG ao g1
+por "Trump exerce cargo nos Estados Unidos". Relevância manda nas vagas
+livres; a reserva só garante que o segundo veículo tenha por onde entrar."""
 
 
 class AfirmacaoRecebida(BaseModel):
@@ -104,6 +118,10 @@ class Julgamento(BaseModel):
         )
     )
     veredito: Literal["confirmado", "contradito", "sem_evidencia"]
+    retida: SkipJsonSchema[bool] = False
+    """Preenchido em CÓDIGO por `aplica_alinhamento`, nunca pelo modelo, e
+    fora do schema enviado: este `sem_evidencia` é confirmação retida — a
+    evidência existe e não foi conferida, que não é "o acervo não cobre"."""
     evidencias: list[int] = Field(
         description=(
             "Números das evidências que sustentam o veredito, da lista "
@@ -201,7 +219,31 @@ PROMPT_VERSAO = versao_prompt()
 
 
 _PALAVRAS_VAZIAS = frozenset(
-    "o a os as um uma uns umas de do da dos das e em no na nos nas".split())
+    "o a os as um uma uns umas de do da dos das e em no na nos nas com para "
+    "por entre ao aos pelo pela pelos pelas sobre que se sua seu suas seus "
+    "of the".split())
+
+_GENERICOS = frozenset(
+    "governo encontro reuniao sessao presidente ministro senador deputado "
+    "empresa empresario banqueiro executivo investidor operador analista "
+    "advogado juiz politico programa taxa camara banco pais mercado "
+    "comissao conselho projeto medida acordo decisao processo caso grupo "
+    "equipe autoridade orgao instituicao pessoa homem mulher cara sujeito "
+    "cidade estado ativo indice bolsa moeda".split())
+"""Substantivo comum que NÃO identifica sozinho. Se a interseção entre os
+dois nomes só tem palavra desta lista, não é a mesma entidade: "governo"
+⊄ "governo federal", "encontro" ⊄ "encontro de líderes"."""
+
+_CABECAS = frozenset(
+    "governo campanha equipe contas telefonema reuniao encontro sessao "
+    "ministro juiz forcas etfs comissao gabinete assessoria familia "
+    "diretoria conselho chapa base aliados entorno".split())
+"""Cabeça de hierarquia ou de evento. Se os tokens EXTRAS do lado maior
+contêm uma delas, a contenção não é identidade: "governo do presidente
+Lula" não é Lula, "Telefonema entre Lula e Trump" não é Trump. Medido em
+sujeitos reais do acervo (revisão de 03/09/2026): 9 triplas de "governo
+do presidente Luiz Inácio Lula da Silva", 12 de "ETFs à vista de Bitcoin
+dos Estados Unidos", 6 de "juiz Diego Câmara"."""
 
 
 def _tokens(nome: str) -> set[str]:
@@ -213,50 +255,127 @@ def _tokens(nome: str) -> set[str]:
 
 
 def sujeito_casa(afirmacao: str, evidencia: str) -> bool:
-    """O sujeito da afirmação e o da evidência nomeiam a mesma coisa?
+    """Os dois nomes identificam a MESMA entidade?
 
-    Contenção de tokens pela chave canônica, nos dois sentidos: "André"
-    ⊂ "André Esteves", "desemprego" ⊂ "taxa de desemprego no Brasil",
-    "Braskem" = "Braskem S.A.". "um encontro" contra "sessão da comissão
-    mista" não casa — é o que retém a confirmação vazia. Contenção é
-    frouxa de propósito e por isso NÃO basta sozinha: quem chama exige
-    também outra lacuna alinhada (ver `aplica_alinhamento`)."""
+    Igualdade de chave canônica, ou contenção de tokens com duas guardas
+    (achado da revisão de 03/09/2026 — a versão sem elas fabricava
+    exatamente a corroboração que `canonico.py` se recusa a fabricar):
+
+    * a interseção precisa de ao menos um token não-genérico: "governo"
+      ⊄ "governo federal", "taxa" ⊄ "taxa de juros";
+    * os tokens extras do lado maior não podem ser cabeça de hierarquia
+      ou de evento: "Lula" ⊄ "governo do presidente Lula", "Trump" ⊄
+      "Telefonema entre Lula e Trump", "Braskem" ⊄ "Braskem Idesa" só
+      passa se "idesa" não for cabeça — e não é, então este par continua
+      casando; apelido curado é o caminho certo para separá-los, como o
+      `canonico.py` já decidiu.
+
+    Falso negativo aceito: "Diego Câmara" ⊄ "juiz Diego Câmara", porque
+    o mesmo token que separa a corte do ministro dela ("ministro do STF
+    Dias Toffoli" não é o STF) separa o cargo da pessoa. Perder uma
+    confirmação é o erro barato; fabricar uma é o caro (princípio 5).
+
+    Continua valendo o que o freio precisa: "André" ⊂ "André Esteves",
+    "desemprego" ⊂ "taxa de desemprego no Brasil", "Braskem" = "Braskem
+    S.A.". "um encontro" contra "sessão da comissão mista" não casa.
+    """
     ta, te = _tokens(afirmacao), _tokens(evidencia)
     if not ta or not te:
         return False
-    return ta <= te or te <= ta
+    if ta == te:
+        return True
+    if not (ta <= te or te <= ta):
+        return False
+    if not (ta & te) - _GENERICOS:
+        return False
+    extras = (te - ta) if ta <= te else (ta - te)
+    return not (extras & _CABECAS)
 
 
-def aplica_alinhamento(julgamento: Julgamento,
-                       sujeito_afirmacao: str | None = None) -> Julgamento:
-    """Retém, em código, confirmação que o alinhamento não sustenta.
+def _identifica(nome: str | None) -> bool:
+    """O nome nomeia alguém ou algo, ou é substantivo comum solto?
+    "André Esteves" sim, "Encontro" não, "" não."""
+    return bool(nome) and bool(_tokens(nome) - _GENERICOS)
+
+
+def apoios_de(afirmacao: "AfirmacaoRecebida") -> tuple[list[str], list[str]]:
+    """(sujeitos candidatos, apoios) da afirmação ESTRUTURADA.
+
+    Dois sujeitos porque o estruturador escolhe um dos lados da tripla e
+    oscila entre eles ("Copom" ou "Taxa Selic" para o mesmo fato, medido
+    em 03/09/2026); aceitar os dois evita falso negativo por escolha de
+    lado. Apoios são o que a afirmação afirma ALÉM do sujeito — é o que
+    tem de reaparecer na evidência citada."""
+    sujeitos = [s for s in (afirmacao.sujeito_canonico,
+                            afirmacao.objeto_canonico) if s]
+    apoios = [a for a in (afirmacao.objeto_canonico,
+                          f"{afirmacao.valor_numero:g}"
+                          if afirmacao.valor_numero is not None else None)
+              if a]
+    return sujeitos, apoios
+
+
+def _texto_da_evidencia(e: "indice.Achado") -> str:
+    m = e.meta
+    return " ".join(str(x) for x in (e.texto, m.get("sujeito", ""),
+                                     m.get("objeto", ""), m.get("valor", "")))
+
+
+def aplica_alinhamento(julgamento: Julgamento, citadas: list,
+                       sujeitos: list[str],
+                       apoios: list[str]) -> Julgamento:
+    """Retém, em código, confirmação que a evidência CITADA não sustenta.
 
     Só toca `confirmado` — é o único veredito que pode ser falso positivo
-    (princípio 5). Três condições, todas necessárias: o QUEM tem
-    contraparte na evidência; a contraparte nomeia o mesmo sujeito
-    (`sujeito_casa`); e ao menos outra lacuna também tem contraparte.
-    `sujeito_afirmacao` é o sujeito que o estruturador já extraiu — vem
-    de cima, pré-preenchido, para que o juiz não possa "compatibilizar"
-    um sujeito genérico escrevendo-o ele mesmo; sem ele, vale o que o
-    juiz pôs em `quem`. Retida vira sem_evidencia com a justificativa do
-    juiz preservada: o leitor vê o que ele achou e por que não valeu."""
+    (princípio 5). O freio não lê o que o juiz escreveu no alinhamento:
+    a revisão de 03/09/2026 mostrou que `na_evidencia` é texto livre, e
+    o juiz tende a parafrasear a evidência com a palavra da afirmação —
+    a consulta 82 passaria de novo. Aqui as duas condições são medidas
+    contra o METADADO da evidência citada:
+
+    1. a afirmação nomeia um sujeito determinado (`_identifica`) — sem
+       isso não há o que conferir, e é o caso "ocorreu um encontro";
+    2. existe UMA evidência citada em que o sujeito casa (`sujeito_casa`;
+       `sujeitos` vem ordenado — [sujeito, objeto] da afirmação
+       estruturada — porque objeto-contra-objeto é o par que confirmaria
+       "Petrobras pediu recuperação" com "Braskem pediu recuperação") E
+       um apoio da afirmação reaparece nessa evidência. Sem apoio
+       estrutural (afirmação sem objeto nem valor), a decisão semântica
+       do juiz vale — o freio é backstop, não segundo juiz.
+
+    Retida mantém as evidências e a justificativa do juiz visíveis, e
+    marca `retida`: "achei isto e não conferi" é diferente de "o acervo
+    não cobre", e quem consome (boletim, demanda) precisa distinguir —
+    senão a retenção dispara extração paga para cobrir o que já está
+    coberto."""
     if julgamento.veredito != "confirmado":
         return julgamento
-    por_lacuna = {a.lacuna: a for a in julgamento.alinhamento}
-    quem = por_lacuna.get("quem")
-    sujeito = sujeito_afirmacao or (quem.na_afirmacao if quem else None)
-    contraparte = quem.na_evidencia if quem else None
-    if not sujeito or not contraparte:
-        motivo = "o sujeito da afirmação não tem contraparte na evidência"
-    elif not sujeito_casa(sujeito, contraparte):
-        motivo = f'o sujeito "{sujeito}" não é "{contraparte}"'
-    elif not any(a.na_afirmacao and a.na_evidencia
-                 for a in julgamento.alinhamento if a.lacuna != "quem"):
-        motivo = "só o sujeito alinha; nenhuma outra lacuna tem contraparte"
+    if not any(_identifica(s) for s in sujeitos):
+        motivo = ("a afirmação não nomeia um sujeito determinado"
+                  + (f' (veio "{sujeitos[0]}")' if sujeitos else ""))
+    elif not citadas:
+        motivo = "confirmado sem citar evidência"
     else:
-        return julgamento
+        sujeito, objeto = (sujeitos + [None, None])[:2]
+        for e in citadas:
+            ev_sujeito = e.meta.get("sujeito") or ""
+            ev_objeto = e.meta.get("objeto") or ""
+            # Pares aceitos: o sujeito da afirmação em qualquer lado da
+            # tripla, ou o objeto dela no SUJEITO da tripla (o
+            # estruturador troca os lados). Objeto contra objeto fica de
+            # fora de propósito: é o par que confirma "Petrobras pediu
+            # recuperação" com "Braskem pediu recuperação".
+            if not (sujeito_casa(sujeito or "", ev_sujeito)
+                    or sujeito_casa(sujeito or "", ev_objeto)
+                    or sujeito_casa(objeto or "", ev_sujeito)):
+                continue
+            corpo = _tokens(_texto_da_evidencia(e))
+            if not apoios or any(_tokens(a) & corpo for a in apoios):
+                return julgamento
+        motivo = ("nenhuma evidência citada casa o sujeito "
+                  f"{sujeitos[0]!r} e mais um apoio da afirmação")
     return julgamento.model_copy(update={
-        "veredito": "sem_evidencia", "evidencias": [],
+        "veredito": "sem_evidencia", "retida": True,
         "justificativa": (f"Confirmação retida: {motivo}. O juiz havia "
                           f"escrito: {julgamento.justificativa}")})
 
@@ -333,25 +452,59 @@ def recupera(afirmacao: AfirmacaoRecebida,
     achados = _por_chave(afirmacao, acervo or [])
     vistos = {_chave_candidata(a) for a in achados}
 
-    for a in indice.busca("afirmacoes", afirmacao.busca, QUANTAS_CANDIDATAS):
+    # Busca FATOR_BUSCA× e escolhe com teto por veículo: sem isso um
+    # veículo enche as vagas com as próprias triplas do mesmo evento
+    # (medido em 03/09/2026: G1 em 7 das 10 para a reunião Esteves–Trump)
+    # e o segundo veículo, que é o que corrobora, fica de fora.
+    candidatas = []
+    for a in indice.busca("afirmacoes", afirmacao.busca,
+                          QUANTAS_CANDIDATAS * FATOR_BUSCA):
         chave = _chave_candidata(a)
         if a.proximidade >= MIN_PROXIMIDADE and chave not in vistos:
             a.meta.setdefault("rota", "semantica")
-            achados.append(a)
+            candidatas.append(a)
             vistos.add(chave)
 
-    return achados
+    return achados + _diversifica(candidatas)
+
+
+def _diversifica(ordenadas: list[indice.Achado],
+                 quantas: int = QUANTAS_CANDIDATAS,
+                 reserva: int = RESERVA_DIVERSIDADE) -> list[indice.Achado]:
+    """Pega as melhores por proximidade, guardando `reserva` vagas para
+    veículos ainda não representados; se não houver veículo novo, as
+    vagas voltam ao ranking. A ordem final é a de proximidade, como o
+    julgamento espera."""
+    livres = max(0, quantas - reserva)
+    escolhidas = ordenadas[:livres]
+    vistos = {a.meta.get("veiculo", "") for a in escolhidas}
+    resto = ordenadas[livres:]
+    novos = [a for a in resto if a.meta.get("veiculo", "") not in vistos]
+    # Um por veículo novo, na ordem de proximidade.
+    for a in novos:
+        if len(escolhidas) - livres >= reserva:
+            break
+        if a.meta.get("veiculo", "") not in vistos:
+            escolhidas.append(a)
+            vistos.add(a.meta.get("veiculo", ""))
+    if len(escolhidas) < quantas:
+        faltam = quantas - len(escolhidas)
+        escolhidas += [a for a in resto if a not in escolhidas][:faltam]
+    return sorted(escolhidas, key=lambda a: a.distancia)
 
 
 def _chave_candidata(a: indice.Achado) -> tuple[str, str, str]:
-    """Identidade de uma candidata: VEÍCULO + sujeito + texto.
+    """Identidade de uma candidata: VEÍCULO + sujeito canônico + texto.
 
     Até 03/09/2026 o veículo não entrava, e o modo história grava a
     mesma tripla, com o mesmo texto, para cada veículo que a afirma —
     a cópia do Valor era descartada como duplicata da do G1, e a
     reunião Esteves–Trump saía 'CONFIRMADO · 1 veículo' com dois veículos
-    no acervo. Corroboração é contada por veículo; a dedup tem de ser."""
-    return (a.meta.get("veiculo", ""), a.meta.get("sujeito", ""), a.texto)
+    no acervo. Corroboração é contada por veículo; a dedup tem de ser.
+    Caixa fora: re-extração do mesmo artigo difere em "Reunião" ×
+    "reunião", e as duas rotas traziam a mesma tripla duas vezes."""
+    return (a.meta.get("veiculo", ""),
+            chave_canonica(a.meta.get("sujeito", "")), a.texto.casefold())
 
 
 _ORIGEM_LEGIVEL = {"EXTRACTED": "explícita", "INFERRED": "inferida",
@@ -472,17 +625,25 @@ def verifica(texto: str, verboso: bool = False,
         return
 
     julgamento, uso2 = julga(texto, evidencias)
-    # O sujeito vem do estruturador, pré-preenchido: o juiz não decide
-    # sozinho se "um encontro" é um sujeito.
-    julgamento = aplica_alinhamento(julgamento, afirmacao.sujeito_canonico)
     citadas = [evidencias[i - 1] for i in julgamento.evidencias
                if 1 <= i <= len(evidencias)]
+    # O sujeito e os apoios vêm do ESTRUTURADOR e a conferência é contra o
+    # metadado da evidência citada: o juiz não decide sozinho se "um
+    # encontro" é um sujeito, nem escreve a contraparte que se confere.
+    julgamento = aplica_alinhamento(julgamento, citadas,
+                                    *apoios_de(afirmacao))
     veiculos = {e.meta["veiculo"] for e in citadas}
 
     rotulo = {"confirmado": "CONFIRMADO", "contradito": "CONTRADITO",
               "sem_evidencia": "SEM EVIDÊNCIA"}[julgamento.veredito]
-    print(f"VEREDITO\n  {rotulo} · {len(veiculos)} "
-          f"{'veículo' if len(veiculos) == 1 else 'veículos'}\n")
+    if julgamento.retida:
+        # A evidência continua na tela, rotulada: o veredito que mais
+        # precisa de auditoria não pode ser o que menos mostra.
+        print(f"VEREDITO\n  SEM EVIDÊNCIA (confirmação retida) · "
+              f"{len(veiculos)} veículo(s) encontrado(s), nenhum conferido\n")
+    else:
+        print(f"VEREDITO\n  {rotulo} · {len(veiculos)} "
+              f"{'veículo' if len(veiculos) == 1 else 'veículos'}\n")
 
     if verboso:
         print("ALINHAMENTO")
@@ -492,7 +653,8 @@ def verifica(texto: str, verboso: bool = False,
         print()
 
     if citadas:
-        print("EVIDÊNCIA")
+        print("EVIDÊNCIA ENCONTRADA MAS NÃO CONFERIDA" if julgamento.retida
+              else "EVIDÊNCIA")
         for e in citadas:
             m = e.meta
             valor = ""
@@ -522,7 +684,8 @@ def verifica(texto: str, verboso: bool = False,
         salva_consulta(conexao, texto, julgamento.veredito,
                        julgamento.justificativa, len(evidencias),
                        len(citadas), len(veiculos), llm.VERIFICACAO.id,
-                       uso1.custo + uso2.custo, prompt_versao=PROMPT_VERSAO)
+                       uso1.custo + uso2.custo, prompt_versao=PROMPT_VERSAO,
+                       retida=julgamento.retida)
 
 
 def main() -> None:

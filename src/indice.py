@@ -339,6 +339,7 @@ def indexa_afirmacoes(conexao: sqlite3.Connection,
         })
 
     colecao = _colecao("afirmacoes")
+    _poda(colecao, ids, so_artigos)
     for i in range(0, len(textos), 200):
         fatia = slice(i, i + 200)
         colecao.upsert(
@@ -346,6 +347,29 @@ def indexa_afirmacoes(conexao: sqlite3.Connection,
             embeddings=_vetores(textos[fatia]), metadatas=metas[fatia],
         )
     return len(textos)
+
+
+def _poda(colecao, ids: list[str], so_artigos: list[int] | None) -> int:
+    """Apaga do índice o que saiu do recorte. Devolve quantos saíram.
+
+    O upsert sozinho só acrescenta, e o recorte (uma extração por matéria,
+    vocabulário compatível) muda a cada re-extração: medido em 03/09/2026,
+    a coleção tinha 2.594 ids para 2.157 do recorte — 478 órfãos, entre
+    eles a cotação do Bitcoin pré-regra 4 que o ARCHITECTURE dá por
+    curada, e 41 triplas ativas ausentes. O grafo lia a versão nova e a
+    rota vetorial servia a antiga; nada acusava.
+
+    No modo parcial (`so_artigos`) a poda é por artigo, para não apagar o
+    acervo inteiro a partir de um recorte de dois artigos."""
+    if so_artigos:
+        antes = colecao.get(where={"artigo_id": {"$in": list(so_artigos)}},
+                            include=[])["ids"]
+    else:
+        antes = colecao.get(include=[])["ids"]
+    sobrando = sorted(set(antes) - set(ids))
+    for i in range(0, len(sobrando), 200):
+        colecao.delete(ids=sobrando[i:i + 200])
+    return len(sobrando)
 
 
 # --------------------------------------------------------------------- busca

@@ -213,10 +213,21 @@ def confere_premissas(caso: dict, premissas: list) -> list[str]:
             falhas.append(f"trecho não é literal do texto (regra 4): "
                           f"\"{p.trecho[:80]}\"")
     for item in caso.get("esperado", []):
-        if not any(p.tipo == item["tipo"] and _contem(p.texto, item["contem"])
-                   for p in premissas):
+        # `quem` (opcional, só faz sentido em fato): o sujeito ancorado
+        # que o separador v4 emite tem de conter o pedaço — é o campo,
+        # não a impressão, que o gabarito passa a medir.
+        def _bate(p, item=item):
+            if p.tipo != item["tipo"] or not _contem(p.texto, item["contem"]):
+                return False
+            if item.get("quem"):
+                referente = getattr(p, "quem", None)
+                return bool(referente) and _contem(referente.valor, item["quem"])
+            return True
+        if not any(_bate(p) for p in premissas):
             falhas.append(f"faltou [{item['tipo']}] contendo "
-                          f"\"{item['contem']}\"")
+                          f"\"{item['contem']}\""
+                          + (f" com quem \"{item['quem']}\"" if item.get("quem")
+                             else ""))
     for pedaco in caso.get("proibido_em_fato", []):
         for p in fatos:
             if _contem(p.texto, pedaco):
@@ -228,7 +239,17 @@ def confere_premissas(caso: dict, premissas: list) -> list[str]:
 def _mostra_premissas(premissas: list) -> str:
     if not premissas:
         return "      (nenhuma premissa)"
-    return "\n".join(f"      [{p.tipo}] {p.texto[:110]}" for p in premissas)
+    linhas = []
+    for p in premissas:
+        extra = ""
+        quem = getattr(p, "quem", None)
+        if quem:
+            extra = f"  «quem: {quem.valor}»"
+        roteado = getattr(p, "roteado", None)
+        if roteado:
+            extra += f"  «roteador: {roteado}»"
+        linhas.append(f"      [{p.tipo}] {p.texto[:110]}{extra}")
+    return "\n".join(linhas)
 
 
 def _grava_rodada(conexao, qual: str, caso: str, versao: str, vez: int,
@@ -302,18 +323,23 @@ def historico_premissas(casos: list[dict], conexao) -> None:
 # ----------------------------------------------------------------- check
 
 def confere_julgamento(caso: dict, veredito: str, citadas: list[int],
-                       total: int) -> list[str]:
+                       total: int, retida: bool = False) -> list[str]:
     """`esperado` é o veredito; `cita_minimo` (opcional) exige que o
     modelo tenha citado ao menos N evidências VÁLIDAS — índice fora da
     lista é descartado em produção (check.verifica) e aqui é falha;
-    sem_evidencia com citação viola o próprio schema do julgamento."""
+    sem_evidencia com citação viola o próprio schema do julgamento,
+    EXCETO quando é confirmação retida: aí a evidência fica visível de
+    propósito. `espera_retida` exige que a retenção tenha acontecido —
+    é como um caso prende o freio, e não só o veredito."""
     falhas: list[str] = []
     validas = [i for i in citadas if 1 <= i <= total]
     if len(validas) != len(citadas):
         falhas.append(f"citou índice fora da lista: {citadas}")
     if veredito != caso["esperado"]:
         falhas.append(f"esperava {caso['esperado']}, veio {veredito}")
-    if veredito == "sem_evidencia" and validas:
+    if caso.get("espera_retida") and not retida:
+        falhas.append("esperava confirmação RETIDA pelo freio, e não foi")
+    if veredito == "sem_evidencia" and validas and not retida:
         falhas.append(f"sem_evidencia citando {validas}")
     minimo = caso.get("cita_minimo", 0)
     if len(validas) < minimo:
@@ -343,44 +369,55 @@ def confere_estrutura(caso: dict, relacao: str, sujeito: str,
 def _achados_de(evidencias: list[dict]) -> list:
     """Evidência fixa do caso no formato que `check.julga` lê. O `meta`
     espelha o que o índice devolve; distância zero porque aqui não há
-    ranking — a evidência é dada, não recuperada."""
+    ranking — a evidência é dada, não recuperada.
+
+    `sujeito` e `objeto` são obrigatórios no caso porque o FREIO os lê
+    (03/09/2026): sem eles a bateria media um freio cego, que retinha
+    tudo — o oposto do que ela existe para medir."""
     from . import indice
 
     return [indice.Achado(
         texto=e["texto"], distancia=0.0,
         meta={"veiculo": e["veiculo"], "titulo": e.get("titulo", ""),
               "url": e.get("url", ""), "data_fato": e.get("data_fato", ""),
-              "origem": e.get("origem", "e")})
+              "origem": e.get("origem", "e"),
+              "sujeito": e.get("sujeito", ""), "objeto": e.get("objeto", ""),
+              "valor": e.get("valor", "")})
         for e in evidencias]
-
-
-def versao_check() -> str:
-    """O check não tem hash de versão próprio; este carimba as rodadas do
-    gabarito com prompts + modelo + esforço, pelo mesmo motivo do
-    `premissas.versao_prompt`."""
-    from . import check, llm
-
-    material = (check.INSTRUCOES_JULGAMENTO + check.INSTRUCOES_ESTRUTURA
-                + llm.VERIFICACAO.id + str(llm.VERIFICACAO.esforco))
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
 
 
 def roda_check(casos: list[dict], vezes: int, resultados: list,
                conexao=None, mostrar: bool = True) -> None:
     from . import check
 
-    versao = versao_check()
+    versao = check.PROMPT_VERSAO
     for caso in casos:
         for vez in range(1, vezes + 1):
             if caso["tipo"] == "julgamento":
-                julgamento, uso = check.julga(caso["afirmacao"],
-                                              _achados_de(caso["evidencias"]))
+                achados = _achados_de(caso["evidencias"])
+                julgamento, uso = check.julga(caso["afirmacao"], achados)
+                # O MESMO freio de produção, com as mesmas entradas: o
+                # sujeito e os apoios vêm do estruturador, e o caso os
+                # carrega fixos (medidos pelo caso E correspondente).
+                # Sem isto o gabarito media um freio que não roda.
+                citadas = [achados[i - 1] for i in julgamento.evidencias
+                           if 1 <= i <= len(achados)]
+                julgamento = check.aplica_alinhamento(
+                    julgamento, citadas,
+                    caso.get("sujeitos_estruturados", []),
+                    caso.get("apoios_estruturados", []))
                 falhas = confere_julgamento(caso, julgamento.veredito,
                                             julgamento.evidencias,
-                                            len(caso["evidencias"]))
+                                            len(caso["evidencias"]),
+                                            julgamento.retida)
+                alinhado = " | ".join(
+                    f"{a.lacuna}: {a.na_afirmacao or '—'} ⇄ "
+                    f"{a.na_evidencia or '—'}"
+                    for a in julgamento.alinhamento)
                 obtido = (f"      {julgamento.veredito} · cita "
                           f"{julgamento.evidencias} · "
-                          f"{julgamento.justificativa[:140]}")
+                          f"{julgamento.justificativa[:140]}\n"
+                          f"      {alinhado[:300]}")
             elif caso["tipo"] == "estrutura":
                 afirmacao, uso = check.estrutura(caso["afirmacao"])
                 falhas = confere_estrutura(caso, afirmacao.relacao.value,

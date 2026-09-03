@@ -925,6 +925,26 @@ def extrai_grupo(conexao: sqlite3.Connection,
     return len(validas), resultado.uso.custo, False
 
 
+def _reindexa(conexao: sqlite3.Connection, ids: list[int]) -> None:
+    """Indexa as triplas das matérias recém-extraídas, no fim da rodada.
+
+    Até 03/09/2026 só a extração sob DEMANDA reindexava: depois de uma
+    rodada de lote, o grafo lia as triplas novas e a rota vetorial do
+    check continuava servindo as antigas, sem nada acusar (medido:
+    41 triplas ativas fora do índice, entre elas as dos dois casos vivos
+    do gabarito). Falha de índice não anula extração PAGA — vira aviso,
+    como na demanda; o CLI do índice reconstrói."""
+    from . import indice
+
+    try:
+        n = indice.indexa_afirmacoes(conexao, so_artigos=ids)
+        print(f"\nÍndice: {n} afirmação(ões) indexada(s).")
+    except Exception as erro:  # noqa: BLE001
+        print(f"\nAVISO: índice não atualizado ({type(erro).__name__}: "
+              f"{erro}). Rode `python -m src.indice` — a extração está "
+              f"gravada.")
+
+
 def _por_id(conexao: sqlite3.Connection, ids: list[int]) -> list[sqlite3.Row]:
     """Matérias escolhidas a dedo, para extrair uma história inteira.
 
@@ -1201,6 +1221,7 @@ def main() -> None:
             print(f"\n{'=' * 78}")
             print(f"{len(grupos)} histórias · US$ {total:.4f} nesta rodada "
                   f"· prompt {versao_h} · vocabulário v{VOCAB_VERSAO}")
+            _reindexa(conexao, [l["id"] for g in grupos for l in g])
         return
     if args.ids:
         linhas = _por_id(conexao, [int(x) for x in args.ids.split(",")])
@@ -1331,6 +1352,7 @@ def main() -> None:
         print("Nada foi enviado. Para rodar de verdade, preencha "
               "ANTHROPIC_API_KEY no .env e remova --dry-run.")
     elif total_uso:
+        _reindexa(conexao, [l["id"] for l in linhas])
         custo = sum(u.custo for u in total_uso)
         entrada = sum(u.entrada + u.cache_leitura + u.cache_escrita
                       for u in total_uso)

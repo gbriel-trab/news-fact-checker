@@ -10,27 +10,43 @@
         "veiculo": "G1",
         "titulo": "Em meio a negociações sobre tarifaço, André Esteves, do BTG, se reúne com Trump nos EUA",
         "data_fato": "2026-08-29",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "André Esteves",
+        "objeto": "Reunião entre André Esteves e Donald Trump",
+        "valor": ""
       },
       {
         "texto": "Banco BTG Pactual afirmou confirmou ao g1 a reunião de André Esteves com Donald Trump",
         "veiculo": "G1",
         "titulo": "Em meio a negociações sobre tarifaço, André Esteves, do BTG, se reúne com Trump nos EUA",
         "data_fato": "2026-08-31",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Banco BTG Pactual",
+        "objeto": "confirmou ao g1 a reunião de André Esteves com Donald Trump",
+        "valor": ""
       },
       {
         "texto": "André Esteves participou de reunião entre André Esteves e Donald Trump",
         "veiculo": "Valor",
         "titulo": "Estreia de André Esteves na 'diplomacia privada' com Trump é pautada por Brasil, Venezuela e data centers",
         "data_fato": "2026-08-29",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "André Esteves",
+        "objeto": "reunião entre André Esteves e Donald Trump",
+        "valor": ""
       }
     ],
     "esperado": "confirmado",
     "cita_minimo": 1,
     "nota": "Regra 7 do julgamento (03/09/2026): nome incompleto casa com nome completo quando outra lacuna fecha o referente. Em código, aplica_alinhamento exige QUEM contido (chave canônica: 'andre' ⊂ 'andre esteves') e mais uma lacuna alinhada (o quê: reunião com Trump). Deixou de ser decisão pendente: virou regra. Evidências: render do índice das triplas 2828, 2868 e 2853.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "André",
+      "reunião com Donald Trump"
+    ],
+    "apoios_estruturados": [
+      "reunião com Donald Trump"
+    ]
   },
   {
     "id": "J2",
@@ -43,19 +59,29 @@
         "veiculo": "CNN Brasil",
         "titulo": "Governo mira acelerar fim da taxa das blusinhas e comissão é antecipada",
         "data_fato": "2026-08-28",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Sessão da Comissão Mista da Medida Provisória 1357/2026 de 28 de agosto de 2026",
+        "objeto": "Relatoria da Medida Provisória 1357/2026",
+        "valor": ""
       },
       {
         "texto": "Comissão Mista da Medida Provisória 1357/2026 outro Sessão da Comissão Mista da Medida Provisória 1357/2026 de 28 de agosto de 2026",
         "veiculo": "CNN Brasil",
         "titulo": "Governo mira acelerar fim da taxa das blusinhas e comissão é antecipada",
         "data_fato": "2026-08-28",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Comissão Mista da Medida Provisória 1357/2026",
+        "objeto": "Sessão da Comissão Mista da Medida Provisória 1357/2026 de 28 de agosto de 2026",
+        "valor": ""
       }
     ],
     "esperado": "sem_evidencia",
-    "nota": "Tautologia com carimbo (consulta 82; J2 falhou 3 vezes como fronteira). Regra 6 do julgamento (03/09/2026): evidência compatível não é evidência que sustenta; o QUEM da afirmação precisa de contraparte. E mesmo que o juiz confirme, aplica_alinhamento retém em código: 'um encontro' não casa com 'sessão da comissão mista' pela chave canônica. Se este caso falhar, o freio de código está furado, não só o prompt.",
-    "revisado_por": null
+    "nota": "Tautologia com carimbo (consulta 82; falhou 3 vezes como fronteira). Duas barreiras: regra 6 do julgamento e, se o juiz confirmar mesmo assim, aplica_alinhamento retém em código — o sujeito estruturado 'Encontro não especificado' não nomeia ninguém. O caso mede o resultado; que a retenção seja o caminho é problema dos testes unitários.",
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Encontro não especificado"
+    ],
+    "apoios_estruturados": []
   },
   {
     "id": "J3",
@@ -68,13 +94,22 @@
         "veiculo": "Agência Brasil",
         "titulo": "Desemprego cai para 5,3%, o menor para o trimestre terminado em julho",
         "data_fato": "2026-07",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Taxa de desemprego no Brasil",
+        "objeto": "",
+        "valor": 5.3
       }
     ],
     "esperado": "contradito",
     "cita_minimo": 1,
     "nota": "Mesma medida, mesma unidade, MESMO período, valores diferentes — regra 4 sem brecha temporal. Evidência no formato de texto_da_tripla e coerente com o acervo (5,3 em julho/2026). A versão sem período na afirmação é o J9.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Taxa de desemprego no Brasil"
+    ],
+    "apoios_estruturados": [
+      "5.8"
+    ]
   },
   {
     "id": "J4",
@@ -87,12 +122,22 @@
         "veiculo": "Valor",
         "titulo": "Braskem tem prejuízo de R$ 1,2 bi no 2º trimestre",
         "data_fato": "2026-08-12",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Braskem S.A.",
+        "objeto": "balanço do 2º trimestre de 2026 com prejuízo de R$ 1,2 bilhão",
+        "valor": ""
       }
     ],
     "esperado": "sem_evidencia",
     "nota": "Prejuízo não confirma nem contradiz pedido de recuperação.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Braskem S.A.",
+      "recuperação extrajudicial"
+    ],
+    "apoios_estruturados": [
+      "recuperação extrajudicial"
+    ]
   },
   {
     "id": "J5",
@@ -105,12 +150,22 @@
         "veiculo": "CNN Brasil",
         "titulo": "Trump diz querer se reunir quando Putin estiver pronto para acordo de paz",
         "data_fato": "2026-09-01",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Donald Trump",
+        "objeto": "quer se reunir com Vladimir Putin quando ele estiver pronto para um acordo de paz",
+        "valor": ""
       }
     ],
     "esperado": "sem_evidencia",
     "nota": "Reunião de Trump com outra pessoa não é a reunião afirmada.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "André",
+      "reunião com Donald Trump"
+    ],
+    "apoios_estruturados": [
+      "reunião com Donald Trump"
+    ]
   },
   {
     "id": "J6",
@@ -123,12 +178,22 @@
         "veiculo": "Metrópoles",
         "titulo": "Despacho de Mendonça irrita cúpula da PF e azeda tentativa de trégua",
         "data_fato": "2026-09-01",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "André Mendonça",
+        "objeto": "pedido da Polícia Federal de acesso a dados bancários",
+        "valor": ""
       }
     ],
     "esperado": "sem_evidencia",
     "nota": "Regra 2: a evidência não trata de reunião nenhuma, então é sem_evidencia independentemente de o juiz casar 'André' com 'André Mendonça'. Isto NÃO testa homônimo — testaria se outro André se reunisse com Trump na evidência, e nesse caso a letra da afirmação parcial dá confirmado: é o custo do nome incompleto, registrado no E1.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "André",
+      "reunião com Donald Trump"
+    ],
+    "apoios_estruturados": [
+      "reunião com Donald Trump"
+    ]
   },
   {
     "id": "J7",
@@ -141,13 +206,22 @@
         "veiculo": "Agência Brasil",
         "titulo": "Pé-de-Meia é ampliado e passa a atender 4 milhões de estudantes",
         "data_fato": "2026-08-27",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Governo federal",
+        "objeto": "programa Pé-de-Meia",
+        "valor": ""
       }
     ],
     "esperado": "contradito",
     "cita_minimo": 1,
     "nota": "Cancelado vs ampliado: incompatível, não 'sem evidência'. ATENÇÃO: é o exemplo literal da regra 3 — passar aqui prova reprodução; a generalização é o J10. Evidência em frase livre, não no formato texto_da_tripla (ver J2 para o formato real).",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Programa Pé-de-Meia"
+    ],
+    "apoios_estruturados": [
+      "cancelamento"
+    ]
   },
   {
     "id": "J9",
@@ -160,21 +234,33 @@
         "veiculo": "Agência Brasil",
         "titulo": "Desemprego cai para 5,3%, o menor para o trimestre terminado em julho",
         "data_fato": "2026-07",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Taxa de desemprego no Brasil",
+        "objeto": "",
+        "valor": 5.3
       },
       {
         "texto": "Taxa de desemprego no Brasil tem atributo 5.8 % (trimestre terminado em abril de 2026)",
         "veiculo": "Agência Brasil",
         "titulo": "Desemprego fica em 5,8% no trimestre até abril",
         "data_fato": "2026-04",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Taxa de desemprego no Brasil",
+        "objeto": "",
+        "valor": 5.8
       }
     ],
     "esperado": "contradito",
     "cita_minimo": 1,
     "fronteira": true,
     "nota": "A lição do Bitcoin (ARCHITECTURE, 'Detecção de contradição'): valor diferente em data diferente é evolução, não contradição — entre evidências. Para uma AFIRMAÇÃO no presente ('está em'), o dado mais recente (5,3, julho) contradiz; mas 'confirmado por abril' e 'sem_evidencia por falta de período' são leituras honestas do prompt, que não fala de data na regra 4. Fronteira até o juiz ter regra temporal.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Taxa de desemprego no Brasil"
+    ],
+    "apoios_estruturados": [
+      "5.8"
+    ]
   },
   {
     "id": "J10",
@@ -187,13 +273,22 @@
         "veiculo": "Agência Brasil",
         "titulo": "Desenrola é prorrogado até dezembro",
         "data_fato": "2026-08-26",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Governo federal",
+        "objeto": "programa Desenrola",
+        "valor": ""
       }
     ],
     "esperado": "contradito",
     "cita_minimo": 1,
     "nota": "Regra 3 sem o vocabulário do exemplo: 'encerrado' vs 'prorrogado até dezembro de 2026' são incompatíveis em qualquer data anterior a dezembro. Se J7 passa e J10 falha, a regra 3 só funciona por memorização do exemplo.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Programa Desenrola"
+    ],
+    "apoios_estruturados": [
+      "encerramento"
+    ]
   },
   {
     "id": "J11",
@@ -206,12 +301,22 @@
         "veiculo": "Valor",
         "titulo": "Esteves critica tarifaço e vê risco para exportadores",
         "data_fato": "2026-08-20",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "André Esteves",
+        "objeto": "tarifaço imposto por Donald Trump ao Brasil",
+        "valor": ""
       }
     ],
     "esperado": "sem_evidencia",
     "nota": "Regra 2: mesmas entidades, outro fato. Crítica pública não é reunião. Se confirmar aqui, o juiz está casando por nomes — o segundo apoio da decisão J1 tem de ser o FATO (reunião com Trump), não só a presença de 'Trump'.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "André",
+      "reunião com Donald Trump"
+    ],
+    "apoios_estruturados": [
+      "reunião com Donald Trump"
+    ]
   },
   {
     "id": "J12",
@@ -224,13 +329,22 @@
         "veiculo": "Valor",
         "titulo": "Galípolo sinaliza corte da Selic em setembro",
         "data_fato": "2026-08-28",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Gabriel Galípolo",
+        "objeto": "o Copom vai cortar a Selic na reunião de setembro",
+        "valor": ""
       }
     ],
     "esperado": "contradito",
     "cita_minimo": 1,
     "nota": "Regra 3 aplicada a DITOS: o mesmo Galípolo, 'não vai cortar' vs 'vai cortar'. O juízo é sobre o que ele disse, não sobre a Selic. Se sair sem_evidencia, o juiz não está lendo a negação dentro do dito. A guarda do conteúdo do dito vive aqui, porque no estruturador (E5) ela não se pina por substring.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Gabriel Galípolo"
+    ],
+    "apoios_estruturados": [
+      "corte dos juros em setembro"
+    ]
   },
   {
     "id": "J13",
@@ -243,19 +357,32 @@
         "veiculo": "G1",
         "titulo": "Em meio a negociações sobre tarifaço, André Esteves, do BTG, se reúne com Trump nos EUA",
         "data_fato": "",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "André Esteves",
+        "objeto": "Banco BTG Pactual",
+        "valor": ""
       },
       {
         "texto": "André Esteves preside Banco BTG Pactual",
         "veiculo": "Valor",
         "titulo": "Estreia de André Esteves na 'diplomacia privada' com Trump é pautada por Brasil, Venezuela e data centers",
         "data_fato": "",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "André Esteves",
+        "objeto": "Banco BTG Pactual",
+        "valor": ""
       }
     ],
     "esperado": "sem_evidencia",
-    "nota": "Dois motivos, cada um suficiente: o referente da afirmação não está determinado ('o empresário descrito no texto' — qual?), e presidir não é ser proprietário (regra 2). Se confirmar, o juiz está resolvendo o referente por conhecimento próprio — princípio 1.",
-    "revisado_por": null
+    "nota": "Dois motivos, cada um suficiente: o referente da afirmação não está determinado ('o empresário descrito no texto') e presidir não é ser proprietário (regra 2). Lado do juiz do incidente C3.",
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Empresário brasileiro descrito no texto",
+      "banco"
+    ],
+    "apoios_estruturados": [
+      "banco"
+    ]
   },
   {
     "id": "J14",
@@ -268,20 +395,33 @@
         "veiculo": "G1",
         "titulo": "Braskem protocola pedido de recuperação extrajudicial para reestruturar dívida de R$ 56 bilhões",
         "data_fato": "2026-08-24",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Braskem S.A.",
+        "objeto": "Recuperação extrajudicial da Braskem",
+        "valor": ""
       },
       {
         "texto": "Braskem S.A. solicitou recuperação extrajudicial (dívida de R$ 56 bilhões)",
         "veiculo": "Valor",
         "titulo": "Braskem pede recuperação extrajudicial e busca reestruturar R$ 56 bi",
         "data_fato": "2026-08-24",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Braskem S.A.",
+        "objeto": "recuperação extrajudicial",
+        "valor": ""
       }
     ],
     "esperado": "contradito",
     "cita_minimo": 1,
     "nota": "Judicial e extrajudicial são institutos distintos: o acervo afirma um e a afirmação diz o outro — regra 3. Regressão para confirmado é o falso positivo do princípio 5 sobre o fato mais corroborado do acervo.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Braskem S.A.",
+      "recuperação judicial"
+    ],
+    "apoios_estruturados": [
+      "recuperação judicial"
+    ]
   },
   {
     "id": "E1",
@@ -369,20 +509,33 @@
         "veiculo": "G1",
         "titulo": "Braskem protocola pedido de recuperação extrajudicial para reestruturar dívida de R$ 56 bilhões",
         "data_fato": "2026-08-24",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Braskem S.A.",
+        "objeto": "recuperação extrajudicial",
+        "valor": ""
       },
       {
         "texto": "Braskem S.A. solicitou recuperação extrajudicial (dívida de R$ 56 bilhões)",
         "veiculo": "Valor",
         "titulo": "Braskem pede recuperação extrajudicial e busca reestruturar R$ 56 bi",
         "data_fato": "2026-08-24",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Braskem S.A.",
+        "objeto": "recuperação extrajudicial",
+        "valor": ""
       }
     ],
     "esperado": "confirmado",
     "cita_minimo": 2,
     "nota": "QUEM 'Braskem' = 'Braskem S.A.' pela chave canônica (sufixo societário cai); O QUÊ 'recuperação extrajudicial' coincide. Duas evidências idênticas de veículos diferentes: as duas têm de ser citadas — é a corroboração que o recupera descartava até 03/09 (dedup sem veículo).",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Braskem S.A.",
+      "recuperação extrajudicial"
+    ],
+    "apoios_estruturados": [
+      "recuperação extrajudicial"
+    ]
   },
   {
     "id": "J16",
@@ -395,13 +548,22 @@
         "veiculo": "Agência Brasil",
         "titulo": "Copom mantém Selic em 15% ao ano",
         "data_fato": "2026-08-20",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Taxa Selic",
+        "objeto": "",
+        "valor": 15
       }
     ],
     "esperado": "confirmado",
     "cita_minimo": 1,
     "nota": "QUEM 'Selic' ⊂ 'Taxa Selic'; QUANTO 15% = 15 %. Confirmação com uma lacuna além do sujeito.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Taxa Selic"
+    ],
+    "apoios_estruturados": [
+      "15"
+    ]
   },
   {
     "id": "J17",
@@ -414,13 +576,22 @@
         "veiculo": "Agência Brasil",
         "titulo": "Desemprego cai para 5,3%, o menor para o trimestre terminado em julho",
         "data_fato": "2026-07",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Taxa de desemprego no Brasil",
+        "objeto": "",
+        "valor": 5.3
       }
     ],
     "esperado": "confirmado",
     "cita_minimo": 1,
     "nota": "QUEM 'desemprego' ⊂ 'taxa de desemprego no Brasil'; QUANTO e QUANDO coincidem. Se J3 (5,8 vs 5,3) dá contradito e este dá confirmado, a regra 4 está lendo o valor, não o assunto.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Taxa de desemprego no Brasil"
+    ],
+    "apoios_estruturados": [
+      "5.3"
+    ]
   },
   {
     "id": "J18",
@@ -433,11 +604,21 @@
         "veiculo": "G1",
         "titulo": "Braskem protocola pedido de recuperação extrajudicial para reestruturar dívida de R$ 56 bilhões",
         "data_fato": "2026-08-24",
-        "origem": "e"
+        "origem": "e",
+        "sujeito": "Braskem S.A.",
+        "objeto": "recuperação extrajudicial",
+        "valor": ""
       }
     ],
     "esperado": "sem_evidencia",
     "nota": "O QUÊ coincide, o QUEM não: 'Petrobras' não casa com 'Braskem' pela chave canônica. Se confirmar, ou o juiz casou por predicado ou aplica_alinhamento não rodou.",
-    "revisado_por": null
+    "revisado_por": null,
+    "sujeitos_estruturados": [
+      "Petrobras",
+      "recuperação extrajudicial"
+    ],
+    "apoios_estruturados": [
+      "recuperação extrajudicial"
+    ]
   }
 ]
