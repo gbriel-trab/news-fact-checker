@@ -383,3 +383,36 @@ def _uso_zero():
     from src import llm
     return llm.Uso(modelo=llm.VERIFICACAO, entrada=0, saida=0,
                    cache_leitura=0, cache_escrita=0)
+
+
+class TestCorteEmPedacos:
+    """O corte de 4096 caracteres do Telegram, e a falha de 03/09/2026:
+    um boletim de 25 posts saiu em 5 pedacos e o Telegram devolveu 400
+    "Can't find end tag" no primeiro. Respeitar quebra de linha nao
+    basta -- o corpo do post e <i>texto</i> e o texto TEM quebras."""
+
+    def test_tag_aberta_e_fechada_e_reaberta(self):
+        from src.boletim import _equilibra
+        a, b = _equilibra(["<b>x</b> <i>corpo que", "segue</i> fim"])
+        assert a.endswith("</i>")
+        assert b.startswith("<i>")
+        assert a.count("<i>") == a.count("</i>")
+        assert b.count("<i>") == b.count("</i>")
+
+    def test_link_reabre_com_o_href(self):
+        """Reabrir <a> sem o href faria o link virar texto."""
+        from src.boletim import _equilibra
+        a, b = _equilibra(['<a href="http://x/y">titulo', 'segue</a> fim'])
+        assert 'href="http://x/y"' in b
+
+    def test_pedaco_ja_equilibrado_nao_muda(self):
+        """O pareado: quem ja esta certo nao pode ganhar tag a mais."""
+        from src.boletim import _equilibra
+        original = ["<b>a</b>", "<i>b</i>"]
+        assert _equilibra(original) == original
+
+    def test_aninhamento_fecha_na_ordem_inversa(self):
+        from src.boletim import _equilibra
+        a, b = _equilibra(["<b>fora <i>dentro", "segue</i></b> fim"])
+        assert a.endswith("</i></b>")
+        assert b.startswith("<b><i>")

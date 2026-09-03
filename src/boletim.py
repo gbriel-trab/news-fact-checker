@@ -645,6 +645,41 @@ def _grava(texto: str) -> "os.PathLike":
     return caminho
 
 
+_RE_TAG = re.compile(r"<(/?)(b|i|a|code|u|s|pre)(\s[^>]*)?>", re.IGNORECASE)
+
+
+def _equilibra(pedacos: list) -> list:
+    """Fecha no fim de cada pedaco as tags abertas, e reabre no seguinte.
+
+    Cortar respeitando quebra de linha NAO basta, e isso custou a entrega
+    de um boletim inteiro em 03/09/2026: o corpo do post e `<i>texto</i>`
+    e o texto TEM quebras de linha, entao o corte caia DENTRO da tag -- o
+    `<i>` ficava aberto num pedaco e o `</i>` orfao no seguinte, e o
+    Telegram devolvia 400 "Can't find end tag" no pedaco 1 de 5. Um
+    boletim de 25 posts nao cabe numa mensagem so, entao a falha aparece
+    justamente quando ha MAIS o que entregar.
+
+    Guarda a ABERTURA literal, com atributos, para reabrir igual: um
+    `<a href="...">` cortado no meio precisa do href de volta, senao o
+    link vira texto."""
+    saida, abertas = [], []
+    for pedaco in pedacos:
+        corpo = "".join(abertas) + pedaco
+        pilha = []
+        for m in _RE_TAG.finditer(corpo):
+            if m.group(1):
+                if pilha and _RE_TAG.match(pilha[-1]).group(2).lower() \
+                        == m.group(2).lower():
+                    pilha.pop()
+            else:
+                pilha.append(m.group(0))
+        fecho = "".join("</" + _RE_TAG.match(t).group(2) + ">"
+                        for t in reversed(pilha))
+        saida.append(corpo + fecho)
+        abertas = list(pilha)
+    return saida
+
+
 def _envia_telegram(texto: str, html: bool = False) -> str:
     """Envia se o .env tiver bot e chat. Devolve o status para o relatório —
     qualquer falha vira texto, nunca traceback: o arquivo já é o registro.
@@ -666,6 +701,7 @@ def _envia_telegram(texto: str, html: bool = False) -> str:
                 atual = f"{atual}\n{linha}" if atual else linha
         if atual:
             pedacos.append(atual)
+        pedacos = _equilibra(pedacos)
     else:
         pedacos = [texto[i:i + LIMITE_TELEGRAM]
                    for i in range(0, len(texto), LIMITE_TELEGRAM)]
