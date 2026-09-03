@@ -205,6 +205,31 @@ class TestJaExtraida:
                        recusada=1, recusas=demanda.TETO_RECUSAS)
         assert demanda.ja_extraida(con, 6)
 
+    def test_recusa_do_lote_nao_gasta_vida_do_teto(self, tmp_path):
+        """O contador limita a RECOMPRA pela demanda. Recusa do lote
+        gastando as três vidas faria a matéria ficar invisível para a
+        demanda por culpa de um agrupamento que não foi dela (achado da
+        revisão adversarial de 03/09/2026)."""
+        from src.storage import conecta
+        from src import extract, llm
+        con = conecta(tmp_path / "lote.db")
+        con.execute(
+            "INSERT INTO artigos (id, url_norm, url_original, veiculo, "
+            "editoria, titulo, resumo, conteudo, hash_conteudo, coletado_em) "
+            "VALUES (11,'u','u','G1','x','t','r','c','h','hoje')")
+        con.commit()
+        linha = con.execute("SELECT * FROM artigos WHERE id = 11").fetchone()
+        uso = llm.Uso(modelo=llm.EXTRACAO, entrada=0, saida=0,
+                      cache_leitura=0, cache_escrita=0)
+        for _ in range(5):
+            extract.salva_historia(con, [(linha, [])], [], uso,
+                                   extract.PROMPT_VERSAO_HISTORIA,
+                                   recusada=True)
+        n = con.execute(
+            "SELECT recusas FROM extracoes WHERE artigo_id = 11").fetchone()[0]
+        assert n == 0, f"o lote gastou {n} vida(s)"
+        assert not demanda.ja_extraida(con, 11)
+
     def test_teto_nunca_pode_ser_um(self):
         """1 é exatamente o comportamento de antes da correção de 03/09."""
         assert demanda.TETO_RECUSAS >= 2
@@ -226,7 +251,8 @@ class TestJaExtraida:
         for esperado in (1, 2, 3):
             extract.salva_historia(
                 con, [(linha, [])], [], uso,
-                extract.PROMPT_VERSAO_HISTORIA, recusada=True)
+                extract.PROMPT_VERSAO_HISTORIA, recusada=True,
+                conta_recusa=True)
             n = con.execute(
                 "SELECT recusas FROM extracoes WHERE artigo_id = 9"
             ).fetchone()[0]

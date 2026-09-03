@@ -473,8 +473,13 @@ def resume(resultados: list[Resultado],
         por_caso.setdefault(r.caso, []).append(r)
     regressoes = sum(1 for rs in por_caso.values()
                      if not rs[0].fronteira and all(not r.passou for r in rs))
+    # Fronteira segue com `any`: ela não derrubava a bateria antes nem
+    # depois, então contar variância aqui não custa falso positivo — e
+    # com `all` a fronteira que passa às vezes sumia do relatório
+    # inteiro, porque `instaveis` exclui fronteira. Lacuna conhecida que
+    # some do relatório é lacuna que se esquece.
     fronteiras = sum(1 for rs in por_caso.values()
-                     if rs[0].fronteira and all(not r.passou for r in rs))
+                     if rs[0].fronteira and any(not r.passou for r in rs))
     instaveis = sorted(
         f"{caso} ({sum(r.passou for r in rs)}/{len(rs)})"
         for caso, rs in por_caso.items()

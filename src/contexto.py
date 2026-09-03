@@ -60,8 +60,18 @@ MIN_VEICULOS = 2
 """Piso para a saída existir. Abaixo disso não é cobertura do acervo."""
 
 QUANTOS = 200
-"""Teto da busca. `indice.busca` devolve exatamente o que se pede e não
-conta nada — quem corta é o LIMIAR, aqui embaixo."""
+"""Quantos achados pedir por vez. `indice.busca` devolve EXATAMENTE o que
+se pede, então quando todos os pedidos passam do limiar quem cortou foi
+esta constante, não o limiar — e aí o número publicado seria a constante
+disfarçada de contagem do acervo. Medido em 03/09/2026: "a economia
+brasileira" tem 653 matérias acima do limiar, e o mesmo assunto publicava
+"50", "200" ou "400" matérias conforme o valor daqui. Por isso
+`do_assunto` dobra o pedido enquanto saturar — a busca é local e não custa
+API."""
+
+TETO_BUSCA = 4096
+"""Onde a expansão para. Acima disso a saída diz "mais de N", que é
+verdade, em vez de um número que não foi medido."""
 
 TETO_POR_RODADA = 8
 """Buscas de contexto por rodada do boletim. A busca é local e não custa
@@ -78,6 +88,10 @@ class Contexto:
     veiculos: list[str]
     de: str
     ate: str
+    saturou: bool = False
+    """A busca bateu no teto: `materias` é piso, não contagem, e a linha
+    diz "mais de N". Publicar o teto como medição foi o defeito que a
+    revisão adversarial de 03/09/2026 achou nesta saída."""
     amostra: list[tuple[str, str]] = field(default_factory=list)
     """(veículo, título) dos mais próximos. A fonte vai junto porque
     princípio 2: nada é apresentado sem de onde veio."""
@@ -92,17 +106,32 @@ def do_assunto(assunto: str, buscar=None) -> Contexto | None:
     """
     if not (assunto or "").strip():
         return None
-    achados = [a for a in (buscar or indice.busca)("artigos", assunto,
-                                                   QUANTOS)
-               if a.proximidade >= LIMIAR]
+    procurar = buscar or indice.busca
+    pedido, saturou = QUANTOS, False
+    while True:
+        bruto = procurar("artigos", assunto, pedido)
+        achados = [a for a in bruto if a.proximidade >= LIMIAR]
+        # Saturou: TODO achado devolvido passou do limiar, ou seja o corte
+        # foi o tamanho do pedido. Dobra e pergunta de novo — senão o
+        # número publicado é a constante, não o acervo.
+        if len(achados) < len(bruto) or len(bruto) < pedido:
+            break
+        if pedido >= TETO_BUSCA:
+            saturou = True
+            break
+        pedido *= 2
     if not achados:
         return None
 
-    # Matéria editada entra duas vezes no índice, com ids diferentes e o
-    # mesmo assunto. Contar ACHADO em vez de matéria inflaria o número.
+    # Dedup por URL, não por artigo_id: na coleção "artigos" o id do
+    # documento É o artigo_id, então dois achados nunca compartilham
+    # artigo_id e deduplicar por ele não faz nada. A duplicata real é a
+    # matéria RECOLETADA, que vira linha nova com id novo — 17% do índice
+    # medido em 03/09/2026, com um caso de 31 versões da mesma página.
     por_materia: dict[object, object] = {}
     for a in achados:
-        chave = a.meta.get("artigo_id", a.texto)
+        chave = (a.meta.get("url_norm")
+                 or a.meta.get("artigo_id", a.texto))
         if chave not in por_materia:
             por_materia[chave] = a
     unicos = list(por_materia.values())
@@ -120,6 +149,7 @@ def do_assunto(assunto: str, buscar=None) -> Contexto | None:
         veiculos=veiculos,
         de=datas[0] if datas else "",
         ate=datas[-1] if datas else "",
+        saturou=saturou,
         amostra=[(str(a.meta.get("veiculo", "")),
                   str(a.meta.get("titulo", ""))) for a in melhores],
     )
@@ -128,5 +158,6 @@ def do_assunto(assunto: str, buscar=None) -> Contexto | None:
 def linha(c: Contexto) -> str:
     """Uma linha de texto puro. Descreve o ACERVO, nunca a premissa."""
     periodo = f" ({c.de} a {c.ate})" if c.de and c.ate else ""
-    return (f"o acervo registra {c.materias} matérias em "
+    quanto = f"mais de {c.materias}" if c.saturou else str(c.materias)
+    return (f"o acervo registra {quanto} matérias em "
             f"{len(c.veiculos)} veículos{periodo}")

@@ -411,7 +411,8 @@ def salva_historia(conexao: sqlite3.Connection,
                    blocos: list[tuple[sqlite3.Row, list[str]]],
                    triplas: list[TriplaHistoria],
                    uso: llm.Uso, prompt_versao: str,
-                   recusada: bool = False) -> None:
+                   recusada: bool = False,
+                   conta_recusa: bool = False) -> None:
     """Explode a extração da história em linhas POR FONTE, no formato que o
     banco já conhece: cada origem vira uma tripla comum presa ao artigo e à
     sentença dela. Grafo, índice, digest e check não mudam uma linha — a
@@ -476,10 +477,16 @@ def salva_historia(conexao: sqlite3.Connection,
         salva_extracao(conexao, linha["id"], do_artigo,
                        llm.EXTRACAO.id, prompt_versao, VOCAB_VERSAO, rateio)
         if recusada:
+            # A marca vale para os dois chamadores — o lote precisa dela
+            # para o grupo não voltar. O CONTADOR não: ele existe para
+            # limitar a RECOMPRA pela demanda, e recusa do lote gastando
+            # as três vidas faria a matéria ficar invisível para a
+            # demanda por culpa de um agrupamento que não foi dela.
             conexao.execute(
                 "UPDATE extracoes SET recusada = 1, recusas = ? "
                 "WHERE artigo_id = ? AND modelo = ? AND prompt_versao = ?",
-                (recusas + 1, linha["id"], llm.EXTRACAO.id, prompt_versao))
+                (recusas + (1 if conta_recusa else 0), linha["id"],
+                 llm.EXTRACAO.id, prompt_versao))
             escreveu_contador = True
         elif recusas:
             # Extração que rendeu não apaga o histórico de recusas: a
@@ -947,8 +954,12 @@ def extrai_grupo(conexao: sqlite3.Connection,
         # mesma_historia=false diz que a matéria não rendeu, não que o
         # grupo sujou — marcá-la de recusada a tornaria eternamente
         # recomprável pela demanda (revisão de 03/09/2026).
+        # `conta_recusa`: só AQUI, porque `extrai_grupo` é o caminho da
+        # demanda — é ela que recompra, e é ela que o teto limita. O
+        # lote (extrai_lote_historia) marca `recusada` e não gasta vida.
         salva_historia(conexao, blocos, [], resultado.uso,
-                       PROMPT_VERSAO_HISTORIA, recusada=len(blocos) > 1)
+                       PROMPT_VERSAO_HISTORIA, recusada=len(blocos) > 1,
+                       conta_recusa=True)
         return 0, resultado.uso.custo, True
 
     n_sentencas = {ROTULOS_FONTE[i]: len(s) for i, (_, s) in enumerate(blocos)}

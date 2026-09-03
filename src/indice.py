@@ -189,8 +189,16 @@ def indexa_artigos(conexao: sqlite3.Connection, dias: int = 10) -> int:
             embeddings=_vetores(
                 [agrupa.texto_de_agrupamento(l) for l in lote]),
             documents=[l["titulo"] for l in lote],
-            metadatas=[{"artigo_id": l["id"], "veiculo": l["veiculo"],
-                        "titulo": l["titulo"],
+            # `url_norm` desde 03/09/2026: o id do documento AQUI é o
+            # artigo_id, então dois documentos nunca compartilham
+            # artigo_id e deduplicar por ele é no-op. A duplicata real é
+            # a matéria RECOLETADA — `storage.salva` grava versão nova
+            # como linha nova, com id novo —, e medido no acervo eram
+            # 8.644 entradas para 7.181 url_norm: 17% de repetição, com
+            # uma página ao vivo indexada 31 vezes. Quem conta matéria
+            # tem de contar url_norm.
+            metadatas=[{"artigo_id": l["id"], "url_norm": l["url_norm"],
+                        "veiculo": l["veiculo"], "titulo": l["titulo"],
                         "data": l["data_publicacao"] or ""}
                        for l in lote],
         )

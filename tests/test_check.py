@@ -287,6 +287,24 @@ class TestRotaDupla:
             valor_unidade="%", busca="Juliana Brizola tem 38%")
         assert len(_por_chave(pedido, acervo)) == 1
 
+    def test_relacao_crua_do_acervo_tambem_casa(self):
+        """O pareado que faltava, e a revisão adversarial de 03/09/2026
+        achou: normalizar o alvo consertou a afirmação numérica SEM
+        objeto e quebrou a COM objeto, cuja relação o acervo gravou
+        crua. Conserta um lado, abre o outro — o aperto do princípio 9."""
+        from src import grafo
+        from src.check import AfirmacaoRecebida, Relacao, _por_chave
+        acervo = [grafo.Afirmacao(
+            "Juliana Brizola", "obteve_percentual_em", "pesquisa Quaest",
+            38.0, "%", None, None, "EXTRACTED", "G1", "t", "u")]
+        assert acervo[0].relacao == "obteve_percentual_em"
+        pedido = AfirmacaoRecebida(
+            sujeito_canonico="Juliana Brizola",
+            relacao=Relacao("obteve_percentual_em"),
+            objeto_canonico="pesquisa Quaest", valor_numero=38.0,
+            valor_unidade="%", busca="Juliana Brizola tem 38%")
+        assert len(_por_chave(pedido, acervo)) == 1
+
     def test_caso_positivo_pareado_relacao_diferente_segue_sem_casar(self):
         """O pareado do anterior: normalizar o alvo não pode fazer
         relação de verdade diferente passar a casar."""

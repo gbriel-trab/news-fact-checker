@@ -438,8 +438,14 @@ def _por_chave(afirmacao: AfirmacaoRecebida,
         afirmacao.relacao.value, afirmacao.objeto_canonico,
         afirmacao.valor_numero)
     for a in acervo:
+        # UNIÃO, não troca. Normalizar o alvo consertava a afirmação
+        # numérica sem objeto, mas TROCAR a relação quebrava o caso
+        # oposto e mais comum: afirmação com número E objeto, cuja
+        # relação o acervo gravou crua. Barreira que conserta um lado e
+        # abre o outro é o aperto do princípio 9 outra vez — as duas
+        # grafias casam, e só elas.
         if (chave_canonica(a.sujeito) in alvos
-                and a.relacao == alvo_relacao):
+                and a.relacao in {alvo_relacao, afirmacao.relacao.value}):
             achados.append(indice.Achado(
                 texto=indice.texto_da_tripla(a.sujeito, a.relacao, a.objeto,
                                              a.valor, a.unidade, a.contexto),

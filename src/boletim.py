@@ -183,7 +183,12 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
         # matérias e 13 veículos para o C3, sobre assunto nenhum. Ver
         # src/contexto.py. Contexto NÃO é veredito: não vai a `consultas`,
         # não conta como corroboração e não dispara demanda.
-        if (p.tipo != "nao_verificavel" or not p.hipotese
+        # `p.roteado` preenchido significa que a premissa era FATO e o
+        # roteador a rebaixou, pondo o referente rejeitado em `hipotese`.
+        # Essa hipótese é do código, não do modelo, e foi TIRADA da tela
+        # de propósito em 22f0ac9 — deixá-la voltar pelo [ACERVO] seria
+        # reabrir, um commit depois, o eco que motivou tudo isto.
+        if (p.tipo != "nao_verificavel" or not p.hipotese or p.roteado
                 or p.hipotese in vistos
                 or estado.get("buscas_contexto", 0)
                 >= contexto.TETO_POR_RODADA):
@@ -193,7 +198,8 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
         achado = contexto.do_assunto(p.hipotese,
                                      buscar=estado.get("buscar_contexto"))
         if achado:
-            partes.append(f"        → {contexto.linha(achado)}")
+            partes.append(f"        → {achado.assunto} — "
+                          f"{contexto.linha(achado)}")
             for veiculo, titulo in achado.amostra:
                 partes.append(f"          · {veiculo}: {titulo}")
             dados["contextos"].append(achado)
@@ -362,7 +368,19 @@ def monta(dias: int, reenviar: bool = False,
                           if not rodada.posts else
                           f"{len(rodada.posts)} post(s) na janela, todos já "
                           f"entregues em boletins anteriores.")
-        from . import demanda
+        from . import demanda, indice
+        # O índice do COLETADO é o que a quarta saída lê, e até
+        # 03/09/2026 só a demanda o atualizava — quando nenhum post
+        # gerava demanda, o contexto reportava o período do índice
+        # VELHO como se fosse o do acervo. É incremental (embeda só o
+        # que falta) e não custa API.
+        try:
+            indice.indexa_artigos(conexao)
+        except Exception:  # noqa: BLE001
+            # Índice indisponível não derruba o boletim: a quarta saída
+            # some, o resto continua. Contexto é acréscimo, não o
+            # produto.
+            pass
         # O estado é da RODADA e mutável de propósito: exceção num post
         # não pode restaurar orçamento de demanda já gasto nem descartar
         # o acervo recarregado (revisão de 01/09/2026).

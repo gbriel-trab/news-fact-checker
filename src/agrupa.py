@@ -186,7 +186,7 @@ def carrega(conexao: sqlite3.Connection,
         parametros = (f"-{janela_dias} days",)
     return conexao.execute(
         f"""
-        SELECT id, veiculo, editoria, titulo, resumo, conteudo,
+        SELECT id, url_norm, veiculo, editoria, titulo, resumo, conteudo,
                data_publicacao,
                MAX(LENGTH(conteudo), LENGTH(resumo)) AS tamanho,
                (SELECT COUNT(*) FROM extracoes e WHERE e.artigo_id = artigos.id) AS extraida

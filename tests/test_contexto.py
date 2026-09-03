@@ -97,6 +97,77 @@ class TestContagem:
         assert len(c.amostra) == 3
 
 
+class TestSaturacao:
+    """O defeito mais grave que a revisão adversarial de 03/09/2026
+    achou nesta saída: o boletim publicava `QUANTOS` como se fosse
+    contagem do acervo. Medido, "a economia brasileira" tem 653 matérias
+    acima do limiar e a saída dizia "50", "200" ou "400" conforme o valor
+    da constante — a constante disfarçada de medição, que é exatamente o
+    erro que o módulo diz existir para não cometer."""
+
+    def _acervo(self, n):
+        return [achado(f"t{i}", ["G1", "Folha", "Valor"][i % 3], 0.80, i)
+                for i in range(n)]
+
+    def test_expande_ate_o_limiar_voltar_a_cortar(self):
+        pedidos, acervo = [], self._acervo(500)
+
+        def buscar(colecao, texto, quantos):
+            pedidos.append(quantos)
+            return acervo[:quantos]
+
+        c = contexto.do_assunto("x", buscar)
+        assert pedidos == [200, 400, 800], pedidos
+        assert c.materias == 500 and not c.saturou
+        assert "mais de" not in contexto.linha(c)
+
+    def test_no_teto_diz_mais_de_em_vez_de_inventar_numero(self):
+        acervo = self._acervo(contexto.TETO_BUSCA * 2)
+        c = contexto.do_assunto(
+            "x", lambda colecao, texto, quantos: acervo[:quantos])
+        assert c.saturou
+        assert contexto.linha(c).startswith(
+            f"o acervo registra mais de {c.materias} matérias")
+
+    def test_sem_saturacao_nao_expande(self):
+        pedidos = []
+
+        def buscar(colecao, texto, quantos):
+            pedidos.append(quantos)
+            return [achado("a", "G1", 0.80, 1), achado("b", "Folha", 0.79, 2),
+                    achado("c", "Valor", 0.78, 3), achado("d", "G1", 0.10, 4)]
+
+        contexto.do_assunto("x", buscar)
+        assert pedidos == [200]
+
+
+class TestDedupPorUrl:
+    def test_versoes_da_mesma_url_contam_uma_vez(self):
+        """Na coleção `artigos` o id do documento É o artigo_id, então
+        deduplicar por artigo_id é no-op. A duplicata real é a matéria
+        RECOLETADA: linha nova, id novo, mesma url_norm — 17% do índice
+        medido em 03/09/2026, com uma página indexada 31 vezes."""
+        def com_url(t, v, prox, aid, url):
+            a = achado(t, v, prox, aid)
+            a.meta["url_norm"] = url
+            return a
+
+        c = contexto.do_assunto("x", busca_de([
+            com_url("v1", "G1", 0.82, 1, "g1.com/a"),
+            com_url("v2", "G1", 0.81, 2, "g1.com/a"),
+            com_url("v3", "G1", 0.80, 3, "g1.com/a"),
+            com_url("outra", "Folha", 0.79, 4, "folha.com/b"),
+            com_url("terceira", "Valor", 0.78, 5, "valor.com/c"),
+        ]))
+        assert c.materias == 3, "as tres versoes da mesma url viraram tres"
+
+    def test_sem_url_na_meta_cai_no_artigo_id(self):
+        c = contexto.do_assunto("x", busca_de([
+            achado("a", "G1", 0.80, 1), achado("b", "Folha", 0.79, 2),
+            achado("c", "Valor", 0.78, 3)]))
+        assert c.materias == 3
+
+
 class TestNuncaVeredito:
     def test_a_linha_fala_do_acervo_e_nunca_confirma(self):
         c = contexto.do_assunto("x", busca_de([

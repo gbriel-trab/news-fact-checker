@@ -324,6 +324,36 @@ class TestSoFatoCustaDinheiro:
         assert custo == 0.0, "contexto nao custa API"
         assert emitidas == 0, "contexto nao pode virar linha de veredito"
 
+    def test_hipotese_fabricada_pelo_roteador_nao_volta_a_tela(
+            self, monkeypatch, tmp_path):
+        """`roteado` preenchido = a premissa era FATO e o roteador a
+        rebaixou, pondo o referente rejeitado em `hipotese`. Essa
+        hipótese é do código, não do modelo, e foi tirada da tela em
+        22f0ac9 — deixá-la voltar pelo [ACERVO] reabriria o eco que
+        motivou tudo isto."""
+        from src import boletim, premissas
+        from src.storage import conecta
+
+        buscas = []
+        rebaixada = premissas.Premissa(
+            tipo="nao_verificavel", trecho="o encontro mudou tudo",
+            hipotese="o encontro que ocorreu")
+        rebaixada.roteado = "sujeito sem entidade nomeada"
+        analise = premissas.Analise(premissas=[
+            rebaixada,
+            premissas.Premissa(tipo="nao_verificavel", trecho="outra",
+                               hipotese="uma onda de recuperacoes"),
+        ])
+        monkeypatch.setattr(premissas, "separa",
+                            lambda *a, **k: (analise, _uso_zero()))
+        con = conecta(tmp_path / "t.db")
+        boletim._confere_post(
+            POST_DE_TESTE, con,
+            {"acervo": [], "orcamento": 1.0,
+             "buscar_contexto": lambda c, t, q: buscas.append(t) or []})
+        con.close()
+        assert buscas == ["uma onda de recuperacoes"], buscas
+
     def test_teto_de_buscas_de_contexto_por_rodada(self, monkeypatch,
                                                    tmp_path):
         """O ARCHITECTURE pede teto próprio para a quarta saída."""
