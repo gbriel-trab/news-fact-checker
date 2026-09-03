@@ -641,9 +641,12 @@ def main() -> None:
                         help="janela da busca (padrão: 1)")
     parser.add_argument("--sem-envio", action="store_true",
                         help="monta e grava o arquivo, não envia")
+    parser.add_argument("--reenviar", action="store_true",
+                        help="ignora o estado 'já entregue' e refaz a "
+                             "janela inteira (CARO: refaz busca e checks)")
     args = parser.parse_args()
 
-    texto, custo, contidos, html = monta(args.dias)
+    texto, custo, contidos, html = monta(args.dias, reenviar=args.reenviar)
     print(texto)
     caminho = _grava(texto)
     print(f"\ngravado em {caminho}")
@@ -652,11 +655,18 @@ def main() -> None:
     # processo morrer antes desta linha, nada foi marcado e a próxima
     # rodada refaz — reusando os vereditos pagos, pela janela do check.
     from .storage import conecta
-    conexao = conecta(config.BANCO)
-    for chaves, post in contidos:
-        for chave in chaves:
-            _marca_entregue(conexao, chave, post)
-    conexao.close()
+    # `--sem-envio` NÃO marca entregue. Ele pulava só o envio e gravava a
+    # marca assim mesmo, então o modo que existe para pré-visualizar
+    # QUEIMAVA os posts: a rodada seguinte os tratava como já entregues e
+    # o boletim de verdade saía vazio. Descoberto em 03/09/2026, depois
+    # de uma rodada de US$ 1,68 que marcou 20 posts sem mandar nenhum.
+    # Marca = "o leitor recebeu", e com --sem-envio ninguém recebeu.
+    if not args.sem_envio:
+        conexao = conecta(config.BANCO)
+        for chaves, post in contidos:
+            for chave in chaves:
+                _marca_entregue(conexao, chave, post)
+        conexao.close()
 
     if contidos and not args.sem_envio:
         # O celular recebe a rendição HTML; o texto puro é a trilha,

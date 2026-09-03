@@ -366,3 +366,72 @@ class TestRetryAfter:
             headers = {"Retry-After": "sexta-feira"}
         assert radar._quanto_esperar(1, None) == radar.ESPERA
         assert radar._quanto_esperar(1, Resp()) == radar.ESPERA
+
+
+class TestRespostaATerceiro:
+    """A barreira de 03/09/2026, e ela entra com os POSITIVOS pareados.
+
+    O prompt manda ignorar resposta a terceiro desde 01/09; o modelo
+    transcreveu assim mesmo — das 14 entradas de 31/08, 3 eram posts e
+    11 eram respostas, quase todas ao @grok e varias sem uma palavra do
+    autor. Prompt e pedido, codigo e barreira.
+
+    O RISCO desta barreira, e por isso os tres primeiros testes: ela nao
+    pode engolir a continuacao de thread propria (o C25 do gabarito
+    depende dela), nem o quote, nem o post puro."""
+
+    H = ("perfil_teste",)
+
+    def _bloco(self, miolo):
+        from src.radar import resposta_a_terceiro
+        return resposta_a_terceiro(
+            "POST 1 (@perfil_teste, 31 Aug 2026):\n" + miolo, self.H)
+
+    def test_positivo_post_puro_fica(self):
+        assert self._bloco("A Selic esta em 15%.") is None
+
+    def test_positivo_thread_propria_fica(self):
+        """O caso do C25: o autor respondendo a si mesmo. Descartar isto
+        mataria a premissa que so faz sentido com o post anterior."""
+        assert self._bloco(
+            "EM RESPOSTA A (@perfil_teste): A Selic esta em 15%.\n"
+            "E vai ficar assim ate 2027.") is None
+
+    def test_positivo_quote_fica(self):
+        assert self._bloco(
+            "CITANDO (@outro): alguma coisa\nComentario do autor.") is None
+
+    def test_negativo_resposta_a_terceiro_sai(self):
+        assert self._bloco(
+            "EM RESPOSTA A (@grok): explica ai\nE amigo, nem o grok deu "
+            "conta.") == "@grok"
+
+    def test_caixa_do_handle_nao_engana(self):
+        assert self._bloco(
+            "EM RESPOSTA A (@Perfil_Teste): anterior\ncontinuacao") is None
+
+    def test_busca_descarta_e_CONTA_na_nota(self, monkeypatch):
+        """Descarte silencioso e o que esconde defeito: se o modelo
+        passar a obedecer, ou a marcar errado, a contagem muda e
+        aparece."""
+        from src import radar
+        texto = (
+            "POST 1 (@perfil_teste, 31 Aug 2026):\n"
+            "URL: https://x.com/perfil_teste/status/1\n"
+            "Tremenda absorcao do mercado.\n---\n"
+            "POST 2 (@perfil_teste, 31 Aug 2026):\n"
+            "URL: https://x.com/perfil_teste/status/2\n"
+            "EM RESPOSTA A (@grok): explica\nNope\n---\n"
+            "POST 3 (@perfil_teste, 31 Aug 2026):\n"
+            "URL: https://x.com/perfil_teste/status/3\n"
+            "EM RESPOSTA A (@perfil_teste): anterior\nExpansao\n---")
+        monkeypatch.setattr(radar, "_pede", lambda *a, **k: {
+            "output": [{"type": "message", "content": [
+                {"type": "output_text", "text": texto}]}],
+            "usage": {"cost_in_usd_ticks": 0}})
+        monkeypatch.setenv("XAI_API_KEY", "x")
+        r = radar.busca(self.H, 1)
+        assert len(r.posts) == 2, [p[:40] for p in r.posts]
+        assert all("@grok" not in p for p in r.posts)
+        assert any("Expansao" in p for p in r.posts), "thread propria sumiu"
+        assert any("descartada" in n and "@grok" in n for n in r.notas)

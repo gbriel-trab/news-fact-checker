@@ -39,7 +39,18 @@ from . import config
 URL_API = "https://api.x.ai/v1/responses"
 MODELO = "grok-4.6"
 TICK_USD = 1e-10
-TIMEOUT = 180
+TIMEOUT = 600
+"""Leitura da busca. Era 180 e foi medido em 03/09/2026, depois de TRÊS
+boletins seguidos morrerem em ReadTimeout: a API estava NO AR (GET
+/v1/models em 0,3s, chat sem busca em 1,5s) e a mesma busca, com UM
+handle e UM dia, voltou HTTP 200 em 107s — seis chamadas de x_search do
+lado do servidor. A rodada real tem mais handles e mais dias, então
+passava dos 180s sempre.
+
+O diagnóstico errado custou o dia: eu li o timeout como "a xAI caiu" e
+escrevi isso três vezes. Timeout do CLIENTE não é queda do servidor —
+prova de indisponibilidade é o servidor responder erro, não o cliente
+desistir. 600s é folga de 5,6x sobre a medição de um handle."""
 
 TENTATIVAS = 3
 ESPERA = 45
@@ -273,6 +284,38 @@ def _limpa(pedaco: str) -> str:
     return pedaco.strip().strip("-").strip()
 
 
+def resposta_a_terceiro(bloco: str, handles: tuple[str, ...]) -> str | None:
+    """O handle a quem este bloco responde, se NÃO for um dos monitorados.
+
+    Devolve None quando o bloco é post próprio, quote, ou continuação de
+    thread do próprio autor — os três que o projeto quer.
+
+    Existe porque o PROMPT não segurou. Ele diz, desde 01/09/2026, "NÃO
+    TRANSCREVA respostas a outros usuários — ignore-as por completo", e
+    medido no acervo em 03/09/2026 o modelo transcreveu assim mesmo: das
+    14 entradas do dia 31/08, 3 eram posts e 11 eram respostas, quase
+    todas ao @grok e várias sem uma palavra do autor no corpo. O usuário
+    conferiu na aba Respostas do X e o número batia — o que não batia era
+    a regra sendo obedecida.
+
+    Prompt é pedido, código é barreira. Esta é a barreira, e ela usa a
+    mesma comparação de handle que `para_separacao` já fazia para decidir
+    atribuição — só que agora para DESCARTAR, e antes de pagar
+    separação e check por cada uma."""
+    m_resp = _RE_RESPOSTA_CAPT.search(bloco)
+    if not m_resp:
+        return None
+    m_quem = re.search(r"\((@\w+)\)", m_resp.group(0))
+    if not m_quem:
+        return None
+    quem = m_quem.group(1).lower().lstrip("@")
+    proprios = {h.lower().lstrip("@") for h in handles}
+    m_cab = re.match(r"^POST\s+\d+\s*\(@(\w+)", bloco)
+    if m_cab:
+        proprios.add(m_cab.group(1).lower())
+    return None if quem in proprios else "@" + quem
+
+
 def _posts_de(texto: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Separa os blocos POST N do resto. Devolve (posts, notas).
 
@@ -390,6 +433,19 @@ def busca(handles: tuple[str, ...], dias: int = 2) -> Rodada:
     bruto = json.dumps(dados, ensure_ascii=False)
     texto = "\n".join(_textos_de(dados.get("output", dados)))
     posts, notas = _posts_de(texto)
+    # A BARREIRA. O prompt pede para nao transcrever resposta a terceiro
+    # e o modelo transcreve assim mesmo; aqui elas sao descartadas ANTES
+    # de custar separacao, check e demanda. O descarte e CONTADO e vai
+    # para as notas: descarte silencioso e o que esconde defeito.
+    descartadas = [(bloco, alvo) for bloco in posts
+                   if (alvo := resposta_a_terceiro(bloco, handles))]
+    if descartadas:
+        fora = {bloco for bloco, _ in descartadas}
+        posts = tuple(bloco for bloco in posts if bloco not in fora)
+        alvos = ", ".join(sorted({alvo for _, alvo in descartadas}))
+        notas = tuple(notas) + (
+            f"{len(descartadas)} resposta(s) a terceiro descartada(s) "
+            f"antes de custar: {alvos}",)
     uso = dados.get("usage", {})
     ticks = uso.get("cost_in_usd_ticks", 0)
     buscas = sum(1 for item in dados.get("output", [])
