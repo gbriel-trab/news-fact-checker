@@ -179,7 +179,9 @@ mesmo.
 
 ### Análise não é notícia, e a premissa dela é verificável
 
-Direção registrada, não implementada. Depende do radar existir.
+Implementado: `premissas.py` separa, `check.py` julga, `boletim.py` entrega
+o radar conferido. O desenho atual e as lições que o produziram estão em
+"Separar, rotear, julgar — e o gabarito", abaixo.
 
 Comentário econômico — o material dos perfis que se acompanha por interesse
 real — é opinião e previsão, que o `extract.py` descarta de propósito. Mas
@@ -220,6 +222,113 @@ A entrada é uma CLI:
 ```
 python -m src.check "o governo cancelou o programa X"
 ```
+
+### Separar, rotear, julgar — e o gabarito
+
+Quatro incidentes em quatro dias desenharam esta parte, e vale registrar a
+sequência porque o erro de método foi tão caro quanto os erros de prompt:
+
+| Dia | Incidente | O que se aprendeu |
+|-|-|-|
+| 31/08 | "o autor opera assim" foi 11 vezes ao check | relato não é fato: tipo `relato` |
+| 01/09 | "o empresário" gerou 4 fatos sem sujeito, US$ 0,36 de demanda inútil | falha de ROTEAMENTO: extraiu certo, mandou ao check errado |
+| 01/09 | "ocorreu um encontro" saiu CONFIRMADO por uma sessão de comissão qualquer | falha do JUIZ: evidência compatível não é evidência que sustenta |
+| 02/09 | a regra escrita na véspera para os dois casos engoliu "André se reune com Trump" | uma regra de prosa, com critério subjetivo e sem caso positivo, só pode "melhorar" apertando |
+
+A correção de 02/09 (regra 8 v3) acertou o caso e errou o método: prosa no
+prompt, sem saída observável, validada só contra casos negativos. O desenho
+de 03/09 troca comportamento por estrutura, em três lugares:
+
+**1. O separador emite referente como campo, não como impressão.** Todo
+`fato` traz `quem` e, quando o texto dá, `o_que` e `quando`, cada um como
+`{valor, trecho}`: o valor COMO O TEXTO ESCREVE (nome pela metade fica pela
+metade) e o trecho literal onde aparece. Quinto tipo, `nao_verificavel`:
+afirma algo sobre o mundo, mas o texto não identifica o referente — "Banco
+dele" não é opinião, e chamá-lo de opinião era mentira de taxonomia. O que o
+modelo desconfia vai em `hipotese`, sem âncora, e nunca é verificado.
+`quando` é data de OCORRÊNCIA ancorada num trecho ("ontem" → 31/08/2026);
+data de janela carimbada da data do post não conta — medido: sob a v3, zero
+carimbos em 50 separações; sob a v1, os dois únicos carimbos estavam
+justamente nas afirmações vazias.
+
+**2. O roteador é código.** `premissas.roteia` confere as âncoras contra o
+texto que o modelo recebeu e rebaixa a `nao_verificavel`, com motivo, o fato
+que não passa por quatro condições: sujeito ancorado; `o_que` ou `quando`
+ancorado; `o_que` não é pronome ou advérbio ("André foi lá"); entidade
+nomeada, número ou data de ocorrência em algum lugar ("o empresário" + "um
+banco" não; "desemprego" + "5,3%" sim). É o princípio 6 em código: filtro
+barato antes da chamada cara. Na primeira bateria (50 separações) o modelo
+classificou tudo certo sozinho e o roteador não interveio — ele é o backstop
+que torna a decisão observável, não a barreira principal.
+
+**3. O juiz alinha antes de julgar, e o código retém.** `Julgamento` ganha
+`alinhamento` (quem, o quê, quando, onde, quanto) preenchido ANTES do
+veredito, e a regra 6: lacuna afirmada sem contraparte não confirma. Prosa não
+bastou três vezes, então `check.aplica_alinhamento` retém em código — e a
+primeira versão desse freio, que conferia o sujeito contra o texto que o
+PRÓPRIO juiz escrevia no alinhamento, durou algumas horas: o campo é livre, o
+juiz tende a parafrasear a evidência com a palavra da afirmação, e a consulta
+82 passaria de novo. O freio conta o que o código já tem na mão:
+
+* a afirmação precisa nomear um sujeito determinado — `_identifica` recusa
+  substantivo comum solto ("Encontro", "o empresário"), e o sujeito vem do
+  ESTRUTURADOR, não do juiz;
+* alguma evidência CITADA precisa ter sujeito ou objeto que case
+  (`sujeito_casa`) E conter um apoio da afirmação (o objeto ou o valor
+  estruturados). Data não fecha referente: toda tripla tem data e o juiz a
+  preenche sempre, então ela nunca conta como o segundo apoio;
+* sem apoio estrutural (afirmação sem objeto nem valor), a decisão semântica
+  do juiz vale — o freio é backstop, não segundo juiz.
+
+`sujeito_casa` é contenção de tokens pela chave canônica com duas guardas
+medidas contra sujeitos reais do acervo: a interseção precisa de um token
+não-genérico ("governo" ⊄ "governo federal") e os tokens extras do lado maior
+não podem ser cabeça de hierarquia ou evento ("Lula" ⊄ "governo do presidente
+Lula", "Trump" ⊄ "Telefonema entre Lula e Trump") — sem elas, o freio
+fabricaria exatamente a corroboração que `canonico.py` se recusa a fabricar.
+Falso negativo aceito, pelo princípio 5: o mesmo token que separa a corte do
+ministro dela separa o juiz da pessoa. Retido mantém as evidências visíveis,
+rotuladas, e marca `retida` — "achei isto e não conferi" não é "o acervo não
+cobre", e o boletim usa a distinção para NÃO disparar extração paga sobre o
+que já está coberto.
+
+Três achados laterais da mesma semana, todos com teste. `recupera()`
+deduplicava candidata por sujeito+texto sem veículo, e o modo história grava
+a mesma tripla para cada veículo que a afirma — a cópia do segundo veículo era
+descartada e a corroboração saía subcontada ("1 veículo" com dois no acervo);
+além disso um veículo enchia 7 das 10 vagas com triplas do mesmo evento, então
+duas vagas ficam RESERVADAS para veículos ainda não representados (reserva no
+fim, não teto por veículo: o teto testado trocava a confirmação do BTG ao g1
+por "Trump exerce cargo nos Estados Unidos"). O índice vetorial nunca podava:
+2.594 ids para 2.157 do recorte, 478 órfãos — entre eles a cotação do Bitcoin
+pré-regra 4 que este documento dá por curada — e 41 triplas ativas ausentes; o
+grafo lia a versão nova e a rota vetorial servia a antiga, sem nada acusar.
+E recusa de grupo na extração (`mesma_historia=false`) contava como "matéria
+já extraída" para a demanda, deixando invisível uma matéria que entrou num
+grupo errado; agora leva a marca `recusada` e volta a ser elegível.
+
+**O gabarito** (`src/gabarito.py`, `gabaritos/*.json`) é o que impede a
+próxima regra de reabrir a anterior: casos fixos com resposta esperada
+escrita à mão (revisão assinada pelo conteúdo — editar o esperado invalida a
+revisão), posts reais com o bloco bruto do radar, `fronteira` para lacuna
+conhecida, `[repr]` para caso que é exemplo literal do prompt (passar prova
+reprodução, não regra), `--vezes N` porque `temperature` não existe no Opus 5
+e a variância se mede repetindo, e `--historico` que aplica o esperado de hoje
+às separações de produção gravadas, de graça — foi assim que o comparador foi
+validado antes de custar um centavo. A bateria não toca `separacoes`: grava
+em `gabarito_rodadas`. Regra de processo, decidida em 03/09: **prompt do
+separador ou do check não muda sem a bateria, e toda barreira nova entra com
+caso positivo pareado no mesmo commit.**
+
+Riscos aceitos e registrados: a heurística do roteador tem residual
+conhecido ("o cara tem Banco dele" passa pela maiúscula se o modelo o chamar
+de fato — o prompt é a primeira barreira e o caso C3 vigia); completar nome
+não some, muda de módulo — o schema do estruturador pede "nome completo e
+oficial", embora medido ele tenha mantido "André" e só expandido "Trump";
+com nome incompleto a rota por chave exata não casa e só a semântica
+recupera; o índice guarda triplas de todas as versões de prompt, e a
+duplicata de re-extração compete no ranking (a dedup por veículo mitiga, não
+resolve).
 
 WhatsApp foi descartado. Ele havia sido pensado como *saída* — o sistema
 empurrando vereditos —, o que reforçava o problema: o sistema escolhendo sozinho
@@ -928,6 +1037,12 @@ revisar o princípio de forma explícita — nunca por acidente.
 
 8. **Nenhuma credencial no código.**
 
+9. **Barreira nova entra com caso positivo pareado.** Regra de prompt,
+   roteador ou filtro que só tem caso negativo na bateria só pode "melhorar"
+   apertando, e aperto engole o caso vizinho — foi assim que a regra escrita
+   para "o empresário" engoliu "André se reune com Trump" (02/09/2026). Prompt
+   do separador ou do check não muda sem rodar o gabarito.
+
 Teste prático para funcionalidade nova: *ela consegue citar a fonte do que
 afirma?* Se não conseguir, não entra no caminho de verificação.
 
@@ -1022,6 +1137,23 @@ por Lupa, Aos Fatos ou Comprova, sem mostrar o veredito delas, e comparar.
 
 Concordância com checador profissional é o único número que separa este projeto
 de um agregador — e nenhum agregador consegue produzi-lo.
+
+**3. Regressão de prompt.** Não mede rendimento nem acurácia: mede se o que
+já funcionava continua funcionando quando o prompt muda. É o gabarito
+(`python -m src.gabarito premissas|check`), e a pergunta é binária por caso.
+Diferente das duas anteriores, roda a cada mudança de prompt, não a cada
+acervo novo.
+
+**PRIMEIRA RODADA EM 03/09/2026**, sobre os prompts v4 do separador e do
+juiz: separador 25 casos × 2 vezes, 50/50, US$ 0,45 (8 posts reais, 17
+sintéticos, 4 exemplos literais do prompt marcados como reprodução); juiz e
+estruturador 23/23, US$ 0,34 — a primeira passada acusou duas regressões que
+eram do freio em código (pontuação no casamento de sujeito), corrigidas antes
+de qualquer prompt mudar. Aplicado retroativamente às separações de produção
+gravadas (`--historico`, custo zero), o mesmo gabarito acusa todos os
+incidentes de 31/08 a 02/09. Ressalva de método: nenhum dos 48 esperados foi
+revisado pelo dono do projeto ainda; até lá a bateria cobra do modelo a
+leitura de quem a escreveu.
 
 ## Convenções do repositório
 

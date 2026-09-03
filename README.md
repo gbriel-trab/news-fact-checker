@@ -49,9 +49,18 @@ para evitar.
 
 Duas frentes auxiliares completam o ciclo: **`premissas`** recebe um texto
 argumentativo (análise de mercado, post de rede social) e separa o que é
-previsão/opinião — que não se verifica, e não deve ser — das premissas
-factuais, conferindo cada uma; **`radar`** captura os posts de perfis
-públicos acompanhados no X e alimenta essa conferência.
+previsão/opinião/relato — que não se verifica, e não deve ser — e o que é
+afirmação sem referente identificável — que não dá para verificar — das
+premissas factuais, cada uma com sujeito, objeto e data **ancorados no
+trecho literal** e conferidos em código antes de custar uma chamada;
+**`radar`** captura os posts de perfis públicos acompanhados no X e
+alimenta essa conferência, entregue diariamente pelo Telegram.
+
+Os prompts do separador e do juiz têm **gabarito de regressão**
+(`gabaritos/`, `python -m src.gabarito`): casos fixos com resposta esperada
+escrita à mão, posts reais com o bloco bruto, e a regra de que nenhum prompt
+muda sem a bateria passar — porque uma regra escrita para um caso engoliu o
+vizinho uma vez, e foi o bastante.
 
 ## Como funciona
 
@@ -95,8 +104,12 @@ Decisões que fazem diferença, todas documentadas com medição no
 * Acervo: ~3.100 matérias de 20 veículos, coleta a cada 15 min
 * 880 afirmações extraídas de 99 matérias sob o vocabulário v2
 * **71 fatos confirmados por 2+ veículos independentes**
-* 160 testes; a camada de verificação — onde erro é silencioso — é a mais
+* 296 testes; a camada de verificação — onde erro é silencioso — é a mais
   coberta
+* Gabarito de regressão dos prompts: 25 casos do separador (× 2 rodadas) e
+  23 do juiz, 0 regressões na primeira rodada completa (03/09/2026),
+  US$ 0,79 no total — e aplicado de graça às separações antigas gravadas,
+  acusa todos os incidentes que motivaram cada regra
 
 ## Rodando
 

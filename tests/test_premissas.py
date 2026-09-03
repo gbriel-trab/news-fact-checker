@@ -23,7 +23,8 @@ class TestSchema:
         import pytest
         from pydantic import ValidationError
 
-        for tipo in ("fato", "previsao", "opiniao", "relato"):
+        for tipo in ("fato", "previsao", "opiniao", "relato",
+                     "nao_verificavel"):
             assert p(tipo).tipo == tipo
         with pytest.raises(ValidationError):
             p("talvez")
@@ -164,3 +165,84 @@ class TestSeparacoesGravadas:
         _grava_separacao(con, "abc", analise, 0.01)
         assert con.execute(
             "SELECT COUNT(*) FROM separacoes").fetchone()[0] == 1
+
+
+class TestRoteador:
+    """A regra 8 v4 vira campo + código: o fato só segue ao check se o
+    sujeito e mais uma lacuna estiverem ANCORADOS no texto. Cada
+    rebaixamento sai com motivo em `roteado`."""
+
+    def _fato(self, texto, quem=None, o_que=None, quando=None):
+        from src.premissas import Referente, roteia
+
+        def ref(par):
+            return Referente(valor=par[0], trecho=par[1]) if par else None
+
+        analise = Analise(premissas=[Premissa(
+            tipo="fato", afirmacao="x", trecho=texto.split("\n")[-1],
+            quem=ref(quem), o_que=ref(o_que), quando=ref(quando))])
+        return roteia(analise, texto).premissas[0]
+
+    def test_charada_passa(self):
+        texto = ("POST 6 (@x, 01 Sep 2026):\nCharada: André se reune com "
+                 "Trump, todos os rumos mudam.")
+        p_ = self._fato(texto, quem=("André", "André"),
+                        o_que=("Trump", "com Trump"))
+        assert p_.tipo == "fato" and p_.roteado is None
+
+    def test_sujeito_sem_ancora_rebaixa(self):
+        p_ = self._fato("O cara tem banco dele.",
+                        quem=("André Esteves", "André Esteves"),
+                        o_que=("banco", "banco dele"))
+        assert p_.tipo == "nao_verificavel"
+        assert "sem âncora" in p_.roteado and p_.afirmacao is None
+
+    def test_so_sujeito_rebaixa(self):
+        p_ = self._fato("O encontro que ocorreu muda o rumo do país.",
+                        quem=("o encontro", "O encontro"))
+        assert p_.tipo == "nao_verificavel" and "só o sujeito" in p_.roteado
+
+    def test_data_de_janela_nao_ancora(self):
+        # "até 01/09/2026" não está no texto: não conta como quando.
+        p_ = self._fato("O encontro que ocorreu muda o rumo do país.",
+                        quem=("o encontro", "O encontro"),
+                        quando=("até 01/09/2026", "até 01/09/2026"))
+        assert p_.tipo == "nao_verificavel"
+
+    def test_o_que_pronome_rebaixa(self):
+        p_ = self._fato("André foi lá e nada mudou.",
+                        quem=("André", "André"), o_que=("lá", "lá"))
+        assert p_.tipo == "nao_verificavel" and "pronome" in p_.roteado
+
+    def test_sem_entidade_nem_numero_rebaixa(self):
+        p_ = self._fato("O empresário tem um banco.",
+                        quem=("o empresário", "O empresário"),
+                        o_que=("um banco", "um banco"))
+        assert p_.tipo == "nao_verificavel" and "entidade" in p_.roteado
+
+    def test_numero_basta_como_segundo_apoio(self):
+        p_ = self._fato("Com o desemprego em 5,3%, o Copom não tem escolha.",
+                        quem=("desemprego", "o desemprego"),
+                        o_que=("5,3%", "em 5,3%"))
+        assert p_.tipo == "fato"
+
+    def test_data_de_ocorrencia_ancorada_basta(self):
+        texto = "POST 1 (@x, 01 Sep 2026):\nLula jantou ontem em Brasília."
+        p_ = self._fato(texto, quem=("Lula", "Lula"),
+                        quando=("31/08/2026", "ontem"))
+        assert p_.tipo == "fato"
+
+    def test_nao_fato_nao_e_tocado(self):
+        from src.premissas import roteia
+        a = Analise(premissas=[Premissa(tipo="opiniao", trecho="x")])
+        assert roteia(a, "x").premissas[0].tipo == "opiniao"
+
+    def test_roteado_fica_fora_do_schema(self):
+        propriedades = Premissa.model_json_schema()["properties"]
+        assert "roteado" not in propriedades
+        assert {"quem", "o_que", "quando", "hipotese"} <= set(propriedades)
+
+    def test_regra_9_e_a_ancora_da_regra_8(self):
+        assert "LINHAS DE CONTEXTO" in INSTRUCOES
+        assert "ancorado no texto" in INSTRUCOES
+        assert "nao_verificavel" in INSTRUCOES

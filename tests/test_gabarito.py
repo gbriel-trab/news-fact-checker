@@ -210,7 +210,7 @@ class TestArquivosDeCasos:
                                      and not isinstance(fatos, bool)), c["id"]
             for item in c["esperado"]:
                 assert item["tipo"] in ("fato", "previsao", "opiniao",
-                                        "relato"), c["id"]
+                                        "relato", "nao_verificavel"), c["id"]
                 assert item["contem"].strip(), c["id"]
             assert all(p.strip() for p in c.get("proibido_em_fato", [])), c["id"]
             if fatos == 0:

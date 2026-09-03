@@ -36,33 +36,54 @@ o contrário: raciocínio impecável partindo de um número que não bate.
 import argparse
 import hashlib
 import json
+import re
 import sys
+import unicodedata
 from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from . import check, config, grafo, llm
 from .storage import conecta
+
+
+class Referente(BaseModel):
+    """Um pedaço da afirmação preso ao texto. O `valor` é como o texto
+    escreve; o `trecho` é onde aparece, literalmente — é o que o roteador
+    confere em código. Nome pela metade fica pela metade."""
+
+    valor: str = Field(
+        description="COMO O TEXTO ESCREVE — nunca completado nem corrigido."
+    )
+    trecho: str = Field(
+        description="Pedaço LITERAL do texto onde isto aparece."
+    )
 
 
 class Premissa(BaseModel):
     """Uma afirmação isolada extraída de um texto argumentativo.
 
     Desde 01/09/2026 a reescrita (`afirmacao`) é EXCLUSIVA do tipo fato:
-    é a consulta que o verificador consome, e só aí ela trabalha. Para
-    opinião/previsão/relato a paráfrase era o maior custo de saída da
-    separação (~80-90% das premissas de um post de análise) repetindo o
-    que o trecho literal já diz — medido no boletim de 01/09."""
+    é a consulta que o verificador consome, e só aí ela trabalha. Desde
+    03/09/2026 o fato traz o referente como CAMPO ancorado (`quem`,
+    `o_que`, `quando`), não como impressão: o roteador confere as âncoras
+    contra o texto e rebaixa a `nao_verificavel` o que não ancora — a
+    regra 8 v2, escrita em prosa, engoliu a charada Esteves–Trump por
+    não ter saída observável."""
 
-    tipo: Literal["fato", "previsao", "opiniao", "relato"] = Field(
+    tipo: Literal["fato", "previsao", "opiniao", "relato",
+                  "nao_verificavel"] = Field(
         description=(
             "fato: afirma algo já ocorrido ou um estado presente NO MUNDO, "
-            "que outra fonte poderia confirmar ou desmentir. "
+            "com referente que o texto identifica. "
             "previsao: afirma sobre o futuro. "
             "opiniao: juízo, avaliação ou recomendação. "
             "relato: o assunto é o próprio autor do texto — o que ele diz, "
-            "fez, costuma fazer ou postou; a prova é o próprio texto."
+            "fez, costuma fazer ou postou; a prova é o próprio texto. "
+            "nao_verificavel: afirma algo sobre o mundo, mas o texto não "
+            "identifica de quem ou do que fala — não há o que conferir."
         )
     )
     afirmacao: str | None = Field(
@@ -76,6 +97,34 @@ class Premissa(BaseModel):
     trecho: str = Field(
         description="O pedaço LITERAL do texto de onde ela saiu, sem reescrever."
     )
+    quem: Referente | None = Field(
+        None, description="Só em fato: o sujeito da afirmação, ancorado."
+    )
+    o_que: Referente | None = Field(
+        None,
+        description=(
+            "Só em fato: a outra entidade, o número ou o objeto, ancorado. "
+            "Omita se o texto não dá."
+        )
+    )
+    quando: Referente | None = Field(
+        None,
+        description=(
+            "Só em fato: data de OCORRÊNCIA que o texto dá — valor resolvido "
+            "('31/08/2026'), trecho literal ('ontem'). Omita se o texto não "
+            "dá. A data do post NÃO é data de ocorrência."
+        )
+    )
+    hipotese: str | None = Field(
+        None,
+        description=(
+            "Só em nao_verificavel: de quem ou do que você desconfia que o "
+            "texto fala, sem âncora. Nunca vai à verificação."
+        )
+    )
+    roteado: SkipJsonSchema[str | None] = None
+    """Preenchido em CÓDIGO por `roteia`, nunca pelo modelo: por que um
+    fato foi rebaixado a nao_verificavel. Fora do schema enviado."""
 
     @property
     def texto(self) -> str:
@@ -97,16 +146,100 @@ class Analise(BaseModel):
     premissas: list[Premissa]
 
 
+# --------------------------------------------------------------- roteador
+
+def _normaliza(texto: str) -> str:
+    sem_acento = unicodedata.normalize("NFKD", texto)
+    limpo = "".join(c for c in sem_acento if not unicodedata.combining(c))
+    return " ".join(limpo.casefold().split())
+
+
+_ARTIGOS = frozenset(
+    "o a os as um uma uns umas e com de do da dos das em no na nos nas que "
+    "mas se por para ao aos pelo pela sobre ate até".split())
+_FECHADAS = frozenset(
+    "la ali aqui isso isto aquilo nisso disso ele ela eles elas o a "
+    "alguem algo tudo nada".split())
+
+
+def _ancorado(ref: Referente | None, texto_norm: str) -> bool:
+    return (ref is not None and bool(ref.trecho.strip())
+            and _normaliza(ref.trecho) in texto_norm)
+
+
+def _tem_entidade_ou_numero(valor: str) -> bool:
+    """Heurística pré-LLM da barreira: nome próprio (maiúscula que não é
+    artigo), sigla ou número. Não decide sozinha — é o segundo apoio
+    depois das âncoras."""
+    for token in valor.split():
+        limpo = token.strip("\"'(),.;:!?«»")
+        if not limpo:
+            continue
+        if any(c.isdigit() for c in limpo):
+            return True
+        if limpo[0].isupper() and limpo.casefold() not in _ARTIGOS:
+            return True
+    return False
+
+
+def roteia(analise: Analise, texto: str) -> Analise:
+    """Rebaixa a nao_verificavel o fato que não ancora no texto. Código,
+    não prompt: é a barreira do princípio 6 (filtro barato antes da
+    chamada cara), e cada rebaixamento sai com motivo em `roteado`.
+
+    Quatro condições para um fato seguir ao check, todas conferidas
+    contra o texto que o modelo recebeu:
+
+    1. `quem` com trecho literal no texto — "cite onde está escrito"
+       no lugar de "não adivinhe".
+    2. `o_que` OU `quando` ancorado: sujeito sozinho não tem o que
+       conferir ("Esteves se encontrou com alguém").
+    3. `o_que` não é só pronome ou advérbio ("André foi lá").
+    4. Entidade nomeada, número ou data de ocorrência em algum lugar:
+       "o empresário" + "um banco" não passa; "desemprego" + "5,3%" passa.
+       Data de janela não conta — só a que ancora num trecho.
+
+    Residual conhecido: "o cara tem Banco dele" passa pela heurística 4
+    se o modelo classificar como fato — a primeira barreira ali é o
+    prompt, e o caso C3 do gabarito vigia.
+    """
+    norm = _normaliza(texto)
+    for p in analise.premissas:
+        if p.tipo != "fato":
+            continue
+        quando_ok = _ancorado(p.quando, norm)
+        if not _ancorado(p.quem, norm):
+            motivo = "sujeito sem âncora literal no texto"
+        elif not _ancorado(p.o_que, norm) and not quando_ok:
+            motivo = "só o sujeito: nenhum o_que nem quando ancorado"
+        elif (p.o_que is not None and not quando_ok and all(
+                t in _FECHADAS for t in _normaliza(p.o_que.valor).split())):
+            motivo = "o_que é pronome ou advérbio: não há o que conferir"
+        elif not (_tem_entidade_ou_numero(p.quem.valor)
+                  or (p.o_que is not None
+                      and _tem_entidade_ou_numero(p.o_que.valor))
+                  or quando_ok):
+            motivo = "sem entidade nomeada, número ou data de ocorrência"
+        else:
+            continue
+        p.tipo = "nao_verificavel"
+        p.afirmacao = None
+        p.roteado = motivo
+    return analise
+
+
 INSTRUCOES = """\
 Você separa as afirmações de um texto que argumenta — análise, comentário,
-opinião — em quatro tipos, para que só o verificável seja conferido depois.
+opinião — em cinco tipos, para que só o verificável seja conferido depois.
 
-  fato       algo já ocorrido, ou um estado presente NO MUNDO. Outra fonte
-             poderia confirmar ou desmentir. É o único tipo que será
-             verificado.
-  previsao   afirma sobre o futuro
-  opiniao    juízo, avaliação, recomendação, valoração
-  relato     o assunto é o próprio autor do texto — ver a regra 7
+  fato             algo já ocorrido, ou um estado presente NO MUNDO, com
+                   referente que o texto identifica. Outra fonte poderia
+                   confirmar ou desmentir. É o único tipo verificado.
+  previsao         afirma sobre o futuro
+  opiniao          juízo, avaliação, recomendação, valoração
+  relato           o assunto é o próprio autor do texto — ver a regra 7
+  nao_verificavel  afirma algo sobre o mundo, mas o texto não identifica
+                   de quem ou do que fala — ver a regra 8
 
 Regras que importam mais que as outras:
 
@@ -157,36 +290,53 @@ Regras que importam mais que as outras:
    Texto:   "Eu disse ontem: o IPCA de julho veio em 5,2%."
    fato:    o IPCA de julho de 2026 foi de 5,2%
 
-8. FATO EXIGE REFERENTE DETERMINADO — determinado pelo PRÓPRIO texto. Nome
-   próprio (mesmo incompleto), sigla ou cargo com instituição determinam:
-   "André", "Trump", "Lula", "a Selic", "o presidente do BC". O que o
-   texto não identifica — "o empresário", "um encontro", "o cara", "ele"
-   sem antecedente — não é verificável: conferir "ocorreu um encontro"
-   contra um acervo confirma qualquer encontro, e o veredito sai vazio de
-   significado. Classifique como opiniao (ou relato, se for sobre o autor).
-
-   NÃO adivinhe o referente, em nenhum sentido: nem sujeito para "o cara",
-   nem sobrenome para "André". Na reescrita o nome vai COMO O TEXTO ESCREVE,
-   mesmo quando o completo parece óbvio. O nome resolve QUEM; o QUÊ também
-   tem de estar no texto (outra entidade, número, lugar ou data): "André
-   foi lá" não tem o que conferir — opiniao. Detalhe que falta (o mês de
-   um IPCA) fica faltando, sem inventar e sem derrubar o fato. Condicional
-   ou regra geral ("sempre que X se reúne com Y, Z") não afirma que
-   ocorreu — nenhum fato. E referente não basta: "Lula errou de novo" é
-   juízo, opiniao.
+8. FATO EXIGE REFERENTE DETERMINADO — e ancorado no texto. Todo fato traz
+   `quem` (o sujeito) e, quando o texto dá, `o_que` (a outra entidade, o
+   número, o objeto) e `quando` (a data de OCORRÊNCIA), cada um com
+   `trecho` copiado LITERALMENTE do texto e `valor` COMO O TEXTO ESCREVE:
+   nome incompleto vai incompleto — "André", "Esteves", "Lula", "a Selic".
+   Se o texto não identifica de quem ou do que fala — "o empresário", "um
+   encontro", "o cara", "ele" sem antecedente — o tipo é nao_verificavel:
+   conferir "ocorreu um encontro" contra um acervo confirma qualquer
+   encontro. NÃO adivinhe o referente: o que você desconfia vai em
+   `hipotese`, sem âncora. O nome resolve QUEM; o QUÊ também tem de estar
+   no texto: "André foi lá" é nao_verificavel. Data: só a que o texto dá
+   ("ontem" resolvido pelo cabeçalho é ocorrência; a data do post não é).
+   Detalhe que falta (o mês de um IPCA) fica faltando. Condicional ou
+   regra geral ("sempre que X se reúne com Y, Z") não afirma que ocorreu.
+   E referente não basta: "Lula errou de novo" é juízo, opiniao.
 
    Texto:   "Charada: André se reune com Trump, todos os rumos mudam
              imediatamente. Quem manda no Brasil?"
-   fato:    André se reuniu com Trump   (não "André Esteves"; o resto sai
-            pelas regras 2 e 6)
+   fato:    André se reuniu com Trump   (não "André Esteves")
+            quem {valor "André", trecho "André"} · o_que {valor "Trump",
+            trecho "com Trump"}; o resto sai pelas regras 2 e 6
    opiniao: todos os rumos mudam imediatamente
 
    Texto:   "O encontro que ocorreu muda mais o rumo do país que eleição."
    opiniao: (trecho literal — nada de fato "ocorreu um encontro")
 
    Texto:   "O cara tem banco dele, mídia dele, todos no bolso."
-   opiniao: (sujeito indeterminado — não vira fato verificável)
+   nao_verificavel: (sujeito não identificado; `hipotese` se houver)
+
+9. LINHAS DE CONTEXTO. O texto pode abrir com "(contexto — ...)":
+   "palavras do interlocutor" NÃO são premissa do autor — só o que ele
+   responde é; "post anterior do próprio autor na thread" É texto do
+   autor, mesmas regras; "post citado pelo autor" são palavras de quem ele
+   cita — o que o autor diz sobre elas é premissa, o citado em si não.
 """
+
+
+def anotacao(p: Premissa) -> str:
+    """O que o leitor da trilha precisa saber além do tipo: por que o
+    roteador rebaixou, e a hipótese do modelo — marcada como não
+    conferida, porque nunca vai ao check."""
+    partes = []
+    if p.roteado:
+        partes.append(f"roteador: {p.roteado}")
+    if p.hipotese:
+        partes.append(f"hipótese não conferida: {p.hipotese}")
+    return f" ({'; '.join(partes)})" if partes else ""
 
 
 def versao_prompt() -> str:
@@ -255,6 +405,9 @@ def separa(texto: str, conexao=None,
                             cache_leitura=0, cache_escrita=0))
     r = llm.gera(INSTRUCOES, f"Texto:\n{texto}", Analise,
                  modelo=llm.VERIFICACAO)
+    # O roteador roda ANTES de gravar: a separação em cache tem de ser a
+    # que a produção exibe, rebaixamentos incluídos.
+    roteia(r.dados, texto)
     if conexao is not None:
         if forcar:
             conexao.execute(
@@ -316,7 +469,7 @@ def main() -> None:
         print("NÃO VERIFICÁVEL — e não deve ser")
         print("=" * 78)
         for p in resto:
-            print(f"  [{p.tipo}] {p.texto}")
+            print(f"  [{p.tipo}] {p.texto}{anotacao(p)}")
         print()
 
     if not fatos:

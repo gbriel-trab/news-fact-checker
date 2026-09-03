@@ -366,7 +366,7 @@ def _confere(post: str, custo_busca: float) -> None:
     if resto:
         print("NÃO VERIFICÁVEL — e não deve ser")
         for p in resto:
-            print(f"  [{p.tipo}] {p.texto}")
+            print(f"  [{p.tipo}] {p.texto}{premissas.anotacao(p)}")
         print()
 
     if not fatos:
