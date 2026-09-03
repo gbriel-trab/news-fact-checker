@@ -96,6 +96,7 @@
     "relacao_proibida": [
       {
         "sujeito_contem": "Juliana Brizola",
+        "objeto_contem": "Pesquisa",
         "nao_use": "outro"
       }
     ],
@@ -103,7 +104,7 @@
       38.0
     ],
     "max_outro": 0.15,
-    "nota": "obteve_percentual_em tem de vencer `outro` e `tem_atributo`. O E1 do check ja marcou esta fronteira. 1o e 2o turno tem percentuais diferentes para a mesma pessoa: o recorte tem de separar."
+    "nota": "obteve_percentual_em tem de vencer `outro` e `tem_atributo`. O E1 do check ja marcou esta fronteira. 1o e 2o turno tem percentuais diferentes para a mesma pessoa: o recorte tem de separar. CORRIGIDO (8a): a proibicao era ampla demais e pegava (Juliana Brizola, outro, advogada) -- o texto diz \"a advogada e ex-deputada\" e nao ha relacao para profissao sem instituicao, entao `outro` ali e a valvula legitima. A proibicao passa a valer so no PERCENTUAL, que e o que o caso mede."
   },
   {
     "id": "X4",
