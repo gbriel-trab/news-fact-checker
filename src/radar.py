@@ -104,6 +104,10 @@ def _prompt(handles: tuple[str, ...], dias: int) -> str:
         "comentar. Formato obrigatório, um bloco por post:\n"
         "POST N (@handle, data):\n"
         "URL: <link do PRÓPRIO post transcrito, x.com/.../status/...>\n"
+        "TIPO: post | thread | quote | resposta — obrigatorio em TODO "
+        "bloco. 'post' e original; 'thread' e o autor respondendo a SI "
+        "MESMO; 'quote' e citacao de outro post; 'resposta' e resposta a "
+        "OUTRA pessoa.\n"
         "EM RESPOSTA A (@autor, <link do post respondido>): <texto do "
         "post respondido — inclua esta linha SOMENTE se o post for uma "
         "resposta; senão, omita>\n"
@@ -337,6 +341,40 @@ def _id_do_pai(bloco: str) -> str | None:
     return id_status(m.group(0)) if m else None
 
 
+_RE_TIPO = re.compile(r"^\s*TIPO:\s*(post|thread|quote|resposta)\b",
+                      re.MULTILINE | re.IGNORECASE)
+
+
+def declara_post_proprio(bloco: str) -> bool:
+    """O bloco DECLARA ser post ou quote próprio? Falha FECHADO.
+
+    Passa `post`, `thread` (o autor respondendo a si mesmo) e `quote`;
+    cai `resposta` e cai quem não declara.
+
+    A barreira anterior lia a linha `EM RESPOSTA A` e descartava o que
+    ela apontasse para terceiro. Em 03/09/2026 o primeiro post de um
+    boletim entregue era "😂😂😂😂", resposta a um terceiro, e passou —
+    o modelo simplesmente NÃO EMITIU a linha. Filtro que depende de um
+    rótulo opcional falha aberto: sem rótulo, tudo vira post próprio.
+
+    Agora o prompt exige `TIPO:` em todo bloco e aqui só passa quem
+    declara `post` ou `quote`. Bloco sem declaração CAI.
+
+    O custo disso é assumido e é falso negativo de cobertura: se o modelo
+    esquecer o TIPO num post legítimo, ele some do boletim. Escolhido
+    assim porque o dono do projeto disse, mais de uma vez, que resposta a
+    terceiro não pode chegar — e porque o descarte é CONTADO nas notas,
+    então some com aviso, não em silêncio."""
+    m = _RE_TIPO.search(bloco)
+    if not m:
+        return False
+    # `thread` FICA: e o autor respondendo a si mesmo, e o C25 do
+    # gabarito depende disso — a premissa so faz sentido com o post
+    # anterior. Um TIPO de tres valores derrubaria a thread junto com a
+    # resposta a terceiro, que e o caso vizinho que nao pode quebrar.
+    return m.group(1).lower() in ("post", "thread", "quote")
+
+
 def dedup_por_status(posts) -> tuple[tuple, int]:
     """Um post por status ID na rodada. Devolve (posts, quantos caíram).
 
@@ -536,6 +574,14 @@ def busca(handles: tuple[str, ...], dias: int = 2) -> Rodada:
         notas = tuple(notas) + (
             f"{repetidos} bloco(s) repetido(s) da mesma busca descartado(s) "
             f"antes de custar",)
+    # Falha FECHADO: sem declaração de tipo, o bloco não entra.
+    sem_declaracao = [b for b in posts if not declara_post_proprio(b)]
+    if sem_declaracao:
+        posts = tuple(b for b in posts if declara_post_proprio(b))
+        notas = tuple(notas) + (
+            f"{len(sem_declaracao)} bloco(s) sem declaração TIPO: post/quote "
+            f"descartado(s) — resposta a terceiro, ou o modelo omitiu o "
+            f"rótulo",)
     posts, descartadas = filtra_respostas(posts, handles)
     if descartadas:
         motivos = ", ".join(sorted({m for _, m in descartadas}))

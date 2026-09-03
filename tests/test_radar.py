@@ -48,7 +48,11 @@ class TestPrompt:
         assert "NÃO TRANSCREVA respostas" not in texto
         assert "link do post respondido" in texto
         assert "quem descarta é o programa" in texto
-        assert len(texto) < 900, f"o prompt voltou a crescer: {len(texto)}"
+        assert "TIPO: post | thread | quote | resposta" in texto
+        # Cresceu de 832 para ~1.070 com o TIPO obrigatorio, e cresceu
+        # certo: e o campo que faz o filtro falhar FECHADO. O teto sobe
+        # com o motivo escrito, nao some.
+        assert len(texto) < 1200, f"o prompt voltou a crescer: {len(texto)}"
 
     def test_corpo_carrega_filtro_e_janela(self):
         from datetime import datetime, timedelta, timezone
@@ -438,12 +442,14 @@ class TestRespostaATerceiro:
         texto = (
             "POST 1 (@perfil_teste, 31 Aug 2026):\n"
             "URL: https://x.com/perfil_teste/status/1\n"
+            "TIPO: post\n"
             "Tremenda absorcao do mercado.\n---\n"
             "POST 2 (@perfil_teste, 31 Aug 2026):\n"
             "URL: https://x.com/perfil_teste/status/2\n"
             "EM RESPOSTA A (@grok): explica\nNope\n---\n"
             "POST 3 (@perfil_teste, 31 Aug 2026):\n"
             "URL: https://x.com/perfil_teste/status/3\n"
+            "TIPO: thread\n"
             "EM RESPOSTA A (@perfil_teste): anterior\nExpansao\n---")
         monkeypatch.setattr(radar, "_pede", lambda *a, **k: {
             "output": [{"type": "message", "content": [
@@ -454,7 +460,11 @@ class TestRespostaATerceiro:
         assert len(r.posts) == 2, [p[:40] for p in r.posts]
         assert all("@grok" not in p for p in r.posts)
         assert any("Expansao" in p for p in r.posts), "thread propria sumiu"
-        assert any("descartada" in n and "@grok" in n for n in r.notas)
+        # O bloco do @grok agora cai ANTES, por nao declarar TIPO — a
+        # barreira de falha fechado roda primeiro. As duas existem: esta
+        # pega o que nao se declara, a de handle pega o que se declara
+        # `thread` mentindo sobre o pai.
+        assert any("TIPO" in n or "@grok" in n for n in r.notas), r.notas
 
 
 class TestCadeiaDeRespostas:
@@ -560,3 +570,64 @@ class TestDedupNaRodada:
         posts = tuple(self._b(i, str(i), "x") for i in range(1, 6))
         ficam, caidos = dedup_por_status(posts)
         assert len(ficam) == 5 and caidos == 0
+
+
+class TestFalhaFechado:
+    """O primeiro post de um boletim ENTREGUE em 03/09/2026 era
+    "emoji emoji emoji", resposta a um terceiro, e passou: o modelo nao
+    emitiu a linha EM RESPOSTA A e o filtro nao tinha o que ler.
+
+    Filtro que depende de rotulo OPCIONAL falha aberto. Agora o prompt
+    exige TIPO em todo bloco e so passa quem declara post ou quote."""
+
+    def _b(self, *linhas):
+        return chr(10).join(["POST 1 (@perfil_teste, 03 Sep 2026):",
+                             "URL: https://x.com/perfil_teste/status/1",
+                             *linhas])
+
+    def test_o_caso_do_emoji_cai(self):
+        from src.radar import declara_post_proprio
+        assert not declara_post_proprio(self._b("emoji emoji emoji"))
+
+    def test_positivo_post_declarado_fica(self):
+        from src.radar import declara_post_proprio
+        assert declara_post_proprio(self._b("TIPO: post", "A Selic esta em 15%"))
+
+    def test_positivo_quote_declarado_fica(self):
+        from src.radar import declara_post_proprio
+        assert declara_post_proprio(
+            self._b("TIPO: quote", "CITANDO (@outro): x", "comentario"))
+
+    def test_resposta_a_terceiro_declarada_cai(self):
+        from src.radar import declara_post_proprio
+        assert not declara_post_proprio(self._b("TIPO: resposta", "nope"))
+
+    def test_positivo_thread_propria_declarada_FICA(self):
+        """O caso vizinho que nao pode quebrar: o C25 do gabarito e uma
+        continuacao de thread propria, e a premissa dele so faz sentido
+        com o post anterior. Um TIPO de tres valores a derrubaria junto
+        com a resposta a terceiro."""
+        from src.radar import declara_post_proprio
+        assert declara_post_proprio(
+            self._b("TIPO: thread", "E vai ficar assim ate 2027."))
+
+    def test_busca_CONTA_o_descarte_sem_rotulo(self, monkeypatch):
+        """Some com aviso, nunca em silencio -- o custo assumido aqui e
+        falso negativo de cobertura, e ele tem de ser visivel."""
+        from src import radar
+        texto = chr(10).join([
+            "POST 1 (@perfil_teste, 03 Sep 2026):",
+            "URL: https://x.com/perfil_teste/status/1",
+            "TIPO: post", "A Selic esta em 15%", "---",
+            "POST 2 (@perfil_teste, 03 Sep 2026):",
+            "URL: https://x.com/perfil_teste/status/2",
+            "emoji sem rotulo", "---"])
+        monkeypatch.setattr(radar, "_pede", lambda *a, **k: {
+            "output": [{"type": "message", "content": [
+                {"type": "output_text", "text": texto}]}],
+            "usage": {"cost_in_usd_ticks": 0}})
+        monkeypatch.setenv("XAI_API_KEY", "x")
+        r = radar.busca(("perfil_teste",), 1)
+        assert len(r.posts) == 1
+        assert "Selic" in r.posts[0]
+        assert any("sem declaração TIPO" in n for n in r.notas)
