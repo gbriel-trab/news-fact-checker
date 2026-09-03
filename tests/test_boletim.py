@@ -153,14 +153,16 @@ class TestRendicaoTelegram:
                 ("opiniao", "André se reune com Trump")],
             "checks": [], "sem_premissas": False,
         }, None)], [], [], 0.10, 0.03)
-        assert "<code>[OPINIÃO 2 · RELATO]</code> nada a conferir" in html
+        # "OPINIÃO 2" lia-se como "opinião número 2" e sugeria uma
+        # opinião 1 em outro lugar; o × diz que é contagem DESTE post.
+        assert "<code>[OPINIÃO ×2 · RELATO]</code> nada a conferir" in html
         assert html.count("nada a conferir") == 1
         assert "convivi com ele" not in html
         # Um só continua "[OPINIÃO]", sem contagem — e a ordem é a do
         # prompt (opinião, previsão, relato), não a de aparição.
         assert _conta_tipos([("opiniao", "x")]) == "OPINIÃO"
         assert _conta_tipos([("relato", "r"), ("opiniao", "a"),
-                             ("opiniao", "b")]) == "OPINIÃO 2 · RELATO"
+                             ("opiniao", "b")]) == "OPINIÃO ×2 · RELATO"
 
     def test_post_com_url_validada_ganha_ancora_e_contexto(self):
         from src.boletim import _formata_telegram

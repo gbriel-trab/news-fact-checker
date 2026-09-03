@@ -467,15 +467,20 @@ _TAG_VEREDITO = {"confirmado": "CONFIRMADO", "contradito": "CONTRADITO",
 
 
 def _conta_tipos(nao_verificaveis) -> str:
-    """'OPINIÃO 8 · RELATO 2' — os tipos na ordem fixa do prompt, com a
-    contagem só quando passa de um. Um só sai '[OPINIÃO]', como antes."""
+    """'OPINIÃO ×8 · RELATO ×2' — os tipos na ordem fixa do prompt, com a
+    contagem só quando passa de um. Um só sai '[OPINIÃO]', como antes.
+
+    O `×` entrou em 03/09/2026: sem ele, "OPINIÃO 2" lia-se como
+    "opinião número 2" e sugeria uma opinião 1 em algum outro lugar. A
+    contagem sempre foi DESTE post — o que faltava era dizer isso na
+    tipografia."""
     contagem: dict[str, int] = {}
     for tipo, _ in nao_verificaveis:
         contagem[tipo] = contagem.get(tipo, 0) + 1
     ordem = [t for t in _TAG_TIPO if t in contagem]
     ordem += [t for t in contagem if t not in _TAG_TIPO]
     return " · ".join(
-        _TAG_TIPO.get(t, t.upper()) + (f" {contagem[t]}" if contagem[t] > 1
+        _TAG_TIPO.get(t, t.upper()) + (f" ×{contagem[t]}" if contagem[t] > 1
                                        else "")
         for t in ordem)
 
@@ -549,9 +554,7 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
         if citando:
             p.append(f"{tag('CITANDO')} <i>{_esc(citando)}</i>")
         p.append(f"<i>{_esc(corpo)}</i>")
-        if dados["nao_verificaveis"]:
-            p.append(f"{tag(_conta_tipos(dados['nao_verificaveis']))} "
-                     "nada a conferir")
+
         # [ACERVO], e não [CONTEXTO]: esse rótulo já significa "EM
         # RESPOSTA A" aqui em cima. O texto descreve o ACERVO, nunca a
         # premissa — nada de "confirmado", nada de contagem de veículo
@@ -599,6 +602,13 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
                 p.append(f"    {_esc(c['justificativa'])}")
                 if fontes:
                     p.append(f"    {tag('EVIDÊNCIA')} {fontes}")
+        # A opinião vai DEPOIS do veredito (pedido de 03/09/2026): o que
+        # o sistema apurou vem primeiro, e o que ele não tinha como
+        # conferir fecha o bloco. Antes abria, e a primeira coisa que o
+        # leitor via era o que o sistema NÃO fez.
+        if dados["nao_verificaveis"]:
+            p.append(f"{tag(_conta_tipos(dados['nao_verificaveis']))} "
+                     "nada a conferir")
         if dados["sem_premissas"]:
             p.append("(nenhuma afirmação separável)")
         p.append("")
