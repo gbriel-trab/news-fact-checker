@@ -170,11 +170,8 @@ DEFINICOES: dict[Relacao, str] = {
     Relacao.CANDIDATOU_SE_A: "é candidato a um cargo",
     Relacao.OBTEVE_PERCENTUAL_EM: "resultado em pesquisa ou votação; número no valor",
     Relacao.SUBMETEU_A_VOTACAO: "pôs proposta em votação, ou ela foi votada num órgão",
-    Relacao.SUBMETEU_A: (
-        "entregou formalmente a outra instância para ANÁLISE ou revisão — "
-        "revisão de regra à Casa Branca. Se foi posto em votação, é "
-        "submeteu_a_votacao; se pede algo para si, é solicitou"
-    ),
+    Relacao.SUBMETEU_A:
+        "entregou formalmente a outra instancia para analise ou revisao",
     Relacao.PREVE: "projeto ou proposta prevê algo; nunca fato consumado",
     Relacao.ABRIU_PROCESSO_CONTRA: "iniciou processo, investigação ou ação contra",
     Relacao.SOLICITOU: (
@@ -187,43 +184,22 @@ DEFINICOES: dict[Relacao, str] = {
         "software, conduta, política. Apoio declarado em fala é defendeu; "
         "isto é ATO de órgão ou equipe técnica"
     ),
-    Relacao.TEM_PARTICIPACAO_EM: (
-        "é acionista, controladora ou dona de parte de empresa ou fundo. O "
-        "DONO é sempre o sujeito: 'X, subsidiária de Y' vira (Y, "
-        "tem_participacao_em, X). O percentual vai nos campos de valor"
-    ),
+    Relacao.TEM_PARTICIPACAO_EM:
+        "e acionista ou dona de parte de empresa ou fundo. O DONO e sempre o sujeito: 'X, subsidiaria de Y' vira (Y, tem_participacao_em, X)",
     Relacao.NEGOCIADA_EM: "papel ou ativo listado ou negociado em bolsa ou índice",
     Relacao.LANCOU: "lançou produto, serviço, rede, ativo ou programa",
     Relacao.PARTICIPOU_DE: "esteve em entrevista, sabatina, sessão ou evento",
     Relacao.DIVULGOU: "publicou ou tornou público um dado, estudo ou documento",
-    Relacao.CONCEDEU: (
-        "autoridade deferiu pedido ou concedeu medida. O objeto NOMEIA o "
-        "caso concreto — 'liminar sobre o Imposto de Exportação', 'habeas "
-        "corpus de Fulano' — nunca só o tipo da medida, senão dois casos "
-        "distintos casam no grafo. Quem CONCEDE é o sujeito; quem pede é "
-        "solicitou; indeferir é rejeitou, NUNCA aqui"
-    ),
-    Relacao.REJEITOU: (
-        "autoridade indeferiu ou negou formalmente pedido, emenda ou "
-        "proposta — inclusive derrubar EM VOTAÇÃO proposta, MP ou veto, "
-        "mesmo que vigorasse. Ato formal; desaprovação em fala é criticou"
-    ),
-    Relacao.SUSPENDEU: (
-        "fez cessar por ATO de autoridade a vigência do que já valia — "
-        "suspendeu, revogou, cassou norma, liminar ou decisão. Derrubar em "
-        "VOTAÇÃO é rejeitou; interromper julgamento para retomar depois "
-        "(pedido de vista) é adiou; criar medida é impos"
-    ),
-    Relacao.ADIOU: (
-        "empurrou para depois evento marcado ou em curso — votação, "
-        "depoimento, prazo, julgamento interrompido para retomar (pedido "
-        "de vista). Mantém a validade; só desloca no tempo"
-    ),
-    Relacao.EDITOU: (
-        "editou, assinou ou baixou ato normativo — medida provisória, "
-        "decreto, ordem executiva, portaria. O ATO é o objeto; o efeito "
-        "dele sobre um alvo é impos; o conteúdo projetado é preve"
-    ),
+    Relacao.CONCEDEU:
+        "autoridade deferiu pedido ou medida; o objeto NOMEIA o caso concreto ('liminar sobre o Imposto de Exportacao'), nunca so o tipo",
+    Relacao.REJEITOU:
+        "autoridade indeferiu ou negou formalmente, inclusive derrubando em votacao",
+    Relacao.SUSPENDEU:
+        "fez cessar por ATO de autoridade a vigencia do que ja valia",
+    Relacao.ADIOU:
+        "empurrou para depois evento marcado ou em curso; mantem a validade",
+    Relacao.EDITOU:
+        "editou, assinou ou baixou ato normativo; o ATO e o objeto",
     Relacao.INDICOU: (
         "indicou ou nomeou PESSOA para cargo, vaga ou função — a pessoa é "
         "o objeto, o cargo vai em valor_contexto. A própria pessoa "
@@ -237,19 +213,12 @@ DEFINICOES: dict[Relacao, str] = {
         "abriu mão formalmente de cargo, mandato ou função — encerra o "
         "estado de exerce_cargo_em/preside"
     ),
-    Relacao.TRAMITA_EM: (
-        "proposição, processo ou pedido está em análise num órgão — a "
-        "MATÉRIA é o sujeito, mesmo quando o texto diz 'órgão analisa X'. "
-        "O ato de entregar é submeteu_a; este é o ESTADO de onde está"
-    ),
-    Relacao.PRENDEU: (
-        "prendeu, deteve ou capturou pessoa. A força ou agente estatal é o "
-        "sujeito; a pessoa presa é o objeto — mesmo quando o texto inverte"
-    ),
-    Relacao.DETIDO_EM: (
-        "está preso ou sob custódia em prisão ou instalação (estado). A "
-        "pessoa é o sujeito; prendeu é o evento que inicia este estado"
-    ),
+    Relacao.TRAMITA_EM:
+        "proposicao ou processo esta em analise num orgao -- a MATERIA e o sujeito, mesmo quando o texto diz 'orgao analisa X'",
+    Relacao.PRENDEU:
+        "prendeu, deteve ou capturou pessoa. O agente estatal e o sujeito e a pessoa presa e o objeto, mesmo quando o texto inverte",
+    Relacao.DETIDO_EM:
+        "esta preso ou sob custodia em prisao ou instalacao",
     Relacao.CAUSOU: (
         "evento ou condição provocou outro evento CONSUMADO. A CAUSA é "
         "sempre o sujeito, mesmo quando o texto diz 'Y foi provocado por "
@@ -260,33 +229,18 @@ DEFINICOES: dict[Relacao, str] = {
         "o lugar é o objeto; a data vai no campo de data. Pessoa em evento "
         "é participou_de"
     ),
-    Relacao.PAGOU_A: (
-        "transferiu dinheiro ao objeto — pagamento, repasse, aporte, "
-        "doação, empréstimo, ajuda; o montante vai nos campos de valor. "
-        "Com ativo recebido em troca é adquiriu; posse societária é "
-        "tem_participacao_em"
-    ),
-    Relacao.ADQUIRIU: (
-        "comprou ou assumiu controle de ativo, empresa ou propriedade; o "
-        "preço vai nos campos de valor. É o EVENTO da compra; o estado de "
-        "posse resultante é tem_participacao_em"
-    ),
-    Relacao.TEM_PARENTESCO_COM: (
-        "vínculo familiar ou conjugal; o TIPO ('pai', 'casada com', "
-        "'filho') é obrigatório em valor_contexto. No vínculo vertical o "
-        "ascendente é o sujeito; no simétrico (cônjuge, irmão) a ordem "
-        "não importa — o grafo a normaliza na leitura"
-    ),
+    Relacao.PAGOU_A:
+        "transferiu dinheiro ao objeto; o montante vai nos campos de valor",
+    Relacao.ADQUIRIU:
+        "comprou ou assumiu controle de ativo; o preco vai nos campos de valor",
+    Relacao.TEM_PARENTESCO_COM:
+        "vinculo familiar ou conjugal; o TIPO ('pai', 'casada com') e obrigatorio em valor_contexto. No vertical o ascendente e o sujeito",
     Relacao.RETRATA: (
         "obra — filme, livro, série, documentário — retrata ou tem como "
         "tema pessoa ou evento. A OBRA é o sujeito; lançá-la é lancou"
     ),
-    Relacao.TEM_ATRIBUTO: (
-        "QUALQUER propriedade com valor numérico: lucro, receita, dívida, "
-        "prazo, percentual, custo, margem de erro, amostra. Objeto null, e o "
-        "nome da propriedade vai em valor_contexto. Toda tripla com número e "
-        "sem objeto usa esta relação — nunca `outro`"
-    ),
+    Relacao.TEM_ATRIBUTO:
+        "QUALQUER propriedade com valor numerico. Objeto null, e o nome da propriedade vai em valor_contexto. Toda tripla com numero e sem objeto usa esta relacao -- nunca `outro`",
     Relacao.OUTRO: (
         "afirmação verificável que não cabe em nenhuma acima. "
         "Use sem hesitar: forçar uma relação que não serve é pior"
@@ -306,11 +260,67 @@ sujeito quem a frase dele põe, e (A,r,B) jamais casaria com (B,r,A).
 Achado da revisão de 01/09/2026."""
 
 
+PARES_CONFUNDIVEIS = """
+  Pares que se confundem -- decida pelo EXEMPLO, nao pela glosa:
+
+  "Fulano pediu recuperacao judicial"     (Fulano, solicitou, recuperacao judicial)
+  "O juiz deferiu a liminar a Fulano"     (Juiz, concedeu, liminar de Fulano)
+     quem PEDE e solicitou; quem DEFERE e concedeu; indeferir e rejeitou.
+
+  "O presidente do TRE, Fulano, negou o recurso"
+                                          (Fulano, rejeitou, recurso de Beltrano)
+     quando o texto NOMEIA quem decidiu, o sujeito e a PESSOA, nao o orgao.
+  "O STF cassou a liminar que valia"      (STF, suspendeu, liminar sobre X)
+  "Pediu vista e o julgamento parou"      (Tribunal, adiou, julgamento de X)
+     rejeitou nega o que NAO valia; suspendeu derruba o que JA valia;
+     adiou so desloca no tempo.
+
+  "Aziz entregou o relatorio a CCJ"       (Omar Aziz, submeteu_a, CCJ)
+  "A PEC esta na CCJ"                     (PEC do fim da 6x1, tramita_em, CCJ)
+     submeteu_a e o ATO de quem entrega; tramita_em e o ESTADO da materia.
+
+  "A empresa comprou 30% da rival por R$ 2 bi"
+     (Empresa, adquiriu, Rival) valor 2000000000 BRL
+     (Empresa, tem_participacao_em, Rival) valor 30 %
+     adquiriu e o evento da compra; tem_participacao_em e a posse que fica.
+     So dinheiro, sem ativo em troca, e pagou_a.
+
+  "O governo editou a MP que taxa importados"
+     (Governo Federal, editou, Medida Provisoria 1.357/2026)
+     (Medida Provisoria 1.357/2026, preve, taxacao de importados)
+     o ATO e objeto de editou; o CONTEUDO projetado e preve; o efeito
+     sobre um alvo concreto e impos.
+
+  "A PF prendeu Fulano, que esta no presidio X"
+     (Policia Federal, prendeu, Fulano)      -- evento, agente e o sujeito
+     (Fulano, detido_em, Presidio X)         -- estado, a pessoa e o sujeito
+"""
+"""A desambiguacao onde o modelo IMITA, nao onde ele le uma vez.
+
+Diagnostico externo de 03/09/2026, e ele acertou: todo o esforco de
+desambiguar estava nas glosas -- prosa lida uma vez -- e nenhum dos pares
+dificeis aparecia no exemplo trabalhado, que e o que o modelo imita. As
+glosas encolheram de 4.635 para 3.213 caracteres e o que saiu delas esta
+aqui, em par contrastado.
+
+O primeiro par que escrevi dizia "O TRE negou o recurso" -> (TRE,
+rejeitou, ...) e a bateria caiu de 2/2 para 1/3 no X4: o modelo passou a
+atribuir a decisao ao ORGAO, imitando meu exemplo, quando a materia
+nomeia o presidente que decidiu. Prova do proprio diagnostico -- o
+exemplo move o comportamento mais que a glosa -- e prova de que o
+gabarito pega isso.
+
+Cada par entrou com caso no gabarito ANTES do corte: X4 cobra `rejeitou`
+e proibe suspendeu/adiou/outro no mesmo par; X5 cobra submeteu_a E
+tramita_em. Encurtar glosa sem isso seria aperto sem caso pareado."""
+
+
+
 def resumo_para_prompt() -> str:
     """Lista formatada para as instruções, com a definição de cada relação."""
     return "\n".join(
         f"  {r.value:<22} {DEFINICOES[r]}" for r in Relacao
-    )
+    ) + chr(10) + PARES_CONFUNDIVEIS
 
 
 TIPO_RELACAO: dict[Relacao, str] = {

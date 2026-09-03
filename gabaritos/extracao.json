@@ -119,6 +119,11 @@
         "sujeito_contem": "Encinas",
         "relacao": "preside",
         "objeto_contem": "Tribunal Regional Eleitoral"
+      },
+      {
+        "sujeito_contem": "Encinas",
+        "relacao": "rejeitou",
+        "objeto_contem": "recurso"
       }
     ],
     "proibido_no_canonico": [
@@ -128,7 +133,24 @@
       "O presidente"
     ],
     "max_outro": 0.25,
-    "nota": "Decisao judicial: rejeitou/suspendeu/adiou sao o par confundivel sem exemplo no prompt. E proibido_no_canonico vigia o patch 4 -- sobrenome puro e cargo nao podem ser canonico (regra 2)."
+    "nota": "Decisao judicial: rejeitou/suspendeu/adiou sao o par confundivel sem exemplo no prompt. E proibido_no_canonico vigia o patch 4 -- sobrenome puro e cargo nao podem ser canonico (regra 2). REFORCADO antes do patch 7: passa a COBRAR `rejeitou` e a proibir suspendeu/adiou/outro no mesmo par. Sem isso, encurtar a glosa desses tres seria aperto sem pareado.",
+    "relacao_proibida": [
+      {
+        "sujeito_contem": "Encinas",
+        "objeto_contem": "recurso",
+        "nao_use": "suspendeu"
+      },
+      {
+        "sujeito_contem": "Encinas",
+        "objeto_contem": "recurso",
+        "nao_use": "adiou"
+      },
+      {
+        "sujeito_contem": "Encinas",
+        "objeto_contem": "recurso",
+        "nao_use": "outro"
+      }
+    ]
   },
   {
     "id": "X5",
@@ -150,6 +172,10 @@
       {
         "sujeito_contem": "Omar Aziz",
         "relacao": "submeteu_a"
+      },
+      {
+        "sujeito_contem": "PEC",
+        "relacao": "tramita_em"
       }
     ],
     "proibido_no_canonico": [
@@ -158,7 +184,13 @@
       "O parlamentar"
     ],
     "max_outro": 0.2,
-    "nota": "submeteu_a vs tramita_em. A sentenca 2 diz \"Aziz rejeitou todas as mudancas\" -- sobrenome puro no texto, que NAO pode virar canonico."
+    "nota": "submeteu_a vs tramita_em. A sentenca 2 diz \"Aziz rejeitou todas as mudancas\" -- sobrenome puro no texto, que NAO pode virar canonico. REFORCADO: submeteu_a e do ATO (Aziz entregou), tramita_em e do ESTADO (a PEC esta na CCJ). Trocar os dois e o erro que a glosa longa evita -- entao o caso tem de cobrar os dois lados.",
+    "relacao_proibida": [
+      {
+        "sujeito_contem": "Omar Aziz",
+        "nao_use": "tramita_em"
+      }
+    ]
   },
   {
     "id": "X6",
