@@ -237,16 +237,11 @@ _GENERICOS = frozenset(
 dois nomes só tem palavra desta lista, não é a mesma entidade: "governo"
 ⊄ "governo federal", "encontro" ⊄ "encontro de líderes"."""
 
-_CABECAS = frozenset(
-    "governo campanha equipe contas telefonema reuniao encontro sessao "
-    "ministro juiz forcas etfs comissao gabinete assessoria familia "
-    "diretoria conselho chapa base aliados entorno".split())
-"""Cabeça de hierarquia ou de evento. Se os tokens EXTRAS do lado maior
-contêm uma delas, a contenção não é identidade: "governo do presidente
-Lula" não é Lula, "Telefonema entre Lula e Trump" não é Trump. Medido em
-sujeitos reais do acervo (revisão de 03/09/2026): 9 triplas de "governo
-do presidente Luiz Inácio Lula da Silva", 12 de "ETFs à vista de Bitcoin
-dos Estados Unidos", 6 de "juiz Diego Câmara"."""
+from .canonico import CABECAS as _CABECAS  # noqa: E402  (lista única)
+"""Cabeça de hierarquia, cargo, parentesco ou obra. Mora no `canonico`
+porque o minerador de apelidos usa a MESMA guarda, e as duas cópias
+divergiram: a revisão de 03/09/2026 executou o freio e achou o par
+fundador do minerador passando por aqui."""
 
 
 def _tokens(nome: str) -> set[str]:
@@ -273,10 +268,13 @@ def sujeito_casa(afirmacao: str, evidencia: str) -> bool:
       casando; apelido curado é o caminho certo para separá-los, como o
       `canonico.py` já decidiu.
 
-    Falso negativo aceito: "Diego Câmara" ⊄ "juiz Diego Câmara", porque
-    o mesmo token que separa a corte do ministro dela ("ministro do STF
-    Dias Toffoli" não é o STF) separa o cargo da pessoa. Perder uma
-    confirmação é o erro barato; fabricar uma é o caro (princípio 5).
+    Falso negativo aceito, e é grande: título antes do nome ("presidente
+    Lula", "senador Omar Aziz", "juiz Diego Câmara") também não casa com o
+    nome nu, porque o MESMO token separa a pessoa da instituição que ela
+    dirige — "Presidente dos Estados Unidos" não é os Estados Unidos, e
+    nenhuma regra barata distingue os dois usos. Perder uma confirmação é
+    o erro barato: ela sai como retida, com a evidência na tela. Fabricar
+    uma é o caro (princípio 5).
 
     Continua valendo o que o freio precisa: "André" ⊂ "André Esteves",
     "desemprego" ⊂ "taxa de desemprego no Brasil", "Braskem" = "Braskem

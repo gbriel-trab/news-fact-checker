@@ -69,6 +69,44 @@ APELIDOS: dict[str, str] = {
     "presidencia da republica do brasil": "presidencia da republica",
 }
 
+CABECAS = frozenset(
+    # Cargo e a nominalização dele
+    "presidente presidencia ministro ministerio senador senadora deputado "
+    "deputada governador governadora prefeito prefeita reitor reitoria "
+    "prefeitura secretaria relator relatora diretor diretoria juiz juiza "
+    "procurador procuradoria advogado advogados advogada defesa "
+    "porta-voz representante "
+    # Coletivo em torno de alguém
+    "governo campanha equipe assessoria gabinete comissao conselho chapa "
+    "base aliados entorno familia contas forcas etfs sede "
+    # Parentesco e vínculo
+    "pai mae filho filha filhos filhas irmao irma esposa marido amigo "
+    "amiga socio socia herdeiro sucessor "
+    # Obra ou registro SOBRE alguém
+    "perfil pagina post publicacao declaracao entrevista discurso "
+    "cinebiografia biografia documentario relatorio "
+    # Ato, que não é a coisa
+    "reuniao encontro sessao telefonema votacao julgamento manutencao "
+    "renuncia nomeacao indicacao aprovacao rejeicao".split())
+"""Palavra que, sobrando de um lado de uma contenção, muda o REFERENTE em
+vez de encurtá-lo: o cargo não é o país, o pai não é o filho, a
+cinebiografia não é o biografado, a renúncia não é o cargo.
+
+Mora aqui, e não em quem usa, porque são DOIS que usam e eles divergiram:
+o freio do juiz (`check.sujeito_casa`) e a promoção de apelido
+(`apelidos.forma_de_apelido`). A revisão de 03/09/2026 executou os dois e
+achou o par fundador passando pelo freio — `sujeito_casa("Estados Unidos",
+"Presidente dos Estados Unidos")` era True — enquanto o minerador o
+recusava, e a docstring afirmava que a guarda era a mesma. Lista
+duplicada é lista que diverge.
+
+Nenhuma lista escrita à mão fecha o problema sozinha: ela tinha
+"presidente" e não "presidência", "senador" e não "senadora". Quem fecha,
+do lado da promoção, é a peneira de DIREÇÃO; esta aqui é a segunda
+guarda, para o que vai na direção certa e ainda assim troca o referente
+("lula" ⊂ "campanha do presidente lula")."""
+
+
 def _promovidos() -> dict[str, str]:
     """Apelidos minerados do acervo e promovidos à mão (`src/apelidos.py`).
 

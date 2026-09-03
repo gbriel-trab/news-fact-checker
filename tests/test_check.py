@@ -85,10 +85,26 @@ class TestSujeitoCasa:
                                 "ministro do Supremo Tribunal Federal Toffoli")
         assert not sujeito_casa("Câmara", "juiz Diego Câmara")
 
+    def test_cargo_parentesco_e_obra_nao_sao_a_entidade(self):
+        """A revisão de 03/09 executou o freio e achou o par FUNDADOR
+        passando por ele: o cargo não é o país, o pai não é o filho, a
+        cinebiografia não é o biografado."""
+        assert not sujeito_casa("Estados Unidos",
+                                "Presidente dos Estados Unidos")
+        assert not sujeito_casa("Omar Aziz", "Senador Omar Aziz")
+        assert not sujeito_casa("Jair Bolsonaro",
+                                "Cinebiografia de Jair Bolsonaro")
+        assert not sujeito_casa("Fábio Luís Lula da Silva",
+                                "Pai de Fábio Luís Lula da Silva")
+        assert not sujeito_casa("Karina Ferreira",
+                                "Advogados de Karina Ferreira")
+
     def test_falso_negativo_aceito_do_cargo(self):
-        """Mesmo token que separa a corte do ministro dela separa o juiz
-        da pessoa. Perder confirmação é o erro barato (princípio 5)."""
+        """O mesmo token que separa a corte do ministro dela separa o
+        título do nome. Perder confirmação é o erro barato (princípio 5),
+        e ela sai como RETIDA, com a evidência na tela."""
         assert not sujeito_casa("Diego Câmara", "juiz Diego Câmara")
+        assert not sujeito_casa("Lula", "presidente Lula")
 
     def test_entidade_diferente_nao_casa(self):
         assert not sujeito_casa("Petrobras", "Braskem S.A.")

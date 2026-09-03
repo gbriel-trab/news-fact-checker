@@ -43,6 +43,7 @@ TIMEOUT = 180
 
 TENTATIVAS = 3
 ESPERA = 45
+TETO_ESPERA = 300
 """Repetição da busca, e o motivo dela: em 03/09/2026 a xAI estourou os
 180s de leitura às 12:00 e o boletim do dia inteiro morreu ali — uma
 tentativa só, sem repetição, e a próxima chance 24h depois. Timeout e
@@ -314,9 +315,10 @@ def _pede(chave: str, handles: tuple[str, ...], dias: int,
     Devolve o JSON já decodificado. `dormir` existe para o teste não
     esperar de verdade."""
     ultimo = ""
+    resposta_atual = None
     for tentativa in range(1, TENTATIVAS + 1):
         try:
-            resposta = requests.post(
+            resposta = resposta_atual = requests.post(
                 URL_API,
                 headers={"Authorization": f"Bearer {chave}",
                          "Content-Type": "application/json"},
@@ -332,14 +334,49 @@ def _pede(chave: str, handles: tuple[str, ...], dias: int,
                 # JSONDecodeError do requests é RequestException, e corpo
                 # 200 que não é JSON também é "resposta ilegível" — cai no
                 # except abaixo e vira mais uma tentativa.
-                return resposta.json()
+                dados = resposta.json()
+                # E corpo 200 com JSON VÁLIDO mas fora do formato (uma
+                # lista, um null, um JSON de erro de proxy) escapava daqui
+                # limpo e estourava AttributeError lá na frente, onde o
+                # boletim só captura FalhaNoRadar — morte silenciosa, com
+                # o log guardando só o cabeçalho do dia. O contrato se
+                # fecha aqui, no mesmo lugar onde a repetição já mora.
+                if not isinstance(dados, dict):
+                    raise requests.exceptions.InvalidJSONError(
+                        f"corpo 200 não é objeto JSON: {type(dados).__name__}")
+                return dados
         except requests.RequestException as erro:
             ultimo = f"busca na xAI falhou: {type(erro).__name__}: {erro}"
+            resposta_atual = None
         if tentativa < TENTATIVAS:
+            espera = _quanto_esperar(tentativa, resposta_atual)
             print(f"  {ultimo} — tentativa {tentativa}/{TENTATIVAS}, "
-                  f"repetindo em {ESPERA * tentativa}s")
-            dormir(ESPERA * tentativa)
-    raise FalhaNoRadar(f"{ultimo} (após {TENTATIVAS} tentativas)")
+                  f"repetindo em {espera}s")
+            dormir(espera)
+    # O timeout de LEITURA não prova que a busca não foi cobrada: o cliente
+    # desistiu, o servidor pode ter rodado o x_search inteiro. O livro-caixa
+    # do projeto cobre a Anthropic, não a xAI — então a mensagem diz o que
+    # se sabe e o que não se sabe, em vez de deixar o gasto invisível.
+    raise FalhaNoRadar(
+        f"{ultimo} (após {TENTATIVAS} tentativas). Timeout não garante que a "
+        f"busca deixou de ser cobrada — conferir o console da xAI.")
+
+
+def _quanto_esperar(tentativa: int, resposta) -> int:
+    """A espera da próxima tentativa: a nossa, ou a que o servidor pediu.
+
+    Medido em 03/09/2026: a xAI responde 429 dizendo "try again in a few
+    minutes", e as três tentativas cabiam inteiras dentro desse bloqueio —
+    45 + 90 = 2min15. Quando vier `Retry-After`, ele manda; o teto existe
+    para um valor grande não pendurar a tarefa agendada."""
+    espera = ESPERA * tentativa
+    try:
+        pedida = int((resposta.headers or {}).get("Retry-After", 0) or 0)
+    except (AttributeError, TypeError, ValueError):
+        pedida = 0
+    if pedida > 0:
+        print(f"  (a xAI pediu Retry-After: {pedida}s)")
+    return min(max(espera, pedida), TETO_ESPERA)
 
 
 def busca(handles: tuple[str, ...], dias: int = 2) -> Rodada:

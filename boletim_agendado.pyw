@@ -23,7 +23,7 @@ sys.path.insert(0, str(RAIZ))
 LOG = RAIZ / "data" / "boletim.log"
 LOG.parent.mkdir(exist_ok=True)
 
-with open(LOG, "a", encoding="utf-8") as saida:
+with open(LOG, "a", encoding="utf-8", buffering=1) as saida:
     sys.stdout = saida
     sys.stderr = saida
     print(f"\n===== {datetime.now(timezone.utc).isoformat()} =====")
@@ -38,6 +38,17 @@ with open(LOG, "a", encoding="utf-8") as saida:
             print(f"abortado: {erro.code}" if isinstance(erro.code, str)
                   else f"abortado: exit {erro.code}")
             codigo = 1
+    except BaseException:  # noqa: BLE001
+        # Qualquer OUTRA exceção precisa ser impressa AQUI, com o arquivo
+        # ainda aberto: fora do `with`, o interpretador tenta escrever o
+        # traceback num stderr já fechado e o Python responde "lost
+        # sys.stderr" — sob pythonw não há console para receber a sobra, e
+        # a falha some. O log ficava com o cabeçalho do dia e mais nada,
+        # indistinguível de processo morto por reboot (achado de
+        # 03/09/2026, reproduzido em simulação).
+        import traceback
+        print(traceback.format_exc())
+        codigo = 1
     print(f"===== fim · exit {codigo} =====")
 
 sys.exit(codigo)

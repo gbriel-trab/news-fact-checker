@@ -293,3 +293,76 @@ class TestRepeticaoDaBusca:
         dormiu = []
         radar._pede("k", ("x",), 1, dormir=dormiu.append)
         assert dormiu == [radar.ESPERA, radar.ESPERA * 2]
+
+
+class TestContratoDoCorpo:
+    """Corpo 200 com JSON VÁLIDO mas fora do formato escapava limpo de
+    `_pede` e estourava AttributeError lá na frente, onde o boletim só
+    captura FalhaNoRadar — o log ficava com o cabeçalho do dia e nada
+    mais (achado de 03/09/2026)."""
+
+    def _resposta(self, corpo, status=200, headers=None):
+        class Resp:
+            def __init__(self):
+                self.status_code, self.text = status, str(corpo)
+                self.headers = headers or {}
+
+            def json(self):
+                return corpo
+        return Resp()
+
+    def test_corpo_que_nao_e_objeto_vira_tentativa(self, monkeypatch):
+        from src import radar
+        respostas = [self._resposta([]), self._resposta(None),
+                     self._resposta({"output": []})]
+        chamadas = []
+
+        def falso(*a, **kw):
+            chamadas.append(1)
+            return respostas[len(chamadas) - 1]
+        monkeypatch.setattr(radar.requests, "post", falso)
+        assert radar._pede("k", ("x",), 1, dormir=lambda s: None) == {
+            "output": []}
+        assert len(chamadas) == 3
+
+    def test_a_mensagem_final_avisa_do_custo_incerto(self, monkeypatch):
+        import pytest
+        import requests
+        from src import radar
+        monkeypatch.setattr(
+            radar.requests, "post",
+            lambda *a, **kw: (_ for _ in ()).throw(
+                requests.exceptions.ReadTimeout("t")))
+        with pytest.raises(radar.FalhaNoRadar, match="console da xAI"):
+            radar._pede("k", ("x",), 1, dormir=lambda s: None)
+
+
+class TestRetryAfter:
+    def test_o_servidor_manda_quando_pede_mais(self):
+        from src import radar
+
+        class Resp:
+            headers = {"Retry-After": "300"}
+        assert radar._quanto_esperar(1, Resp()) == 300
+
+    def test_nossa_espera_vale_quando_o_pedido_e_menor(self):
+        from src import radar
+
+        class Resp:
+            headers = {"Retry-After": "5"}
+        assert radar._quanto_esperar(2, Resp()) == radar.ESPERA * 2
+
+    def test_teto_impede_pendurar_a_tarefa(self):
+        from src import radar
+
+        class Resp:
+            headers = {"Retry-After": "3600"}
+        assert radar._quanto_esperar(1, Resp()) == radar.TETO_ESPERA
+
+    def test_sem_header_e_sem_resposta_nao_quebra(self):
+        from src import radar
+
+        class Resp:
+            headers = {"Retry-After": "sexta-feira"}
+        assert radar._quanto_esperar(1, None) == radar.ESPERA
+        assert radar._quanto_esperar(1, Resp()) == radar.ESPERA

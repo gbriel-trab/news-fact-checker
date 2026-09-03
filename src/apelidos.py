@@ -17,7 +17,7 @@ texto do veículo, e a extração já a registrou: a tripla guarda `sujeito` (co
 apareceu) e `sujeito_canonico` (a forma canônica). Minerar esses pares não é
 perguntar ao modelo quem é Lula — é ler o que o jornal escreveu.
 
-Três peneiras, e a segunda foi de graça porque o projeto já a tinha:
+Quatro peneiras, e a primeira foi de graça porque o projeto já a tinha:
 
 1. Só `EXTRACTED`. A regra 1 do prompt de extração diz que resolver a quem um
    apelido se refere é DEDUÇÃO e tem de sair como `INFERRED`, "mesmo quando é
@@ -34,13 +34,15 @@ Três peneiras, e a segunda foi de graça porque o projeto já a tinha:
 3. DOIS VEÍCULOS. Mesmo critério de corroboração do resto do sistema: par que
    só uma redação escreve pode ser hábito de casa, não equivalência.
 
-4. FORMA DE APELIDO. Sigla, ou tokens de um cabendo nos do outro sem que o
-   que sobra troque o referente. As três primeiras peneiras deixaram passar,
-   com SEIS veículos cada, "presidente dos estados unidos" → "estados unidos"
-   e "o perfil de nicolas maduro" → "nicolas maduro" — corroboração não
-   protege de erro de categoria, porque todos os veículos escrevem assim.
+4. DIREÇÃO. Apelido encurta: a forma como apareceu cabe dentro da canônica,
+   ou é sigla dela. O contrário — a canônica cabendo dentro da forma — não é
+   encurtamento, é cargo, parentesco ou obra grudados no nome. As três
+   primeiras peneiras deixaram passar, com SEIS veículos cada, "presidente
+   dos estados unidos" → "estados unidos" e "o perfil de nicolas maduro" →
+   "nicolas maduro": corroboração não protege de erro de categoria, porque
+   todos os veículos escrevem assim.
 
-E o que passa nas três ainda não entra sozinho — vai para uma lista que o dono
+E o que passa nas quatro ainda não entra sozinho — vai para uma lista que o dono
 do projeto promove, como o vocabulário de relações e pelo mesmo motivo (os
 pares-ouro contaminados do agrupamento estão no ARCHITECTURE como a lição de
 não deixar o sistema calibrar a si mesmo).
@@ -59,6 +61,7 @@ DOIS NÍVEIS, e a diferença importa:
 
 import argparse
 import json
+import re
 import sqlite3
 import sys
 from collections import defaultdict
@@ -67,6 +70,11 @@ from pathlib import Path
 
 from . import config
 from .canonico import ARQUIVO_APELIDOS, _normaliza
+
+TETO_PROMOCAO = 10
+"""Pares por rodada de promoção em lote. Promoção é a última barreira do
+módulo e era a única sem código: `--promover` sem `--so` gravava os 95 de
+uma vez, e o aviso "olhe um a um" era texto impresso, não trava."""
 
 MIN_VEICULOS = 2
 """Veículos independentes que precisam ter escrito o par. Duas editorias da
@@ -82,20 +90,7 @@ unicidade pega a maioria; isto pega a que sobrevive por acaso (uma única
 entidade genérica no acervo hoje não a torna unívoca amanhã)."""
 
 
-_CABECAS = frozenset(
-    "presidente ministro senador deputado governador prefeito juiz relator "
-    "perfil campanha governo gabinete equipe assessoria diretoria chapa "
-    "conta contas publicacao declaracao manutencao renuncia nomeacao "
-    "indicacao aprovacao rejeicao votacao julgamento reuniao encontro "
-    "sessao telefonema entrevista discurso post pagina filho filha esposa "
-    "familia advogado porta-voz sede".split())
-"""Palavra que, sobrando de um lado, muda o REFERENTE em vez de encurtá-lo.
-
-Sem esta peneira a mineração de 03/09/2026 promovia, com 6 veículos cada,
-"presidente dos estados unidos" → "estados unidos" e "o perfil de nicolas
-maduro" → "nicolas maduro". É a contenção que o `canonico.py` já recusava
-resolver por regra ("Braskem" ⊂ "Braskem Idesa"): o cargo não é o país, o
-perfil não é a pessoa, a renúncia não é o cargo."""
+from .canonico import CABECAS as _CABECAS  # noqa: E402  (lista única)
 
 _VAZIAS = frozenset("de do da dos das e o a os as em no na para com por "
                     "ao aos pelo pela sob sobre".split())
@@ -107,8 +102,7 @@ def _so_generica(forma: str) -> bool:
 
 
 def _tokens(forma: str) -> list[str]:
-    import re as _re
-    limpo = _re.sub(r"[^\w\s]", " ", forma)
+    limpo = re.sub(r"[^\w\s]", " ", forma)
     return [t for t in limpo.split() if t not in _VAZIAS]
 
 
@@ -124,19 +118,55 @@ def _e_sigla(curta: str, longa: str) -> bool:
 def forma_de_apelido(curta: str, longa: str) -> bool:
     """O par tem FORMA de apelido, ou é outra entidade com nome parecido?
 
-    Duas formas aceitas, e nenhuma delas é "parece perto": ou uma é sigla da
-    outra, ou os tokens de uma cabem nos da outra — e, nesse caso, o que
-    sobra do lado maior não pode ser cabeça que troca o referente. É a mesma
-    guarda do `check.sujeito_casa`, aqui aplicada na promoção em vez de na
-    comparação: promover um par errado contamina o acervo inteiro, então a
-    peneira mora nos dois lugares."""
+    A peneira é de DIREÇÃO, e essa é a lição da revisão de 03/09/2026.
+    Apelido é dizer a MESMA entidade com MENOS palavras: a forma como
+    apareceu cabe dentro da canônica, ou é sigla dela. Quando o contrário
+    acontece — a canônica cabe dentro da forma —, as palavras que sobram
+    do lado da superfície não encurtam nada: acrescentam cargo, parentesco,
+    representação ou obra, e aí é OUTRA entidade.
+
+    Medido nos 95 candidatos daquela rodada: 49 eram encurtamento, 7 sigla,
+    e 39 iam na direção contrária — e é onde estavam todos os erros de
+    categoria, "presidência dos estados unidos" → "estados unidos", "pai de
+    flávio bolsonaro" → "flávio bolsonaro", "advogados de karina" → a
+    própria cliente. Crescer uma lista de cabeças à mão não fecha isso: a
+    lista tinha "presidente" e não tinha "presidência", tinha "senador" e
+    não tinha "senadora". A direção fecha de uma vez.
+
+    Custo aceito: perde-se "senador omar aziz (psd-am)" → "omar aziz", que
+    é apelido legítimo. Perder fusão é o erro barato (princípio 5), e a
+    regra de glosa (`_glosa`) recupera boa parte desses pelo parêntese.
+
+    _CABECAS continua como segunda guarda para o encurtamento: "lula" ⊂
+    "campanha do presidente lula" é encurtamento pela direção e ainda
+    assim troca o referente."""
     if _e_sigla(curta, longa) or _e_sigla(longa, curta):
         return True
     tc, tl = set(_tokens(curta)), set(_tokens(longa))
-    if not tc or not tl or not (tc <= tl or tl <= tc):
+    if not tc or not tl or not tc <= tl:
         return False
-    extras = (tl - tc) if tc <= tl else (tc - tl)
-    return not (extras & _CABECAS)
+    return not ((tl - tc) & _CABECAS)
+
+
+_RE_GLOSA = re.compile(r"^(.+?)\s*\(([^()]{2,60})\)\s*$")
+
+
+def glosa(forma: str) -> tuple[str, str] | None:
+    """"tribunal superior eleitoral (tse)" → ("tse", "tribunal superior
+    eleitoral"): a equivalência que o veículo escreveu entre parênteses.
+
+    É a forma fundadora do módulo — "Luiz Inácio Lula da Silva (Lula)" — e
+    era a pior tratada: o par minerado saía com a chave "tse (tribunal
+    superior eleitoral)", que texto nenhum produz depois, enquanto o par
+    útil ("tse" → "tribunal superior eleitoral") tinha um veículo só e
+    morria na peneira. Devolve (curta, longa) na ordem certa, ou None."""
+    m = _RE_GLOSA.match(forma.strip())
+    if not m:
+        return None
+    fora, dentro = m.group(1).strip(), m.group(2).strip()
+    if not fora or not dentro or fora == dentro:
+        return None
+    return (dentro, fora) if len(dentro) < len(fora) else (fora, dentro)
 
 
 def pares(conexao: sqlite3.Connection) -> dict[str, dict[str, set[str]]]:
@@ -160,6 +190,12 @@ def pares(conexao: sqlite3.Connection) -> dict[str, dict[str, set[str]]]:
             longa = _normaliza(linha["canonico"])
             if curta and longa and curta != longa:
                 achados[curta][longa].add(linha["veiculo"])
+            # A glosa entre parênteses é equivalência escrita pelo veículo,
+            # dos dois lados do par: "TSE (Tribunal Superior Eleitoral)".
+            for texto in (curta, longa):
+                par = glosa(texto)
+                if par and par[0] != par[1]:
+                    achados[par[0]][par[1]].add(linha["veiculo"])
     return achados
 
 
@@ -167,12 +203,23 @@ def candidatos(conexao: sqlite3.Connection
                ) -> tuple[list[tuple[str, str, int, int]], list[tuple[str, dict]]]:
     """(aprovados, ambíguos). Aprovado é (curta, longa, veículos, ocorrências),
     ordenado por evidência: veículos primeiro, depois frequência."""
+    from .canonico import APELIDOS
+
     aprovados, ambiguos = [], []
     for curta, alvos in pares(conexao).items():
         if len(alvos) > 1:
             ambiguos.append((curta, {k: len(v) for k, v in alvos.items()}))
             continue
         longa, veiculos = next(iter(alvos.items()))
+        # O mapa já existente tem precedência: propor o INVERSO de um
+        # apelido vigente cria A→B e B→A, e como `chave_canonica` dá um
+        # salto só, as duas grafias passam a ter chaves diferentes — a
+        # fusão que funcionava PARA de funcionar, em silêncio. Medido em
+        # 03/09/2026: os dois únicos apelidos fixos apareciam invertidos
+        # entre os candidatos, um deles em primeiro lugar da lista.
+        if (curta in APELIDOS or longa in APELIDOS
+                or curta in APELIDOS.values() or longa in APELIDOS.values()):
+            continue
         if (len(veiculos) < MIN_VEICULOS or _so_generica(curta)
                 or not forma_de_apelido(curta, longa)):
             continue
@@ -202,10 +249,15 @@ def autonomas(conexao: sqlite3.Connection) -> set[str]:
 
 def _conta_ocorrencias(conexao: sqlite3.Connection,
                        formas: set[str]) -> dict[str, int]:
+    """Ocorrências que SUSTENTAM o par: só EXTRACTED. A coluna é o segundo
+    critério de ordenação e é o número que o humano lê para decidir — contar
+    INFERRED junto mostrava como evidência lida o que a peneira 1 exclui por
+    princípio (achado de 03/09/2026)."""
     contagem: dict[str, int] = defaultdict(int)
     for campo in ("sujeito", "objeto"):
         for (valor,) in conexao.execute(
-                f"SELECT {campo} FROM triplas WHERE {campo} IS NOT NULL"):
+                f"SELECT {campo} FROM triplas WHERE {campo} IS NOT NULL "
+                f"AND origem = 'EXTRACTED'"):
             n = _normaliza(valor)
             if n in formas:
                 contagem[n] += 1
@@ -296,6 +348,11 @@ def main() -> None:
     parser.add_argument("--promover", action="store_true",
                         help="grava os candidatos em apelidos.json")
     parser.add_argument("--so", help="promove só estas formas curtas")
+    parser.add_argument("--tudo", action="store_true",
+                        help="promove o lote inteiro (até o teto), em vez "
+                             "de escolher com --so")
+    parser.add_argument("--forcar", action="store_true",
+                        help="promove mesmo os pares com alerta")
     parser.add_argument("--por", default="gabriel",
                         help="quem promoveu (vai no arquivo)")
     args = parser.parse_args()
@@ -341,6 +398,25 @@ def main() -> None:
 
     querido = ({s.strip() for s in args.so.split(",") if s.strip()}
                if args.so else None)
+    if querido is None and not args.tudo:
+        raise SystemExit(
+            f"promover {len(novos)} pares de uma vez muda a comparação de "
+            f"entidade em todo o sistema — grafo, digest, rota por chave e o "
+            f"freio do juiz. Escolha com --so a,b,c, ou assuma o lote com "
+            f"--tudo (teto de {TETO_PROMOCAO} por rodada).")
+    if querido is None and len(novos) > TETO_PROMOCAO:
+        raise SystemExit(
+            f"{len(novos)} pares acima do teto de {TETO_PROMOCAO} por rodada. "
+            f"Promova por partes com --so.")
+    marcados_escolhidos = [c for c, *_ in novos
+                           if (querido is None or c in querido)
+                           and c in sozinhas]
+    if marcados_escolhidos and not args.forcar:
+        raise SystemExit(
+            "estes têm alerta (a forma curta também é entidade própria no "
+            f"acervo): {', '.join(marcados_escolhidos)}. Promover funde duas "
+            f"entidades que o acervo trata como distintas — confirme com "
+            f"--forcar se for isso mesmo.")
     escolhidos = {c: l for c, l, *_ in novos
                   if querido is None or c in querido}
     if querido:

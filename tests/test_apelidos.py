@@ -27,24 +27,76 @@ class TestFormaDeApelido:
         assert _e_sigla("psd", "partido social democratico")
         assert not _e_sigla("psd", "partido dos trabalhadores")
 
-    def test_parentese_nao_atrapalha(self):
-        assert forma_de_apelido("tse (tribunal superior eleitoral)",
-                                "tribunal superior eleitoral")
-
-    def test_cabeca_troca_o_referente(self):
-        """Os dois que passaram pelas outras peneiras com 6 veículos."""
+    def test_direcao_contraria_nao_e_apelido(self):
+        """Apelido ENCURTA. Quando a canônica cabe dentro da forma, as
+        palavras que sobram não encurtam nada — acrescentam cargo,
+        parentesco, representação ou obra, e aí é outra entidade. Crescer
+        uma lista de cabeças à mão não fechava isso: ela tinha
+        'presidente' e não 'presidência', 'senador' e não 'senadora'."""
         assert not forma_de_apelido("presidente dos estados unidos",
+                                    "estados unidos")
+        assert not forma_de_apelido("presidencia dos estados unidos",
                                     "estados unidos")
         assert not forma_de_apelido("o perfil de nicolas maduro",
                                     "nicolas maduro")
-        assert not forma_de_apelido("campanha do presidente lula", "lula")
-        assert not forma_de_apelido("renuncia ao cargo de ministro",
-                                    "ministro")
+        assert not forma_de_apelido("pai de flavio bolsonaro",
+                                    "flavio bolsonaro")
+        assert not forma_de_apelido("advogados de karina ferreira",
+                                    "karina ferreira")
+        assert not forma_de_apelido("senadora leila barros", "leila barros")
+
+    def test_cabeca_guarda_o_encurtamento(self):
+        """Segunda guarda, para o que vai na direção certa e ainda assim
+        troca o referente."""
+        assert not forma_de_apelido("lula", "campanha do presidente lula")
+        assert not forma_de_apelido("bolsonaro",
+                                    "cinebiografia de bolsonaro")
+
+    def test_parentese_recusado_pela_direcao_mas_a_glosa_resgata(self):
+        """A forma com glosa tem MAIS tokens que a canônica, então a
+        direção a recusa — e recusa certo: a chave "tse (tribunal superior
+        eleitoral)" nenhum texto futuro produz. O par útil sai da glosa."""
+        from src.apelidos import glosa
+        assert not forma_de_apelido("tse (tribunal superior eleitoral)",
+                                    "tribunal superior eleitoral")
+        assert glosa("tribunal superior eleitoral (tse)") == (
+            "tse", "tribunal superior eleitoral")
+        assert glosa("tse (tribunal superior eleitoral)") == (
+            "tse", "tribunal superior eleitoral")
+        assert glosa("sem parentese") is None
+        assert forma_de_apelido("tse", "tribunal superior eleitoral")
 
     def test_sem_contencao_nem_sigla_recusa(self):
         assert not forma_de_apelido("manutencao do texto da pec",
                                     "pec do fim da escala 6x1")
         assert not forma_de_apelido("", "lula")
+
+    def test_nao_propoe_o_inverso_de_apelido_ja_vigente(self, tmp_path):
+        """Promover o inverso de um apelido fixo cria A→B e B→A, e como
+        chave_canonica dá um salto só, as duas grafias passam a ter chaves
+        DIFERENTES: a fusão que funcionava para de funcionar, em silêncio.
+        Os dois únicos apelidos fixos apareciam invertidos na lista, um
+        deles em primeiro lugar (achado de 03/09/2026)."""
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        for i, veiculo in enumerate(("G1", "Folha"), 1):
+            con.execute(
+                "INSERT INTO artigos (id, url_norm, url_original, veiculo, "
+                "editoria, titulo, resumo, conteudo, hash_conteudo, "
+                "coletado_em) VALUES (?,?,?,?,'x','t','r','c',?,'hoje')",
+                (i, f"u{i}", f"u{i}", veiculo, f"h{i}"))
+            con.execute(
+                "INSERT INTO extracoes (id, artigo_id, modelo, prompt_versao, "
+                "vocab_versao, tokens_entrada, tokens_saida, custo_usd, "
+                "extraido_em) VALUES (?,?,'m','v',1,0,0,0.0,'t')", (i, i))
+            con.execute(
+                "INSERT INTO triplas (extracao_id, sentenca, sujeito, "
+                "sujeito_canonico, relacao, tipo_relacao, origem) VALUES "
+                "(?,0,'Estados Unidos','Estados Unidos da América',"
+                "'afirmou','evento','EXTRACTED')", (i,))
+        con.commit()
+        aprovados, _ = candidatos(con)
+        assert [c for c, *_ in aprovados] == []
 
 
 class TestPeneiras:

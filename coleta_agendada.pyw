@@ -27,7 +27,7 @@ sys.path.insert(0, str(RAIZ))
 LOG = RAIZ / "data" / "coleta.log"
 LOG.parent.mkdir(exist_ok=True)
 
-with open(LOG, "a", encoding="utf-8") as saida:
+with open(LOG, "a", encoding="utf-8", buffering=1) as saida:
     sys.stdout = saida
     sys.stderr = saida
     print(f"\n===== {datetime.now(timezone.utc).isoformat()} =====")
@@ -35,6 +35,12 @@ with open(LOG, "a", encoding="utf-8") as saida:
     # console (que aqui não existe) e o arquivo já nasce UTF-8.
     from src.collect import coleta_tudo
     codigo = coleta_tudo()
+    except BaseException:  # noqa: BLE001
+        # Traceback com o arquivo AINDA ABERTO: fora do `with` ele iria
+        # para um stderr fechado e sumiria (achado de 03/09/2026).
+        import traceback
+        print(traceback.format_exc())
+        codigo = 1
     print(f"===== fim · exit {codigo} =====")
 
 sys.exit(codigo)
