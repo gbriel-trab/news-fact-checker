@@ -130,10 +130,9 @@ class Tripla(BaseModel):
     tipo_relacao: Literal["evento", "estado"] = Field(
         alias="t",
         description=(
-            "tipo_relacao: 'evento' se afirma algo ocorrido num instante "
-            "(comprou, anunciou, votou) — permanece verdadeiro para sempre. "
-            "'estado' se afirma algo sobre um intervalo (possui, preside, "
-            "integra) — pode deixar de valer."
+            "tipo_relacao: só importa quando relacao='outro'. Nas demais "
+            "o valor é DERIVADO da relação em código e o seu é ignorado. "
+            "'evento' ocorreu num instante; 'estado' vale por um intervalo."
         )
     )
     origem: Literal["e", "i"] = Field(
@@ -526,15 +525,9 @@ Regras que importam mais que as outras:
    INFERRED (og:'i') é o que você deduziu. Distinguir os dois é o ponto
    central deste sistema — marcar dedução como EXTRACTED corrompe o
    resultado em silêncio. Na dúvida, INFERRED.
-
-   Resolver a quem um apelido se refere é DEDUÇÃO, mesmo quando é óbvio:
-
-   Frase:  "Juliana tem 48%, contra 35% do emedebista."
-   Errado: (Gabriel Souza, obteve_percentual_em, ...) EXTRACTED
-   Certo:  (Gabriel Souza, obteve_percentual_em, ...) INFERRED
-
-   O nome não está na frase. Você o recuperou do contexto — isso é INFERRED.
-   Vale para "o emedebista", "o senador amapaense", "a ex-deputada", "ele".
+   Identificar a QUEM um nome se refere NÃO muda og: isso é leitura, não
+   dedução. O sinal de "houve resolução aqui" já está no dado, na
+   diferença entre a forma de superfície e o canônico.
 
 2. ENTIDADE CANÔNICA. Fontes diferentes chamam a mesma entidade de formas
    diferentes. O campo canônico precisa convergir: se duas matérias falam da
@@ -551,7 +544,7 @@ Regras que importam mais que as outras:
    Certo:  Luciano Zucco · Fernando Haddad
 
    Se o nome completo não estiver na matéria, use a forma mais completa que
-   houver e marque a tripla como INFERRED.
+   houver.
 
 3. RELAÇÃO. Escolha uma da lista fechada abaixo. Não existem outros
    valores: o schema recusa qualquer coisa fora dela.

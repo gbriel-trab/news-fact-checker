@@ -311,3 +311,72 @@ def resumo_para_prompt() -> str:
     return "\n".join(
         f"  {r.value:<22} {DEFINICOES[r]}" for r in Relacao
     )
+
+
+TIPO_RELACAO: dict[Relacao, str] = {
+    Relacao.ABRIU_PROCESSO_CONTRA: "evento",
+    Relacao.ADIOU: "evento",
+    Relacao.ADQUIRIU: "evento",
+    Relacao.AFIRMOU: "evento",
+    Relacao.CANDIDATOU_SE_A: "estado",
+    Relacao.CAUSOU: "evento",
+    Relacao.CONCEDEU: "evento",
+    Relacao.CRITICOU: "evento",
+    Relacao.DEFENDEU: "evento",
+    Relacao.DETIDO_EM: "estado",
+    Relacao.DIVULGOU: "evento",
+    Relacao.EDITOU: "evento",
+    Relacao.EXERCE_CARGO_EM: "estado",
+    Relacao.IMPOS: "evento",
+    Relacao.INDICOU: "evento",
+    Relacao.INTEGRA: "estado",
+    Relacao.LANCOU: "evento",
+    Relacao.NEGOCIADA_EM: "estado",
+    Relacao.OBTEVE_PERCENTUAL_EM: "evento",
+    Relacao.OCORREU_EM: "evento",
+    Relacao.OUTRO: "evento",
+    Relacao.PAGOU_A: "evento",
+    Relacao.PARTICIPOU_DE: "evento",
+    Relacao.PRENDEU: "evento",
+    Relacao.PRESIDE: "estado",
+    Relacao.PREVE: "estado",
+    Relacao.RECOMENDOU: "evento",
+    Relacao.REJEITOU: "evento",
+    Relacao.RELATA: "evento",
+    Relacao.RENUNCIOU_A: "evento",
+    Relacao.RETRATA: "estado",
+    Relacao.SOLICITOU: "evento",
+    Relacao.SUBMETEU_A: "evento",
+    Relacao.SUBMETEU_A_VOTACAO: "evento",
+    Relacao.SUSPENDEU: "evento",
+    Relacao.TEM_ATRIBUTO: "estado",
+    Relacao.TEM_PARENTESCO_COM: "estado",
+    Relacao.TEM_PARTICIPACAO_EM: "estado",
+    Relacao.TRAMITA_EM: "estado",
+}
+"""evento ou estado, DERIVADO da relação em vez de perguntado ao modelo.
+
+O prompt nunca definiu os valores — `tipo_relacao` aparece zero vezes nas
+INSTRUCOES, e o modelo só via a descrição do campo e o exemplo. Resultado
+medido em 03/09/2026 sobre 2.984 triplas: DEZ das 39 relações saíram com
+os dois tipos. `tem_atributo` deu 460 estado e 79 evento; `afirmou`, 349
+evento e 2 estado. Não é ambiguidade do mundo, é ruído — o tipo decorre
+da relação e sempre decorreu.
+
+O mapa foi conferido contra o voto majoritário do acervo relação por
+relação: ZERO divergências. Não é palpite, é o que o modelo já fazia na
+maioria das vezes, agora sem as vezes em que não fazia.
+
+`outro` é a exceção e continua vindo do modelo: é a válvula de escape do
+vocabulário, cobre coisas heterogêneas (397 evento, 225 estado) e não há
+o que derivar."""
+
+
+def tipo_de(relacao: str, palpite: str | None = None) -> str:
+    """O tipo da relação. `palpite` (do modelo) só vale para `outro`."""
+    if relacao == Relacao.OUTRO.value:
+        return palpite if palpite in ("evento", "estado") else "evento"
+    try:
+        return TIPO_RELACAO[Relacao(relacao)]
+    except ValueError:
+        return palpite if palpite in ("evento", "estado") else "evento"

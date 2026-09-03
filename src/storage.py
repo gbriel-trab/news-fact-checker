@@ -8,6 +8,8 @@ engano.
 
 import json
 import sqlite3
+
+from . import vocabulario
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -352,7 +354,13 @@ def salva_extracao(conexao: sqlite3.Connection, artigo_id: int, triplas,
             """,
             [
                 (extracao_id, t.sentenca, t.sujeito, t.sujeito_canonico,
-                 t.relacao, t.objeto, t.objeto_canonico, t.tipo_relacao,
+                 t.relacao, t.objeto, t.objeto_canonico,
+                 # DERIVADO da relação, não aceito do modelo (03/09/2026):
+                 # dez das 39 relações saíam com os dois tipos, e o tipo
+                 # decorre da relação. O palpite do modelo só vale para
+                 # `outro`, que é a válvula de escape e não tem o que
+                 # derivar. Ver vocabulario.TIPO_RELACAO.
+                 vocabulario.tipo_de(t.relacao, t.tipo_relacao),
                  # O fio magro fala 'e'/'i'; o banco continua canônico —
                  # o CHECK do esquema e o acervo antigo não mudam.
                  {"e": "EXTRACTED", "i": "INFERRED"}.get(t.origem, t.origem),

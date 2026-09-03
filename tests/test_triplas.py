@@ -124,13 +124,41 @@ class TestIntegridade:
             salva_extracao(conexao, artigo_id(conexao), [ruim],
                            "claude-opus-5", "abc123", 0, USO)
 
-    def test_banco_recusa_tipo_de_relacao_invalido(self, conexao):
-        import sqlite3
+    def test_tipo_de_relacao_e_DERIVADO_nao_aceito(self, conexao):
+        """Desde 03/09/2026 o tipo vem da RELAÇÃO, não do modelo: dez das
+        39 relações saíam com os dois tipos (tem_atributo: 460 estado e
+        79 evento). Lixo do modelo não chega mais ao CHECK do banco
+        porque é corrigido antes — garantia mais forte que rejeitar."""
         ruim = tripla()
         object.__setattr__(ruim, "tipo_relacao", "processo")
+        object.__setattr__(ruim, "relacao", "integra")
+        salva_extracao(conexao, artigo_id(conexao), [ruim],
+                       "claude-opus-5", "abc123", 0, USO)
+        gravado = conexao.execute(
+            "SELECT tipo_relacao FROM triplas").fetchone()[0]
+        assert gravado == "estado", gravado
+
+    def test_o_CHECK_do_banco_continua_de_pe(self, conexao):
+        """A derivação não substitui a guarda do esquema: escrita por
+        fora do salva_extracao ainda tem de ser recusada."""
+        import sqlite3
         with pytest.raises(sqlite3.IntegrityError):
-            salva_extracao(conexao, artigo_id(conexao), [ruim],
-                           "claude-opus-5", "abc123", 0, USO)
+            conexao.execute(
+                "INSERT INTO triplas (extracao_id, sentenca, sujeito, "
+                "sujeito_canonico, relacao, tipo_relacao, origem) "
+                "VALUES (1, 0, 'x', 'x', 'integra', 'processo', "
+                "'EXTRACTED')")
+
+    def test_outro_mantem_o_palpite_do_modelo(self, conexao):
+        """`outro` é a válvula de escape — 397 evento e 225 estado no
+        acervo — e não há o que derivar. É a única exceção."""
+        t = tripla()
+        object.__setattr__(t, "relacao", "outro")
+        object.__setattr__(t, "tipo_relacao", "estado")
+        salva_extracao(conexao, artigo_id(conexao), [t],
+                       "claude-opus-5", "abc123", 0, USO)
+        assert conexao.execute(
+            "SELECT tipo_relacao FROM triplas").fetchone()[0] == "estado"
 
 
 class TestEstatisticas:
