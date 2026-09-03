@@ -293,7 +293,8 @@ class TestSoFatoCustaDinheiro:
             return [Achado(t, 0.4, {"artigo_id": i, "veiculo": v,
                                     "titulo": t, "data": "2026-09-01"})
                     for i, (t, v) in enumerate(
-                        [("a", "G1"), ("b", "Folha"), ("c", "Valor")], 1)]
+                        [("a", "G1"), ("b", "Folha"), ("c", "Valor"),
+                         ("d", "CNN"), ("e", "Estadão")], 1)]
 
         analise = premissas.Analise(premissas=[
             premissas.Premissa(tipo="nao_verificavel", trecho="x",
@@ -322,7 +323,7 @@ class TestSoFatoCustaDinheiro:
         assert buscas == ["uma onda de recuperacoes"], (
             "hipotese repetida, ausente ou de opiniao nao pode buscar")
         assert len(dados["contextos"]) == 1
-        assert dados["contextos"][0].materias == 3
+        assert dados["contextos"][0].materias == 5
         assert custo == 0.0, "contexto nao custa API"
         assert emitidas == 0, "contexto nao pode virar linha de veredito"
 

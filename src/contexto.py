@@ -38,8 +38,16 @@ indexadas), com controle negativo, não escolhidos por gosto:
                   imediatamente" traz ZERO. É o piso onde ruído morre.
     MIN_MATERIAS  a segunda hipótese do C3 trazia UMA matéria, sobre um
     MIN_VEICULOS  empresário preso por homicídio. Um veículo não é acervo
-                  cobrindo assunto, é coincidência de vocabulário — e
-                  corroboração neste projeto sempre se conta por veículo.
+                  cobrindo assunto, é coincidência de vocabulário.
+
+                  Subiu de 3/2 para 5/3 em 03/09/2026, com dois pontos
+                  medidos: "É amigo, nem o grok deu conta" gerou a
+                  hipótese "uma ferramenta de IA não conseguiu resolver
+                  algo... o texto não identifica a tarefa", e o contexto
+                  saiu com 3 matérias em 2 veículos sobre engenharia de
+                  prompt e IA em recrutamento — nada a ver, e no piso
+                  exato. O C19, que é o caso bom, dá 10 matérias em 7
+                  veículos. 5/3 separa os dois com folga dos dois lados.
 
 O que esta saída NÃO faz, e o ARCHITECTURE assume que faria: contar
 ENTIDADES ("7 empresas"). Nada no código extrai nome de empresa de título
@@ -55,8 +63,8 @@ from src import indice
 LIMIAR = 0.75
 """Proximidade mínima. Medido: ver o cabeçalho."""
 
-MIN_MATERIAS = 3
-MIN_VEICULOS = 2
+MIN_MATERIAS = 5
+MIN_VEICULOS = 3
 """Piso para a saída existir. Abaixo disso não é cobertura do acervo."""
 
 QUANTOS = 200

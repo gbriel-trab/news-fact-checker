@@ -48,11 +48,18 @@ class TestPrompt:
         assert "NÃO TRANSCREVA respostas" not in texto
         assert "link do post respondido" in texto
         assert "quem descarta é o programa" in texto
+        # O operador que resolve na ORIGEM, achado pelo usuario em
+        # 03/09/2026: e a diferenca entre x.com/handle (aba Posts) e
+        # x.com/handle/with_replies. O x_search NAO tem parametro para
+        # isso -- a doc lista so allowed/excluded_x_handles, from_date,
+        # to_date e os dois de midia --, mas a query que o modelo monta
+        # aceita a sintaxe de busca do X.
+        assert "-filter:replies" in texto
         assert "TIPO: post | thread | quote | resposta" in texto
         # Cresceu de 832 para ~1.070 com o TIPO obrigatorio, e cresceu
         # certo: e o campo que faz o filtro falhar FECHADO. O teto sobe
         # com o motivo escrito, nao some.
-        assert len(texto) < 1200, f"o prompt voltou a crescer: {len(texto)}"
+        assert len(texto) < 1500, f"o prompt voltou a crescer: {len(texto)}"
 
     def test_corpo_carrega_filtro_e_janela(self):
         from datetime import datetime, timedelta, timezone
