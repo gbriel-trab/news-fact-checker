@@ -231,6 +231,14 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
                 # forcar: sem isso a janela de reuso devolveria o
                 # "sem evidência" que acabou de motivar a extração.
                 saida, nova = _roda_check(p.texto, forcar=True)
+            elif r is not None and r.motivo == "sem_tripla":
+                # Pagou e o acervo não mudou: sem recarregar e sem o
+                # segundo check, que não teria como mudar de veredito.
+                estado["orcamento"] -= r.custo
+                custo_demanda += r.custo
+                partes.append(f"  [DEMANDA] {r.materias} matéria(s) "
+                              f"extraída(s), nenhuma tripla · "
+                              f"US$ {r.custo:.4f} — o acervo não mudou")
             elif r is not None and r.motivo == "teto":
                 partes.append("  [DEMANDA] teto da rodada atingido — "
                               "fica o veredito só com o acervo")

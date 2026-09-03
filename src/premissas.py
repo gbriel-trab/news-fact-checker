@@ -133,12 +133,18 @@ class Premissa(BaseModel):
         return self.afirmacao or self.trecho
 
     @model_validator(mode="after")
-    def _fato_tem_reescrita(self) -> "Premissa":
+    def _reescrita_e_do_fato(self) -> "Premissa":
         # Garantia, não pedido: se o modelo esquecer a reescrita num fato,
         # o trecho literal vira a consulta — perder a premissa paga seria
-        # pior que verificar a frase crua.
+        # pior que verificar a frase crua. E se ele reescrever um NÃO-fato,
+        # a paráfrase cai: era o que fazia "[nao_verificavel] André Esteves
+        # tem um banco" aparecer no boletim como se fosse o post, com o
+        # palpite que a regra 8 manda pôr em `hipotese`.
         if self.tipo == "fato" and not self.afirmacao:
             self.afirmacao = self.trecho
+        if self.tipo != "fato" and self.afirmacao:
+            self.hipotese = self.hipotese or self.afirmacao
+            self.afirmacao = None
         return self
 
 
@@ -148,8 +154,18 @@ class Analise(BaseModel):
 
 # --------------------------------------------------------------- roteador
 
+_EQUIVALENTES = str.maketrans({
+    "“": '"', "”": '"', "„": '"', "‟": '"', "‘": "'", "’": "'", "‛": "'",
+    "—": "-", "–": "-", "‒": "-", "°": "o",
+})
+"""Aspa curva, travessão e sinal de grau viram a forma reta antes de
+comparar: o modelo transcreve o trecho normalizando a tipografia, e sem
+isto a âncora falhava por causa de um caractere — falso negativo
+silencioso, com motivo apontando para a lacuna errada."""
+
+
 def _normaliza(texto: str) -> str:
-    sem_acento = unicodedata.normalize("NFKD", texto)
+    sem_acento = unicodedata.normalize("NFKD", texto.translate(_EQUIVALENTES))
     limpo = "".join(c for c in sem_acento if not unicodedata.combining(c))
     return " ".join(limpo.casefold().split())
 
@@ -159,27 +175,82 @@ _ARTIGOS = frozenset(
     "mas se por para ao aos pelo pela sobre ate até".split())
 _FECHADAS = frozenset(
     "la ali aqui isso isto aquilo nisso disso ele ela eles elas o a "
-    "alguem algo tudo nada".split())
+    "alguem algo tudo nada assim".split())
+_INDEFINIDOS = frozenset(
+    "um uma uns umas algum alguma alguns algumas certo certa varios varias "
+    "outro outra outros outras qualquer".split())
+"""Determinante indefinido no início do valor: "um empresário", "uma
+reunião", "algum lugar". Não identifica nada, e a barreira de pronome
+sozinha não os pegava — passavam com sujeito nomeado."""
+
+_RE_CABECALHO = re.compile(r"^POST\s+\d+[^\n]*\n?", re.MULTILINE)
+_RE_CONTEXTO_ALHEIO = re.compile(
+    r"^\(contexto — (?:palavras do interlocutor|post citado)[^\n]*\n?",
+    re.MULTILINE)
+
+
+def texto_ancoravel(texto: str) -> str:
+    """O que conta como TEXTO DO AUTOR para ancorar um referente.
+
+    Fora: a linha de cabeçalho "POST N (@handle, data):" — senão a data
+    do post ancora como data de ocorrência, e a proibição fica só na
+    prosa da regra 8 — e as linhas de contexto que o `radar` rotula como
+    palavras de OUTRA pessoa (interlocutor, post citado): trecho copiado
+    da fala do terceiro ancorava perfeitamente, e a âncora provava que o
+    pedaço está no texto, não que o autor o afirmou. Dentro: a linha de
+    contexto da própria thread, que é texto do autor (regra 9)."""
+    return _RE_CONTEXTO_ALHEIO.sub("", _RE_CABECALHO.sub("", texto))
 
 
 def _ancorado(ref: Referente | None, texto_norm: str) -> bool:
-    return (ref is not None and bool(ref.trecho.strip())
-            and _normaliza(ref.trecho) in texto_norm)
+    """O trecho aparece literalmente no texto do autor, em fronteira de
+    palavra? Substring crua fazia "ele" ancorar dentro de "eleição", e
+    trecho de uma letra ancorar em qualquer texto."""
+    if ref is None or not ref.trecho.strip():
+        return False
+    alvo = _normaliza(ref.trecho).strip(" .,;:!?\"'()")
+    if len(alvo) < 3:
+        return False
+    return re.search(rf"(?<!\w){re.escape(alvo)}(?!\w)", texto_norm) is not None
 
 
-def _tem_entidade_ou_numero(valor: str) -> bool:
-    """Heurística pré-LLM da barreira: nome próprio (maiúscula que não é
-    artigo), sigla ou número. Não decide sozinha — é o segundo apoio
-    depois das âncoras."""
-    for token in valor.split():
+def _tem_entidade_ou_numero(ref: Referente) -> bool:
+    """Nome próprio, sigla ou número no valor do referente.
+
+    Duas exclusões medidas na revisão de 03/09/2026: token que ABRE o
+    trecho não conta como nome próprio (maiúscula de início de linha —
+    "Banco dele", "Participação societária" vinham do post do
+    "empresário"), e caixa alta com mais de duas letras é ênfase, não
+    sigla ("TODOS os outros empresários"); sigla curta (BC, IPCA, RIOT)
+    continua valendo."""
+    tokens = ref.valor.split()
+    abre_o_trecho = bool(tokens) and ref.trecho.strip().startswith(tokens[0])
+    for i, token in enumerate(tokens):
         limpo = token.strip("\"'(),.;:!?«»")
         if not limpo:
             continue
         if any(c.isdigit() for c in limpo):
             return True
+        if i == 0 and abre_o_trecho:
+            continue
+        if limpo.isupper() and len(limpo) > 2:
+            continue
         if limpo[0].isupper() and limpo.casefold() not in _ARTIGOS:
             return True
     return False
+
+
+def _vazio(ref: Referente) -> bool:
+    """O valor não identifica nada: só pronome/advérbio, ou aberto por
+    determinante indefinido ("um empresário", "algum lugar")."""
+    tokens = [t for t in _normaliza(ref.valor).split() if t not in _ARTIGOS
+              or t in _INDEFINIDOS]
+    if not tokens:
+        return True
+    if tokens[0] in _INDEFINIDOS:
+        return True
+    uteis = [t for t in tokens if t not in _ARTIGOS]
+    return not uteis or all(t in _FECHADAS for t in uteis)
 
 
 def roteia(analise: Analise, texto: str) -> Analise:
@@ -188,44 +259,65 @@ def roteia(analise: Analise, texto: str) -> Analise:
     chamada cara), e cada rebaixamento sai com motivo em `roteado`.
 
     Quatro condições para um fato seguir ao check, todas conferidas
-    contra o texto que o modelo recebeu:
+    contra o TEXTO DO AUTOR (ver `texto_ancoravel`):
 
-    1. `quem` com trecho literal no texto — "cite onde está escrito"
-       no lugar de "não adivinhe".
-    2. `o_que` OU `quando` ancorado: sujeito sozinho não tem o que
-       conferir ("Esteves se encontrou com alguém").
-    3. `o_que` não é só pronome ou advérbio ("André foi lá").
-    4. Entidade nomeada, número ou data de ocorrência em algum lugar:
-       "o empresário" + "um banco" não passa; "desemprego" + "5,3%" passa.
-       Data de janela não conta — só a que ancora num trecho.
+    1. `quem` com trecho literal — "cite onde está escrito" no lugar de
+       "não adivinhe". Artigo inicial não conta contra ("a Selic" ancora
+       em "Selic").
+    2. `o_que` ancorado. Sujeito sozinho não tem o que conferir, e
+       `quando` NÃO substitui: data é qualificador, não referente —
+       "Esteves se encontrou com alguém ontem" confirma qualquer
+       encontro. (A versão anterior deixava a data valer, e como a data
+       do post estava no texto, ela vinha de graça.)
+    3. `o_que` não é vazio: pronome, advérbio ou indefinido ("André foi
+       lá", "Esteves se reuniu com um empresário").
+    4. `o_que` traz entidade nomeada ou número — é ele que sustenta o
+       fato, e o nome do sujeito não pode carregá-lo sozinho.
 
-    Residual conhecido: "o cara tem Banco dele" passa pela heurística 4
-    se o modelo classificar como fato — a primeira barreira ali é o
-    prompt, e o caso C3 do gabarito vigia.
+    O que passa é o que tem QUEM e O QUÊ nomeados no texto do autor. O
+    resto vira nao_verificavel com o motivo na trilha, e o referente
+    rejeitado vai para `hipotese`: rebaixamento errado tem de ser
+    distinguível do certo por quem lê o boletim.
     """
-    norm = _normaliza(texto)
+    norm = _normaliza(texto_ancoravel(texto))
     for p in analise.premissas:
         if p.tipo != "fato":
             continue
-        quando_ok = _ancorado(p.quando, norm)
         if not _ancorado(p.quem, norm):
-            motivo = "sujeito sem âncora literal no texto"
-        elif not _ancorado(p.o_que, norm) and not quando_ok:
-            motivo = "só o sujeito: nenhum o_que nem quando ancorado"
-        elif (p.o_que is not None and not quando_ok and all(
-                t in _FECHADAS for t in _normaliza(p.o_que.valor).split())):
-            motivo = "o_que é pronome ou advérbio: não há o que conferir"
-        elif not (_tem_entidade_ou_numero(p.quem.valor)
-                  or (p.o_que is not None
-                      and _tem_entidade_ou_numero(p.o_que.valor))
-                  or quando_ok):
-            motivo = "sem entidade nomeada, número ou data de ocorrência"
+            motivo = "sujeito sem âncora literal no texto do autor"
+            rejeitado = p.quem
+        elif not _ancorado(p.o_que, norm):
+            motivo = "sem o QUÊ ancorado (data não substitui)"
+            rejeitado = p.o_que
+        elif _vazio(p.o_que):
+            motivo = "o QUÊ é pronome, advérbio ou indefinido"
+            rejeitado = p.o_que
+        elif not _tem_entidade_ou_numero(p.o_que):
+            motivo = "o QUÊ não traz entidade nomeada nem número"
+            rejeitado = p.o_que
         else:
             continue
         p.tipo = "nao_verificavel"
         p.afirmacao = None
         p.roteado = motivo
+        if not p.hipotese and rejeitado is not None:
+            p.hipotese = f"{rejeitado.valor} (referente rejeitado)"
     return analise
+
+
+def versao_roteador() -> str:
+    """Identidade do roteador, que é CÓDIGO e não entra no prompt.
+
+    Sem isto, consertar `roteia` não mudava `PROMPT_VERSAO`, e o boletim
+    seguia reusando separações roteadas pela versão antiga — o freio
+    corrigido não rodaria em nenhum post já separado, sem aviso."""
+    import inspect
+
+    fonte = "".join(inspect.getsource(f) for f in
+                    (roteia, _ancorado, _tem_entidade_ou_numero, _vazio,
+                     _normaliza, texto_ancoravel))
+    material = fonte + repr(sorted(_ARTIGOS | _FECHADAS | _INDEFINIDOS))
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:8]
 
 
 INSTRUCOES = """\
@@ -262,8 +354,14 @@ Regras que importam mais que as outras:
    Errado: "ela subiu 5,9%"
    Certo:  "o lucro da Caixa subiu 5,9% no 2º trimestre de 2026"
 
-   Para previsao, opiniao e relato, OMITA `afirmacao`: o `trecho` literal
-   é o registro, e parafrasear opinião é saída paga repetindo o post.
+   Em previsao, opiniao, relato e nao_verificavel, OMITA `afirmacao`: o
+   `trecho` literal é o registro, e parafrasear é saída paga repetindo o
+   post. O `trecho` é copiar-e-colar do texto, SEMPRE — nunca resolvido,
+   nunca completado; a resolução vive em `valor` e em `afirmacao`.
+
+   Texto:   "Ninguém fala da Caixa. O lucro dela subiu 5,9%."
+   fato:    o lucro da Caixa subiu 5,9%
+            quem {valor "o lucro da Caixa", trecho "O lucro dela"}
 
 4. O TRECHO É LITERAL. Copie do texto, não reescreva. É o que permite conferir
    que a separação não inventou nada.
@@ -299,7 +397,22 @@ Regras que importam mais que as outras:
    encontro", "o cara", "ele" sem antecedente — o tipo é nao_verificavel:
    conferir "ocorreu um encontro" contra um acervo confirma qualquer
    encontro. NÃO adivinhe o referente: o que você desconfia vai em
-   `hipotese`, sem âncora. O nome resolve QUEM; o QUÊ também tem de estar
+   `hipotese`, sem âncora, e NUNCA um nome próprio que o texto não
+   escreveu — `hipotese` é diagnóstico interno, não sai para o leitor.
+
+   RESOLVER não é COMPLETAR, e a diferença decide o `valor`: RESOLVER
+   anáfora cujo antecedente está NO TEXTO é obrigatório ("O lucro dela"
+   → valor "o lucro da Caixa", trecho "O lucro dela"); COMPLETAR além do
+   que o texto escreve é proibido ("André" fica "André"). O `trecho` é a
+   prova: copiar-e-colar, sempre.
+
+   É regra geral só quando o texto TRAZ O MARCADOR — quantificador ou
+   condicional ("sempre que", "toda vez que", "se... então"): aí não
+   afirma que ocorreu, e não é fato. Sem marcador, presente narrando
+   evento singular É ocorrência: "André se reune com Trump" é fato;
+   "Sempre que André se reúne com Trump, o dólar cai" não é.
+
+   O nome resolve QUEM; o QUÊ também tem de estar
    no texto: "André foi lá" é nao_verificavel. Data: só a que o texto dá
    ("ontem" resolvido pelo cabeçalho é ocorrência; a data do post não é).
    Detalhe que falta (o mês de um IPCA) fica faltando. Condicional ou
@@ -319,24 +432,30 @@ Regras que importam mais que as outras:
    Texto:   "O cara tem banco dele, mídia dele, todos no bolso."
    nao_verificavel: (sujeito não identificado; `hipotese` se houver)
 
-9. LINHAS DE CONTEXTO. O texto pode abrir com "(contexto — ...)":
-   "palavras do interlocutor" NÃO são premissa do autor — só o que ele
-   responde é; "post anterior do próprio autor na thread" É texto do
-   autor, mesmas regras; "post citado pelo autor" são palavras de quem ele
-   cita — o que o autor diz sobre elas é premissa, o citado em si não.
+9. O BLOCO E AS LINHAS DE CONTEXTO. O bloco começa por "POST N (@handle,
+   data):" — o handle é o AUTOR (regra 7) e a data é a do post, NUNCA
+   data de ocorrência. Depois dela pode haver linhas "(contexto — ...)",
+   em qualquer posição: "palavras do interlocutor" NÃO são premissa do
+   autor — só o que ele responde é; "post anterior do próprio autor na
+   thread" É texto do autor, mesmas regras; "post citado pelo autor" são
+   palavras de quem ele cita — o que o autor diz sobre elas é premissa, o
+   citado em si não. Nunca copie `trecho` nem ancore referente na linha
+   do interlocutor ou do post citado; da linha de thread própria, pode.
 """
 
 
 def anotacao(p: Premissa) -> str:
-    """O que o leitor da trilha precisa saber além do tipo: por que o
-    roteador rebaixou, e a hipótese do modelo — marcada como não
-    conferida, porque nunca vai ao check."""
-    partes = []
-    if p.roteado:
-        partes.append(f"roteador: {p.roteado}")
-    if p.hipotese:
-        partes.append(f"hipótese não conferida: {p.hipotese}")
-    return f" ({'; '.join(partes)})" if partes else ""
+    """Por que o roteador rebaixou — e SÓ isso.
+
+    A `hipotese` fica fora da tela de propósito (revisão de 03/09/2026):
+    é o único campo do sistema que fabrica um referente que o autor não
+    escreveu, e o texto que gera `nao_verificavel` neste acervo é
+    justamente o acusatório. Exibi-la fazia a ferramenta colar o nome de
+    uma pessoa real a acusações que o post não atribuiu a ninguém, sem
+    fonte — contra "todo veredito carrega a fonte" e contra o princípio 5.
+    Ela continua no banco, para medir se o modelo entendeu o texto: é
+    diagnóstico, não saída para o leitor."""
+    return f" (roteador: {p.roteado})" if p.roteado else ""
 
 
 def versao_prompt() -> str:
@@ -357,7 +476,8 @@ def versao_prompt() -> str:
     material = INSTRUCOES + json.dumps(
         {"schema": Analise.model_json_schema(),
          "modelo": llm.VERIFICACAO.id,
-         "esforco": llm.VERIFICACAO.esforco},
+         "esforco": llm.VERIFICACAO.esforco,
+         "roteador": versao_roteador()},
         sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
 

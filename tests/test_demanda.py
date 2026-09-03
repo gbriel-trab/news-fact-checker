@@ -75,7 +75,11 @@ class TestGarante:
                             pytest.fail("reindexou sem tripla"))
         r = demanda.garante(None, "x", orcamento=demanda.CUSTO_ESTIMADO)
         assert len(chamadas) == 1
-        assert r.motivo == "extraiu" and r.triplas == 0
+        # "sem_tripla", não "extraiu": pagou e o acervo não mudou, então o
+        # chamador não pode recarregar nem pagar o segundo check — ele não
+        # teria como mudar de veredito (revisão de 03/09/2026).
+        assert r.motivo == "sem_tripla" and r.triplas == 0
+        assert r.custo == 0.10
 
     def test_falha_de_indice_nao_vira_falha_de_demanda(self, monkeypatch):
         # Extração PAGA precisa contar como extração mesmo se o Chroma

@@ -200,7 +200,7 @@ class TestRoteador:
     def test_so_sujeito_rebaixa(self):
         p_ = self._fato("O encontro que ocorreu muda o rumo do país.",
                         quem=("o encontro", "O encontro"))
-        assert p_.tipo == "nao_verificavel" and "só o sujeito" in p_.roteado
+        assert p_.tipo == "nao_verificavel" and "QUÊ" in p_.roteado
 
     def test_data_de_janela_nao_ancora(self):
         # "até 01/09/2026" não está no texto: não conta como quando.
@@ -209,16 +209,92 @@ class TestRoteador:
                         quando=("até 01/09/2026", "até 01/09/2026"))
         assert p_.tipo == "nao_verificavel"
 
-    def test_o_que_pronome_rebaixa(self):
+    def test_data_nao_substitui_o_que(self):
+        """A data do POST está no texto que o modelo recebe, então
+        deixá-la valer como segundo apoio era o freio vazando pelo
+        cabeçalho: "O cara tem banco dele" + data do post passava."""
+        texto = ("POST 7 (@perfil_teste, 01 Sep 2026):\n"
+                 "O cara tem banco dele.")
+        p_ = self._fato(texto, quem=("o cara", "O cara"),
+                        quando=("01/09/2026", "01 Sep 2026"))
+        assert p_.tipo == "nao_verificavel"
+
+    def test_cabecalho_do_post_nao_ancora(self):
+        from src.premissas import texto_ancoravel
+        texto = "POST 7 (@perfil_teste, 01 Sep 2026):\nO cara tem banco dele."
+        assert "01 Sep 2026" not in texto_ancoravel(texto)
+        assert "banco dele" in texto_ancoravel(texto)
+
+    def test_fala_do_interlocutor_nao_ancora(self):
+        """Trecho copiado da pergunta do terceiro ancorava perfeitamente,
+        e a âncora provava que o pedaço está no texto — não que o autor o
+        afirmou. A regra 9 passa a existir em código."""
+        from src.premissas import texto_ancoravel
+        texto = ("POST 5 (@perfil_teste, 01/09/2026):\n"
+                 "(contexto — palavras do interlocutor, não do autor do "
+                 "post: (@interlocutor_b): Esse André era estagiário?)\n"
+                 "Convivi com ele.")
+        ancoravel = texto_ancoravel(texto)
+        assert "estagiário" not in ancoravel and "Convivi" in ancoravel
+        p_ = self._fato(texto, quem=("André", "André"),
+                        o_que=("estagiário", "estagiário"))
+        assert p_.tipo == "nao_verificavel"
+
+    def test_thread_propria_continua_ancorando(self):
+        """Regra 9: o post anterior da própria thread É texto do autor."""
+        from src.premissas import texto_ancoravel
+        texto = ("POST 2 (@perfil_teste, 01 Sep 2026):\n"
+                 "(contexto — post anterior do próprio autor na thread: "
+                 "(@perfil_teste): A Selic está em 15%.)\n"
+                 "E vai ficar assim até 2027.")
+        assert "Selic" in texto_ancoravel(texto)
+        p_ = self._fato(texto, quem=("A Selic", "A Selic"),
+                        o_que=("15%", "em 15%"))
+        assert p_.tipo == "fato"
+
+    def test_o_que_pronome_ou_indefinido_rebaixa(self):
         p_ = self._fato("André foi lá e nada mudou.",
                         quem=("André", "André"), o_que=("lá", "lá"))
-        assert p_.tipo == "nao_verificavel" and "pronome" in p_.roteado
+        assert p_.tipo == "nao_verificavel"
+        # Indefinido não é pronome e passava com sujeito nomeado.
+        p2 = self._fato("Esteves se encontrou com um empresário.",
+                        quem=("Esteves", "Esteves"),
+                        o_que=("um empresário", "com um empresário"))
+        assert p2.tipo == "nao_verificavel" and "indefinido" in p2.roteado
 
     def test_sem_entidade_nem_numero_rebaixa(self):
         p_ = self._fato("O empresário tem um banco.",
                         quem=("o empresário", "O empresário"),
                         o_que=("um banco", "um banco"))
-        assert p_.tipo == "nao_verificavel" and "entidade" in p_.roteado
+        assert p_.tipo == "nao_verificavel"
+
+    def test_maiuscula_de_inicio_de_linha_nao_e_nome_proprio(self):
+        """O incidente de US$ 0,36: "Banco dele" abre a linha, e a
+        maiúscula era lida como nome próprio."""
+        texto = "POST 7 (@x, 01 Sep 2026):\nO cara tem:\n\nBanco dele"
+        p_ = self._fato(texto, quem=("o cara", "O cara"),
+                        o_que=("Banco dele", "Banco dele"))
+        assert p_.tipo == "nao_verificavel"
+
+    def test_caixa_alta_e_enfase_nao_sigla(self):
+        texto = "POST 7 (@x, 01 Sep 2026):\nTODOS os outros no bolso."
+        p_ = self._fato(texto, quem=("o cara", "TODOS"),
+                        o_que=("TODOS os outros", "TODOS os outros"))
+        assert p_.tipo == "nao_verificavel"
+
+    def test_ancora_respeita_fronteira_de_palavra(self):
+        """"ele" ancorava dentro de "eleição"."""
+        p_ = self._fato("O encontro muda mais o rumo que eleição.",
+                        quem=("ele", "ele"), o_que=("Trump", "eleição"))
+        assert p_.tipo == "nao_verificavel"
+
+    def test_tipografia_nao_derruba_a_ancora(self):
+        """O modelo transcreve “dizer” como "dizer" — e a âncora falhava
+        por causa de um caractere."""
+        texto = 'POST 2 (@x, 01 Sep 2026):\nA confluência entra para “dizer” se vale.'
+        p_ = self._fato(texto, quem=("A confluência", "A confluência"),
+                        o_que=('Selic 15%', '"dizer" se vale'))
+        assert p_.roteado != "sem o QUÊ ancorado (data não substitui)"
 
     def test_numero_basta_como_segundo_apoio(self):
         p_ = self._fato("Com o desemprego em 5,3%, o Copom não tem escolha.",
@@ -226,11 +302,45 @@ class TestRoteador:
                         o_que=("5,3%", "em 5,3%"))
         assert p_.tipo == "fato"
 
-    def test_data_de_ocorrencia_ancorada_basta(self):
-        texto = "POST 1 (@x, 01 Sep 2026):\nLula jantou ontem em Brasília."
-        p_ = self._fato(texto, quem=("Lula", "Lula"),
-                        quando=("31/08/2026", "ontem"))
-        assert p_.tipo == "fato"
+    def test_data_qualifica_mas_nao_sustenta(self):
+        """Sujeito + data confirma qualquer jantar do Lula; o QUÊ é que
+        sustenta o fato. Com ele, a data entra junto."""
+        texto = ("POST 1 (@x, 01 Sep 2026):\n"
+                 "Lula jantou ontem com 16 empresários em Brasília.")
+        so_data = self._fato(texto, quem=("Lula", "Lula"),
+                             quando=("31/08/2026", "ontem"))
+        assert so_data.tipo == "nao_verificavel"
+        completo = self._fato(texto, quem=("Lula", "Lula"),
+                              o_que=("16 empresários", "16 empresários"),
+                              quando=("31/08/2026", "ontem"))
+        assert completo.tipo == "fato"
+
+    def test_reescrita_de_nao_fato_vira_hipotese(self):
+        """"[nao_verificavel] André Esteves tem um banco" saía no boletim
+        como se fosse o post: o palpite que a regra 8 manda pôr em
+        `hipotese` aparecia como texto."""
+        p_ = Premissa(tipo="nao_verificavel", trecho="Banco dele",
+                      afirmacao="André Esteves tem um banco")
+        assert p_.afirmacao is None
+        assert p_.hipotese == "André Esteves tem um banco"
+        assert p_.texto == "Banco dele"
+
+    def test_versao_do_prompt_inclui_o_roteador(self):
+        """O roteador é código e não entra no prompt: sem ele no hash,
+        consertá-lo não invalidava as separações em cache, e o freio
+        corrigido não rodaria em nenhum post já separado."""
+        from src.premissas import versao_roteador
+        import json
+        from src import llm
+        from src.premissas import INSTRUCOES as I
+        v = versao_roteador()
+        material = I + json.dumps(
+            {"schema": Analise.model_json_schema(), "modelo": llm.VERIFICACAO.id,
+             "esforco": llm.VERIFICACAO.esforco, "roteador": v},
+            sort_keys=True, ensure_ascii=False)
+        import hashlib
+        assert len(v) == 8
+        assert hashlib.sha256(material.encode("utf-8")).hexdigest()[:12] ==             PROMPT_VERSAO
 
     def test_nao_fato_nao_e_tocado(self):
         from src.premissas import roteia

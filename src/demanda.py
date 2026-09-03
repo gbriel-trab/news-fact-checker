@@ -74,7 +74,7 @@ comporta MAIS UMA extração; o custo real vem da fatura da chamada."""
 class Resultado:
     """O que uma volta do ciclo fez, e por quê."""
 
-    motivo: str  # "sem_candidata" | "teto" | "extraiu"
+    motivo: str  # "sem_candidata" | "teto" | "extraiu" | "sem_tripla"
     materias: int
     triplas: int
     custo: float
@@ -176,6 +176,12 @@ def garante(conexao: sqlite3.Connection, texto: str,
         t2, c2, _ = extract.extrai_grupo(conexao, grupo[:1])
         triplas += t2
         custo += c2
+    if not triplas:
+        # Extraiu e não rendeu: o chamador não pode tratar como sucesso —
+        # recarregar o acervo e pagar um segundo check com `forcar` sobre
+        # um acervo que não ganhou uma tripla sequer é gasto garantido
+        # sem chance de mudar o veredito (revisão de 03/09/2026).
+        return Resultado("sem_tripla", len(grupo), 0, custo)
     if triplas:
         # O check tem duas rotas: a por chave lê o grafo direto do banco,
         # mas a vetorial só enxerga o que o índice tem. Só as matérias do
@@ -234,6 +240,8 @@ def main() -> None:
         r = garante(conexao, args.afirmacao)
         rotulos = {
             "sem_candidata": "nenhuma matéria coletada passa do piso",
+            "sem_tripla": (f"{r.materias} matéria(s) extraída(s), NENHUMA "
+                           f"tripla · US$ {r.custo:.4f} — o acervo não mudou"),
             "teto": "orçamento insuficiente para extrair",
             "extraiu": (f"{r.materias} matéria(s) extraída(s), "
                         f"{r.triplas} triplas · US$ {r.custo:.4f}"),

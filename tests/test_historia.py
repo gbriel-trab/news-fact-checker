@@ -255,3 +255,58 @@ class TestVersionamento:
     def test_o_corte_entra_na_versao_de_historia(self):
         versoes = {extract.versao_prompt_historia(v) for v in (3, 5, None)}
         assert len(versoes) == 3
+
+
+class TestVazioNaoApagaTriplaBoa:
+    """História que GANHA um membro é re-extraída inteira; se a chamada
+    volta mesma_historia=false, o DELETE incondicional apagava as triplas
+    boas dos membros antigos e punha um marcador vazio no lugar — o par
+    corroborado que o modo história existe para produzir morria junto
+    (achado da revisão de 03/09/2026). Marcador vazio só substitui
+    marcador vazio."""
+
+    def _linha(self, con, artigo_id):
+        con.execute(
+            "INSERT INTO artigos (id, url_norm, url_original, veiculo, "
+            "editoria, titulo, resumo, conteudo, hash_conteudo, coletado_em) "
+            "VALUES (?, ?, ?, 'G1', 'x', 't', 'r', 'c', ?, 'hoje')",
+            (artigo_id, f"u{artigo_id}", f"u{artigo_id}", f"h{artigo_id}"))
+        con.commit()
+        return con.execute("SELECT * FROM artigos WHERE id = ?",
+                           (artigo_id,)).fetchone()
+
+    def test_extracao_com_tripla_sobrevive_a_recusa(self, tmp_path):
+        from src import extract, llm
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        linha = self._linha(con, 1)
+        versao = extract.PROMPT_VERSAO_HISTORIA
+        uso = llm.Uso(modelo=llm.EXTRACAO, entrada=1, saida=1,
+                      cache_leitura=0, cache_escrita=0)
+        tripla = extract.TriplaHistoria(sc="Braskem", r="solicitou",
+                                        oc="recuperação", t="evento",
+                                        og="e", fs=["A0"])
+        extract.salva_historia(con, [(linha, ["s"])], [tripla], uso, versao)
+        antes = con.execute("SELECT COUNT(*) FROM triplas").fetchone()[0]
+        assert antes == 1
+
+        # A mesma matéria volta num grupo que o modelo recusa.
+        extract.salva_historia(con, [(linha, ["s"])], [], uso, versao,
+                               recusada=True)
+        assert con.execute("SELECT COUNT(*) FROM triplas").fetchone()[0] == 1
+        assert not con.execute(
+            "SELECT COALESCE(recusada, 0) FROM extracoes").fetchone()[0]
+
+    def test_marcador_vazio_substitui_marcador_vazio(self, tmp_path):
+        from src import extract, llm
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        linha = self._linha(con, 2)
+        versao = extract.PROMPT_VERSAO_HISTORIA
+        uso = llm.Uso(modelo=llm.EXTRACAO, entrada=1, saida=1,
+                      cache_leitura=0, cache_escrita=0)
+        extract.salva_historia(con, [(linha, ["s"])], [], uso, versao)
+        extract.salva_historia(con, [(linha, ["s"])], [], uso, versao,
+                               recusada=True)
+        linhas = con.execute("SELECT recusada FROM extracoes").fetchall()
+        assert len(linhas) == 1 and linhas[0]["recusada"] == 1

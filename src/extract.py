@@ -427,20 +427,32 @@ def salva_historia(conexao: sqlite3.Connection,
     matéria, porque lá o gasto não tem teto por premissa."""
     n = len(blocos)
     for i, (rotulo, (linha, _)) in enumerate(zip(ROTULOS_FONTE, blocos)):
-        # História que ganhou membro novo é re-extraída inteira (é a
-        # releitura que faz os nomes convergirem) — a linha anterior da
-        # MESMA versão sai antes, senão a UNIQUE derruba a rodada. A
-        # substituição é explícita e restrita à versão de história: o
-        # UNIQUE continua protegendo contra pagamento duplo acidental.
-        conexao.execute(
-            "DELETE FROM extracoes WHERE artigo_id = ? AND modelo = ? "
-            "AND prompt_versao = ?",
-            (linha["id"], llm.EXTRACAO.id, prompt_versao))
         do_artigo = [
             _tripla_da_fonte(t, par[1])
             for t in triplas for par in map(_parse_origem, t.origens)
             if par and par[0] == rotulo
         ]
+        # História que ganhou membro novo é re-extraída inteira (é a
+        # releitura que faz os nomes convergirem) — a linha anterior da
+        # MESMA versão sai antes, senão a UNIQUE derruba a rodada. A
+        # substituição é explícita e restrita à versão de história: o
+        # UNIQUE continua protegendo contra pagamento duplo acidental.
+        #
+        # MAS marcador vazio só substitui marcador vazio (03/09/2026):
+        # o DELETE incondicional apagava as triplas boas de um artigo
+        # quando a história GANHAVA um membro que sujava o grupo — a
+        # chamada voltava mesma_historia=false e o par corroborado, que
+        # o modo história existe para produzir, morria junto. A guarda
+        # "vazio não supera tripla" do grafo escolhe entre linhas que
+        # EXISTEM; aqui a linha boa era apagada fisicamente.
+        if not do_artigo and _tem_tripla(conexao, linha["id"], prompt_versao):
+            print(f"  mantida a extração anterior de {linha['id']}: a nova "
+                  f"veio vazia e a antiga tem triplas")
+            continue
+        conexao.execute(
+            "DELETE FROM extracoes WHERE artigo_id = ? AND modelo = ? "
+            "AND prompt_versao = ?",
+            (linha["id"], llm.EXTRACAO.id, prompt_versao))
         # Último leva o resto da divisão: a soma dos rateios = fatura.
         rateio = llm.Uso(
             modelo=uso.modelo,
@@ -912,8 +924,12 @@ def extrai_grupo(conexao: sqlite3.Connection,
 
     resultado = extrai_historia(blocos)
     if not resultado.dados.mesma_historia:
+        # Grupo de UM não tem agrupamento para estar errado: ali
+        # mesma_historia=false diz que a matéria não rendeu, não que o
+        # grupo sujou — marcá-la de recusada a tornaria eternamente
+        # recomprável pela demanda (revisão de 03/09/2026).
         salva_historia(conexao, blocos, [], resultado.uso,
-                       PROMPT_VERSAO_HISTORIA, recusada=True)
+                       PROMPT_VERSAO_HISTORIA, recusada=len(blocos) > 1)
         return 0, resultado.uso.custo, True
 
     n_sentencas = {ROTULOS_FONTE[i]: len(s) for i, (_, s) in enumerate(blocos)}
@@ -923,6 +939,16 @@ def extrai_grupo(conexao: sqlite3.Connection,
     salva_historia(conexao, blocos, validas, resultado.uso,
                    PROMPT_VERSAO_HISTORIA)
     return len(validas), resultado.uso.custo, False
+
+
+def _tem_tripla(conexao: sqlite3.Connection, artigo_id: int,
+                prompt_versao: str) -> bool:
+    """O artigo já tem extração NÃO-VAZIA nesta versão de prompt?"""
+    return conexao.execute(
+        "SELECT COUNT(*) FROM extracoes e WHERE e.artigo_id = ? "
+        "AND e.modelo = ? AND e.prompt_versao = ? AND EXISTS "
+        "(SELECT 1 FROM triplas t WHERE t.extracao_id = e.id)",
+        (artigo_id, llm.EXTRACAO.id, prompt_versao)).fetchone()[0] > 0
 
 
 def _reindexa(conexao: sqlite3.Connection, ids: list[int]) -> None:
