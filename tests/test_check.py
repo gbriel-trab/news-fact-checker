@@ -405,3 +405,35 @@ class TestStorage:
         retida, normal = con.execute(
             "SELECT * FROM consultas ORDER BY id").fetchall()
         assert _retida(retida) and not _retida(normal)
+
+
+class TestApoioFragil:
+    """O aviso de 03/09/2026, aprovado como AVISO e nao como mudanca de
+    contagem: liveblog continua valendo veiculo (decisao do usuario), mas
+    o leitor precisa saber quando a confirmacao inteira se apoia num link
+    que nao mostra o fato."""
+
+    LIVE = {"url": "https://redir.folha.com.br/x/*https://aovivo.folha.uol"
+                   ".com.br/mercado/2026/08/01/6556-dolar.shtml"}
+    FIRME = {"url": "https://g1.globo.com/economia/noticia/2026/08/26/rj.ghtml"}
+
+    def test_dois_veiculos_com_um_ao_vivo_avisa(self):
+        from src.check import apoio_fragil
+        assert apoio_fragil([self.FIRME, self.LIVE], {"G1", "Folha"})
+
+    def test_dois_veiculos_firmes_nao_avisam(self):
+        """O pareado que nao pode virar alarme constante."""
+        from src.check import apoio_fragil
+        assert not apoio_fragil([self.FIRME, self.FIRME], {"G1", "Valor"})
+
+    def test_tres_veiculos_nao_avisam_mesmo_com_ao_vivo(self):
+        """Com tres, sobra corroboracao que se sustenta sozinha — o
+        aviso e para o caso ESTREITO, senao vira ruido e se ignora."""
+        from src.check import apoio_fragil
+        assert not apoio_fragil([self.FIRME, self.FIRME, self.LIVE],
+                                {"G1", "Valor", "Folha"})
+
+    def test_um_veiculo_nao_entra_aqui(self):
+        """Um veiculo ja tem o aviso proprio, de antes."""
+        from src.check import apoio_fragil
+        assert not apoio_fragil([self.LIVE], {"Folha"})

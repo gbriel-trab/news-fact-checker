@@ -1101,6 +1101,43 @@ INSTITUIÇÃO, não contra a cobertura de imprensa. O jornal é intermediário, 
 intermediário arredonda. Isso ainda não existe e é o argumento mais forte a
 favor dos feeds de fonte primária.
 
+### O que o acervo NÃO prova sozinho
+
+Três correções de 03/09/2026, todas achadas conferindo a saída, não o código:
+
+**Liveblog.** 153 dos 12.282 artigos são páginas rolantes — cobertura ao vivo
+de mercado, minuto a minuto. O problema é triplo: o link não mostra o fato (o
+leitor tem de rolar até a entrada); a mesma URL é recoletada sem parar e vira
+N "matérias" (o Ibovespa ao vivo do InfoMoney está 31 vezes no acervo); e a
+`data_publicacao` é a de ABERTURA da cobertura, não a do fato.
+
+`normalize.e_live` detecta pelo caminho da URL. A fonte sai marcada **live
+search** no boletim. A CONTAGEM de veículos não muda — decisão explícita: o
+fato é real e o veículo realmente o publicou. Mas quando são EXATAMENTE dois
+veículos e um é liveblog, o critério do AC1 passa a se apoiar num link que
+não sustenta o fato sozinho, e aí `check.apoio_fragil` avisa. Com três ou
+mais sobra corroboração; com um, o aviso antigo já cobria. Medido: 7
+confirmações têm dois veículos e nenhuma tem liveblog hoje — mas nove
+veículos publicam liveblog no acervo.
+
+**Veredito sem fonte.** `consultas` guardava `citadas` como CONTAGEM, e o
+boletim raspava as evidências do STDOUT do check. No reuso o check não
+imprime nada disso, então um CONFIRMADO de 24h atrás voltava com "4 veículos"
+e nenhum link. O princípio 2 valia na hora de imprimir, não no arquivo.
+Coluna `evidencias` com (veículo, título, url, data) do que o JUIZ citou,
+deduplicada por URL — uma matéria rende várias triplas e o juiz cita mais de
+uma, e sem isso o boletim mostrava "2 veículos" com quatro linhas.
+
+**Resposta a terceiro.** O prompt do radar manda ignorá-las desde 01/09 e o
+modelo transcrevia assim mesmo: das 14 entradas de 31/08, 3 eram posts e 11
+eram respostas, quase todas ao @grok e várias sem uma palavra do autor.
+`radar.resposta_a_terceiro` descarta em CÓDIGO, antes de custar separação,
+check e demanda, e CONTA o descarte nas notas da rodada. Compara handle por
+PREFIXO nos dois sentidos porque `boletim_posts.resumo` guarda `resumo[:120]`
+e o handle chega cortado — exigir o parêntese de fechamento fazia a barreira
+falhar ABERTO. O que fica: post próprio, quote, e continuação de thread
+própria (o C25 depende dela).
+
 ## Princípios de projeto
 
 Funcionalidade nova que contrarie qualquer um destes está errada, ou exige

@@ -34,7 +34,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from pydantic.json_schema import SkipJsonSchema
 
-from . import apelidos, config, grafo, indice, llm, vocabulario
+from . import apelidos, config, grafo, indice, llm, normalize, vocabulario
 from .canonico import chave_canonica
 from .storage import conecta, salva_consulta
 from .vocabulario import Relacao
@@ -739,6 +739,9 @@ def verifica(texto: str, verboso: bool = False,
 
     if len(veiculos) == 1 and julgamento.veredito != "sem_evidencia":
         print("\n  ATENÇÃO: um veículo só. Sem confirmação independente.")
+    elif apoio_fragil(_fontes_citadas(citadas), veiculos):
+        print("\n  ATENCAO: dois veiculos, e um deles e pagina "
+              "ao vivo - o link nao mostra o fato sozinho.")
 
     print(f"\n  {len(evidencias)} candidatas recuperadas · "
           f"custo US$ {uso1.custo + uso2.custo:.4f}")
@@ -753,6 +756,29 @@ def verifica(texto: str, verboso: bool = False,
                        # do que foi recuperado. É o que o princípio 2
                        # exige poder mostrar de novo depois.
                        evidencias=_fontes_citadas(citadas))
+
+
+def apoio_fragil(fontes: list, veiculos) -> bool:
+    """Confirmação de EXATAMENTE dois veículos com um deles em liveblog.
+
+    A CONTAGEM não muda — decisão do usuário em 03/09/2026, e ela é
+    defensável: o fato é real e o veículo realmente o publicou. O que não
+    é defensável é o leitor não saber.
+
+    O caso perigoso é estreito, e por isso é o único que avisa: com dois
+    veículos o critério do AC1 ("confirmado por duas fontes
+    independentes") passa a se apoiar num link que não mostra o fato — é
+    preciso rolar a página até achar a entrada. Com três ou mais sobra
+    corroboração que se sustenta sozinha; com um, o aviso que já existia
+    cobre.
+
+    Medido em 03/09/2026: 7 confirmações têm exatamente dois veículos e
+    NENHUMA tem liveblog hoje. Mas nove veículos publicam liveblog no
+    acervo (InfoMoney 63, Folha 25, G1 20) — é questão de tempo."""
+    if len(veiculos) != 2:
+        return False
+    return any(normalize.e_live(f.get("url", "")) for f in fontes)
+
 
 
 def _fontes_citadas(citadas) -> list[dict]:
