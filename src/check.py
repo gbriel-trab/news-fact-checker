@@ -748,7 +748,15 @@ def verifica(texto: str, verboso: bool = False,
                        julgamento.justificativa, len(evidencias),
                        len(citadas), len(veiculos), llm.VERIFICACAO.id,
                        uso1.custo + uso2.custo, prompt_versao=PROMPT_VERSAO,
-                       retida=julgamento.retida)
+                       retida=julgamento.retida,
+                       # (veículo, título, url) do que o JUIZ citou — não
+                       # do que foi recuperado. É o que o princípio 2
+                       # exige poder mostrar de novo depois.
+                       evidencias=[
+                           {"veiculo": a.meta.get("veiculo", ""),
+                            "titulo": a.meta.get("titulo", ""),
+                            "url": a.meta.get("url", "")}
+                           for a in citadas])
 
 
 def main() -> None:

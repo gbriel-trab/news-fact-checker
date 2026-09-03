@@ -108,6 +108,25 @@ def _marca_entregue(conexao, hash_: str, resumo: str) -> None:
     conexao.commit()
 
 
+def _evidencias_gravadas(linha) -> list[tuple[str, str]]:
+    """(veículo, url) do que o juiz citou, lido da coluna `evidencias`.
+
+    Existe porque veredito reusado precisa poder mostrar a fonte de novo:
+    até 03/09/2026 `consultas` guardava só a CONTAGEM de citadas, e o
+    princípio 2 valia na hora de imprimir, não no arquivo."""
+    import json as _json
+    try:
+        bruto = linha["evidencias"]
+    except (IndexError, KeyError, TypeError):
+        return []
+    try:
+        itens = _json.loads(bruto or "[]")
+    except (ValueError, TypeError):
+        return []
+    return [(i.get("veiculo", ""), i.get("url", ""))
+            for i in itens if isinstance(i, dict) and i.get("url")]
+
+
 def _retida(linha) -> bool:
     """A consulta é confirmação retida pelo freio de alinhamento? Linha
     antiga não tem a coluna — vale False, que é o comportamento de antes."""
@@ -272,6 +291,14 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
                               "fica o veredito só com o acervo")
         partes.append(f'  premissa: "{p.texto}"')
         evidencias = _RE_EVIDENCIA.findall(saida.getvalue())
+        # Raspar o stdout só funciona quando o check RODOU. No reuso ele
+        # imprime "veredito gravado nas últimas 24h" e nada mais, então a
+        # lista vinha vazia e o boletim mostrava "CONFIRMADO · 4
+        # veículos" sem um link — veredito sem fonte, contra o princípio
+        # 2. A coluna `evidencias` é a reserva; linha antiga não a tem e
+        # vale lista vazia, que é o comportamento de antes.
+        if not evidencias and nova is not None:
+            evidencias = _evidencias_gravadas(nova)
         dados["checks"].append({
             "afirmacao": p.texto,
             "veredito": nova["veredito"] if nova else "sem_evidencia",

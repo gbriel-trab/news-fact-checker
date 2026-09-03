@@ -6,6 +6,7 @@ banco em vez de lógica na aplicação, o que a torna difícil de burlar por
 engano.
 """
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -193,6 +194,13 @@ MIGRACOES: tuple[tuple[str, str], ...] = (
     # anterior: a matéria voltava ao mercado para sempre. O contador
     # sobrevive ao DELETE porque é lido ANTES dele e regravado depois.
     ("extracoes", "recusas INTEGER"),
+    # As FONTES do veredito (03/09/2026). A tabela guardava `citadas` como
+    # CONTAGEM, então um veredito reusado voltava sem uma fonte sequer —
+    # e o princípio 2 diz que todo veredito carrega a fonte. Valia na
+    # hora de imprimir e não no arquivo: descoberto ao montar um digest a
+    # partir do que já estava gravado, que saiu com "CONFIRMADO · 4
+    # veículos" e nenhum link.
+    ("consultas", "evidencias TEXT"),
 )
 
 
@@ -360,7 +368,8 @@ def salva_consulta(conexao: sqlite3.Connection, afirmacao: str, veredito: str,
                    justificativa: str, candidatas: int, citadas: int,
                    veiculos: int, modelo: str, custo: float,
                    prompt_versao: str | None = None,
-                   retida: bool = False) -> int:
+                   retida: bool = False,
+                   evidencias: list | None = None) -> int:
     """Grava a consulta e o veredito. Devolve o id.
 
     `retida` distingue 'sem evidência porque o acervo não cobre' de
@@ -370,12 +379,14 @@ def salva_consulta(conexao: sqlite3.Connection, afirmacao: str, veredito: str,
         """
         INSERT INTO consultas (afirmacao, veredito, justificativa, candidatas,
                                citadas, veiculos, modelo, custo_usd,
-                               consultado_em, prompt_versao, retida)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               consultado_em, prompt_versao, retida,
+                               evidencias)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (afirmacao, veredito, justificativa, candidatas, citadas, veiculos,
          modelo, custo, datetime.now(timezone.utc).isoformat(),
-         prompt_versao, int(retida)),
+         prompt_versao, int(retida),
+         json.dumps(evidencias or [], ensure_ascii=False)),
     )
     conexao.commit()
     return cursor.lastrowid
