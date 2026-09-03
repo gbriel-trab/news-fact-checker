@@ -150,7 +150,7 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
     DURANTE esta função (id > marco) mais o custo faturado das extrações
     de demanda; veredito reusado não grava e não soma.
     """
-    from . import check, demanda, grafo, premissas, radar
+    from . import check, contexto, demanda, grafo, premissas, radar
 
     marco = conexao.execute(
         "SELECT COALESCE(MAX(id), 0) FROM consultas").fetchone()[0]
@@ -161,12 +161,13 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
                                     conexao=conexao)
     partes: list[str] = []
     custo_demanda = 0.0
-    dados: dict = {"nao_verificaveis": [], "checks": [],
+    dados: dict = {"nao_verificaveis": [], "checks": [], "contextos": [],
                    "sem_premissas": not analise.premissas}
 
     resto = [p for p in analise.premissas if p.tipo != "fato"]
     fatos = [p for p in analise.premissas if p.tipo == "fato"]
 
+    vistos: set[str] = set()
     for p in resto:
         # p.texto: desde a evolução de 01/09/2026 o separador só reescreve
         # FATO; aqui vem o trecho literal do post — que é o que o leitor
@@ -175,6 +176,27 @@ def _confere_post(post: str, conexao, estado: dict) -> tuple[str, float, dict]:
         partes.append(f"  [{p.tipo}] {p.texto} — nada a conferir"
                       f"{premissas.anotacao(p)}")
         dados["nao_verificaveis"].append((p.tipo, p.texto))
+
+        # A QUARTA SAÍDA. Só para `nao_verificavel`, e buscando pela
+        # HIPOTESE — o assunto que o separador já nomeou —, nunca pelo
+        # texto do post: medido em 03/09/2026, buscar pelo post trazia 200
+        # matérias e 13 veículos para o C3, sobre assunto nenhum. Ver
+        # src/contexto.py. Contexto NÃO é veredito: não vai a `consultas`,
+        # não conta como corroboração e não dispara demanda.
+        if (p.tipo != "nao_verificavel" or not p.hipotese
+                or p.hipotese in vistos
+                or estado.get("buscas_contexto", 0)
+                >= contexto.TETO_POR_RODADA):
+            continue
+        vistos.add(p.hipotese)
+        estado["buscas_contexto"] = estado.get("buscas_contexto", 0) + 1
+        achado = contexto.do_assunto(p.hipotese,
+                                     buscar=estado.get("buscar_contexto"))
+        if achado:
+            partes.append(f"        → {contexto.linha(achado)}")
+            for veiculo, titulo in achado.amostra:
+                partes.append(f"          · {veiculo}: {titulo}")
+            dados["contextos"].append(achado)
 
     def _roda_check(afirmacao: str, forcar: bool):
         """Um check capturado + a linha de consulta que ele produziu."""
@@ -431,7 +453,7 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
     post inteiro de novo logo abaixo dele; num post de análise, a
     mensagem dobrada, frase a frase. O tipo continua nomeado (opinião e
     relato não são descarte, são o texto); o trecho fica no arquivo."""
-    from . import radar
+    from . import contexto, radar
 
     def tag(texto: str) -> str:
         return f"<code>[{texto}]</code>"
@@ -484,6 +506,15 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
         if dados["nao_verificaveis"]:
             p.append(f"{tag(_conta_tipos(dados['nao_verificaveis']))} "
                      "nada a conferir")
+        # [ACERVO], e não [CONTEXTO]: esse rótulo já significa "EM
+        # RESPOSTA A" aqui em cima. O texto descreve o ACERVO, nunca a
+        # premissa — nada de "confirmado", nada de contagem de veículo
+        # apresentada como corroboração do que o post insinua.
+        for c in dados.get("contextos", []):
+            fontes = " · ".join(_esc(v) for v, _ in c.amostra)
+            p.append(f"{tag('ACERVO')} {_esc(c.assunto)} — "
+                     f"{_esc(contexto.linha(c))}"
+                     + (f" · <i>{fontes}</i>" if fontes else ""))
         for c in dados["checks"]:
             rotulo = _TAG_VEREDITO.get(c["veredito"], c["veredito"].upper())
             if c.get("demanda"):

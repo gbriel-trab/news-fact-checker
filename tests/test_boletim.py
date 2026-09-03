@@ -14,6 +14,9 @@ from src.check import consulta_recente
 from src.storage import conecta, salva_consulta
 
 
+POST_DE_TESTE = "POST 1 (@x, 01 Sep 2026):\nqualquer coisa."
+
+
 def _banco(tmp_path):
     return conecta(tmp_path / "t.db")
 
@@ -268,6 +271,80 @@ class TestSoFatoCustaDinheiro:
         assert chamadas == [], "check chamado para premissa que não é fato"
         assert dados["checks"] == [] and custo == 0.0
         assert len(dados["nao_verificaveis"]) == 4
+
+
+    def test_contexto_so_para_nao_verificavel_e_com_teto(self, monkeypatch,
+                                                         tmp_path):
+        """A quarta saída não pode virar a porta dos fundos: só
+        `nao_verificavel` COM hipótese busca contexto, hipótese repetida
+        busca uma vez só, e nada disso vira linha de veredito. A busca é
+        INJETADA — sem isso o teste leria a coleção de PRODUÇÃO e mudaria
+        de resultado com o acervo do dia."""
+        from src import boletim, check, demanda, premissas
+        from src.indice import Achado
+        from src.storage import conecta
+
+        buscas = []
+
+        def buscar(colecao, texto, quantos):
+            buscas.append(texto)
+            return [Achado(t, 0.4, {"artigo_id": i, "veiculo": v,
+                                    "titulo": t, "data": "2026-09-01"})
+                    for i, (t, v) in enumerate(
+                        [("a", "G1"), ("b", "Folha"), ("c", "Valor")], 1)]
+
+        analise = premissas.Analise(premissas=[
+            premissas.Premissa(tipo="nao_verificavel", trecho="x",
+                               hipotese="uma onda de recuperacoes"),
+            premissas.Premissa(tipo="nao_verificavel", trecho="y",
+                               hipotese="uma onda de recuperacoes"),
+            premissas.Premissa(tipo="nao_verificavel", trecho="z"),
+            premissas.Premissa(tipo="opiniao", trecho="w",
+                               hipotese="opiniao nao busca"),
+        ])
+        monkeypatch.setattr(premissas, "separa",
+                            lambda *a, **k: (analise, _uso_zero()))
+        monkeypatch.setattr(check, "verifica",
+                            lambda *a, **k: pytest.fail("check sem fato"))
+        monkeypatch.setattr(demanda, "garante",
+                            lambda *a, **k: pytest.fail("demanda sem fato"))
+
+        con = conecta(tmp_path / "t.db")
+        _, custo, dados = boletim._confere_post(
+            POST_DE_TESTE, con,
+            {"acervo": [], "orcamento": 1.0, "buscar_contexto": buscar})
+        emitidas = con.execute(
+            "SELECT COUNT(*) FROM consultas").fetchone()[0]
+        con.close()
+
+        assert buscas == ["uma onda de recuperacoes"], (
+            "hipotese repetida, ausente ou de opiniao nao pode buscar")
+        assert len(dados["contextos"]) == 1
+        assert dados["contextos"][0].materias == 3
+        assert custo == 0.0, "contexto nao custa API"
+        assert emitidas == 0, "contexto nao pode virar linha de veredito"
+
+    def test_teto_de_buscas_de_contexto_por_rodada(self, monkeypatch,
+                                                   tmp_path):
+        """O ARCHITECTURE pede teto próprio para a quarta saída."""
+        from src import boletim, contexto, premissas
+        from src.storage import conecta
+
+        buscas = []
+        analise = premissas.Analise(premissas=[
+            premissas.Premissa(tipo="nao_verificavel", trecho="t%d" % i,
+                               hipotese="assunto %d" % i)
+            for i in range(contexto.TETO_POR_RODADA + 3)])
+        monkeypatch.setattr(premissas, "separa",
+                            lambda *a, **k: (analise, _uso_zero()))
+
+        con = conecta(tmp_path / "t.db")
+        boletim._confere_post(
+            POST_DE_TESTE, con,
+            {"acervo": [], "orcamento": 1.0,
+             "buscar_contexto": lambda c, t, q: buscas.append(t) or []})
+        con.close()
+        assert len(buscas) == contexto.TETO_POR_RODADA
 
 
 def _uso_zero():

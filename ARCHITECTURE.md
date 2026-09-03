@@ -309,7 +309,7 @@ grupo errado; agora leva a marca `recusada` e volta a ser elegível.
 
 ### A quarta saída: contexto, quando não há premissa para conferir
 
-Direção aceita em 03/09/2026, não implementada. Nasce de um post real:
+Implementada em 03/09/2026 (`src/contexto.py`). Nasce de um post real:
 
 > "Alguém consegue ainda manter as contas de quantas recuperações judiciais
 > estão acontecendo em marcas icônicas? Devem ser só as icônicas né? As que
@@ -334,10 +334,47 @@ confirmar; e não é `sem evidência`, porque o acervo cobre. É uma terceira
 resposta:
 
 ```
-o autor insinua uma onda de recuperações judiciais
-  → o acervo registra 31 matérias, 7 empresas, 6 veículos (24/08 a 03/09)
-  → Estadão, 01/09: "Estoque de empresas em recuperação judicial é recorde"
+[ACERVO] o autor sugere que há um número alto de recuperações judiciais em
+         curso, mas não identifica quais empresas ou marcas
+         — o acervo registra 15 matérias em 7 veículos (26/08 a 02/09)
+         · InfoMoney · G1 · Folha
 ```
+
+Duas coisas mudaram do rascunho acima para o que foi construído, e as duas
+são correções, não simplificações:
+
+**O assunto vem da `hipotese`, não do texto do post.** Medido em 03/09/2026
+sobre o acervo de 8.644 matérias:
+
+|busca|C19 (recuperações)|C3 ("o cara tem: banco dele")|
+|-|-|-|
+|pelo TEXTO do post|14 matérias, 5 veículos|**200 matérias, 13 veículos**|
+|pela HIPOTESE|15 matérias, 7 veículos|**0 matérias**|
+
+Post longo casa com o acervo inteiro. Buscando pelo texto, o C3 trazia 200
+matérias e os primeiros achados eram sobre golpistas com IA e propaganda
+eleitoral — nada a ver com o post. Publicar "o acervo registra 200 matérias"
+ali seria dar como achado do acervo um número que a busca fabricou. A
+`hipotese` é o campo que o separador já preenche em `nao_verificavel`
+dizendo de que o texto fala; a do C19 é literalmente a linha do exemplo. E o
+C3, cuja hipótese nomeia uma PESSOA, devolve zero — como tem de devolver,
+pelo parágrafo final desta seção.
+
+**Não conta entidades.** "7 empresas" não tem de onde sair: nada no código
+extrai nome de empresa de título, e das 32 matérias de recuperação judicial
+só 2 estavam extraídas. A saída conta matéria, veículo e período, que são
+medidos, e mostra os títulos com o veículo. Número de empresa seria
+inventado — o erro que esta saída existe para não cometer.
+
+Os limiares foram medidos com controle negativo, não escolhidos: a 0,70 uma
+consulta sobre trigo no Cazaquistão trazia 34 matérias; a **0,75** a frase
+vaga "todos os rumos mudam imediatamente" traz zero. O mínimo de **3
+matérias em 2 veículos** existe porque a segunda hipótese do C3 trazia uma
+matéria só, sobre um empresário preso por homicídio: um veículo não é acervo
+cobrindo assunto, é coincidência de vocabulário.
+
+O rótulo é `[ACERVO]`, não `[CONTEXTO]` — esse já significa "EM RESPOSTA A"
+no Telegram.
 
 Isso é CONTEXTO, não veredito, e a distinção é a mesma que separa o digest
 do check: aponta o que o acervo tem sobre um assunto, sem afirmar que

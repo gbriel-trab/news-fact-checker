@@ -1,0 +1,113 @@
+"""A quarta saída: contexto quando não há premissa para conferir.
+
+Todo teste INJETA a busca. `indice.DIR_INDICE` é global e aponta para a
+coleção de produção — teste que não injeta lê o acervo do dia e muda de
+resultado sozinho, o que é pior que teste que falha.
+"""
+
+from src import contexto
+from src.indice import Achado
+
+
+def achado(titulo, veiculo, prox, artigo_id, data="2026-09-01"):
+    """`proximidade` é 1 - distancia/2, então a distância é (1-p)*2."""
+    return Achado(titulo, (1 - prox) * 2,
+                  {"artigo_id": artigo_id, "veiculo": veiculo,
+                   "titulo": titulo, "data": data})
+
+
+def busca_de(achados):
+    return lambda colecao, texto, quantos: achados
+
+
+class TestLimiar:
+    def test_positivo_assunto_coberto_vira_contexto(self):
+        """O caso que motivou a saída: 3 matérias, 3 veículos, acima do
+        limiar. Barreira nova entra com caso positivo pareado."""
+        c = contexto.do_assunto("uma onda de recuperações judiciais",
+                                busca_de([
+            achado("Habib's entra em recuperação", "G1", 0.81, 1),
+            achado("Braskem tem RJ aprovada", "Folha", 0.79, 2,
+                   "2026-08-26"),
+            achado("Casas Bahia negocia dívida", "Valor", 0.77, 3),
+        ]))
+        assert c is not None
+        assert c.materias == 3
+        assert c.veiculos == ["Folha", "G1", "Valor"]
+        assert c.de == "2026-08-26" and c.ate == "2026-09-01"
+        assert contexto.linha(c) == (
+            "o acervo registra 3 matérias em 3 veículos "
+            "(2026-08-26 a 2026-09-01)")
+
+    def test_negativo_abaixo_do_limiar_nao_conta(self):
+        """A 0.70 uma consulta sobre trigo no Cazaquistão trazia 34
+        matérias do acervo. O limiar é o que separa assunto de ruído."""
+        assert contexto.do_assunto("x", busca_de([
+            achado("a", "G1", 0.74, 1), achado("b", "Folha", 0.70, 2),
+            achado("c", "Valor", 0.60, 3)])) is None
+
+    def test_um_veiculo_so_nao_e_acervo_cobrindo_assunto(self):
+        """A segunda hipótese do C3 trazia UMA matéria, sobre um
+        empresário preso por homicídio — coincidência de vocabulário.
+        Corroboração neste projeto sempre se conta por veículo."""
+        assert contexto.do_assunto("um empresário não identificado",
+                                   busca_de([
+            achado("a", "G1", 0.80, 1), achado("b", "G1", 0.79, 2),
+            achado("c", "G1", 0.78, 3)])) is None
+
+    def test_poucas_materias_nao_bastam(self):
+        assert contexto.do_assunto("x", busca_de([
+            achado("a", "G1", 0.80, 1),
+            achado("b", "Folha", 0.79, 2)])) is None
+
+    def test_assunto_vazio_nem_busca(self):
+        def explode(*_):
+            raise AssertionError("não devia buscar")
+        assert contexto.do_assunto("   ", explode) is None
+
+
+class TestContagem:
+    def test_materia_editada_conta_uma_vez(self):
+        """A mesma matéria entra duas vezes no índice quando é editada.
+        Contar ACHADO em vez de matéria inflaria o número — e o número é
+        justamente o que esta saída publica."""
+        c = contexto.do_assunto("x", busca_de([
+            achado("t", "G1", 0.81, 7), achado("t (atualizada)", "G1",
+                                               0.80, 7),
+            achado("outra", "Folha", 0.79, 8),
+            achado("terceira", "Valor", 0.78, 9)]))
+        assert c.materias == 3
+
+    def test_data_ausente_nao_inventa_periodo(self):
+        c = contexto.do_assunto("x", busca_de([
+            achado("a", "G1", 0.80, 1, None),
+            achado("b", "Folha", 0.79, 2, None),
+            achado("c", "Valor", 0.78, 3, None)]))
+        assert c.de == "" and c.ate == ""
+        assert "(" not in contexto.linha(c)
+
+    def test_a_amostra_carrega_a_fonte(self):
+        """Princípio 2: nada aparece sem de onde veio."""
+        c = contexto.do_assunto("x", busca_de([
+            achado("mais perto", "G1", 0.82, 1),
+            achado("meio", "Folha", 0.79, 2),
+            achado("longe", "Valor", 0.76, 3),
+            achado("mais longe", "BBC", 0.755, 4)]))
+        assert c.amostra[0] == ("G1", "mais perto")
+        assert len(c.amostra) == 3
+
+
+class TestNuncaVeredito:
+    def test_a_linha_fala_do_acervo_e_nunca_confirma(self):
+        c = contexto.do_assunto("x", busca_de([
+            achado("a", "G1", 0.80, 1), achado("b", "Folha", 0.79, 2),
+            achado("c", "Valor", 0.78, 3)]))
+        texto = contexto.linha(c).lower()
+        for proibido in ("confirmad", "corrobora", "verificad",
+                         "comprova", "sustenta"):
+            assert proibido not in texto
+
+    def test_o_contexto_nao_e_gravado_como_consulta(self):
+        """`consultas` tem CHECK com três vereditos; contexto não é um
+        deles e não pode virar linha de veredito por acidente."""
+        assert not hasattr(contexto.Contexto, "veredito")
