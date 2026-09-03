@@ -7,6 +7,8 @@ do gasto de consulta medido em 31/08/2026 era repetição.
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from src.boletim import _hash_post, _ja_entregues, _marca_entregue
 from src.check import consulta_recente
 from src.storage import conecta, salva_consulta
@@ -228,3 +230,47 @@ class TestReusoDeConsulta:
 
     def test_sem_conexao_devolve_none(self):
         assert consulta_recente(None, "qualquer coisa") is None
+
+
+class TestSoFatoCustaDinheiro:
+    """O incidente de 01/09 teve DOIS danos: a taxonomia mentiu e o
+    dinheiro saiu. O gabarito mede o primeiro (`fatos: 0`); o segundo é
+    este invariante, e sem ele uma versão que classifica certo e ainda
+    assim chama o check passa verde e sangra pelo princípio 6."""
+
+    def test_premissa_nao_fato_nunca_chama_o_check(self, monkeypatch, tmp_path):
+        from src import boletim, premissas
+        from src.storage import conecta
+
+        chamadas = []
+        analise = premissas.Analise(premissas=[
+            premissas.Premissa(tipo="nao_verificavel", trecho="Banco dele"),
+            premissas.Premissa(tipo="opiniao", trecho="o poder é de quem grita"),
+            premissas.Premissa(tipo="relato", trecho="convivi com ele"),
+            premissas.Premissa(tipo="previsao", trecho="a Selic vai subir"),
+        ])
+        monkeypatch.setattr(premissas, "separa",
+                            lambda *a, **k: (analise, _uso_zero()))
+        monkeypatch.setattr(
+            boletim, "_confere_post", boletim._confere_post)  # sem stub
+        from src import check
+        monkeypatch.setattr(check, "verifica",
+                            lambda *a, **k: chamadas.append(1))
+        from src import demanda
+        monkeypatch.setattr(demanda, "garante",
+                            lambda *a, **k: pytest.fail("demanda sem fato"))
+
+        con = conecta(tmp_path / "t.db")
+        texto, custo, dados = boletim._confere_post(
+            "POST 1 (@x, 01 Sep 2026):\nO cara tem banco dele.", con,
+            {"acervo": [], "orcamento": 1.0})
+        con.close()
+        assert chamadas == [], "check chamado para premissa que não é fato"
+        assert dados["checks"] == [] and custo == 0.0
+        assert len(dados["nao_verificaveis"]) == 4
+
+
+def _uso_zero():
+    from src import llm
+    return llm.Uso(modelo=llm.VERIFICACAO, entrada=0, saida=0,
+                   cache_leitura=0, cache_escrita=0)

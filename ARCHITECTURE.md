@@ -307,6 +307,60 @@ E recusa de grupo na extração (`mesma_historia=false`) contava como "matéria
 já extraída" para a demanda, deixando invisível uma matéria que entrou num
 grupo errado; agora leva a marca `recusada` e volta a ser elegível.
 
+### A quarta saída: contexto, quando não há premissa para conferir
+
+Direção aceita em 03/09/2026, não implementada. Nasce de um post real:
+
+> "Alguém consegue ainda manter as contas de quantas recuperações judiciais
+> estão acontecendo em marcas icônicas? Devem ser só as icônicas né? As que
+> não tem marca devem estar bem! (contém ironia)."
+
+O separador acerta ao não extrair fato: "marcas icônicas" não identifica
+quais, "quantas" não é número, e a pergunta é retórica. Sob a v1, que
+extraía, a premissa vaga voltou **sem evidência duas vezes** e custou
+US$ 0,077 — não por falta de acervo, mas porque afirmação vaga não casa com
+tripla nenhuma.
+
+Só que o acervo cobre o assunto fartamente. Em 03/09 ele tinha 31 matérias
+sobre recuperação judicial em onze dias: Braskem (R$ 56 bi), Habib's
+(R$ 265,2 mi), Casas Bahia, OSX, Lupatech, Novonor, Grupo Gennius — e uma
+manchete do Estadão dizendo que o estoque de empresas em recuperação é
+**recorde**. A insinuação do post é corroborada por dois veículos, e o
+sistema não tem onde dizer isso.
+
+O buraco não é de prompt, é de produto. Faltam as duas coisas ao mesmo
+tempo: não é `confirmado`, porque não há premissa bem-formada para
+confirmar; e não é `sem evidência`, porque o acervo cobre. É uma terceira
+resposta:
+
+```
+o autor insinua uma onda de recuperações judiciais
+  → o acervo registra 31 matérias, 7 empresas, 6 veículos (24/08 a 03/09)
+  → Estadão, 01/09: "Estoque de empresas em recuperação judicial é recorde"
+```
+
+Isso é CONTEXTO, não veredito, e a distinção é a mesma que separa o digest
+do check: aponta o que o acervo tem sobre um assunto, sem afirmar que
+sustenta a insinuação de ninguém. O motor já existe — o índice acha por
+assunto, o digest já sabe agrupar por história e contar veículos.
+
+Três exigências, para não virar a porta dos fundos do que as regras 8 e 9
+fecharam:
+
+1. **Contexto nunca é veredito.** Nada de `confirmado`, nada de contagem de
+   veículos apresentada como corroboração de uma premissa que não existe. A
+   saída nomeia o ASSUNTO e mostra o que há, com fontes.
+2. **Só para `nao_verificavel`.** Premissa bem-formada segue para o check
+   como hoje; contexto é o que se oferece quando não há o que conferir.
+3. **Teto próprio.** É uma busca no índice por rodada, não uma chamada de
+   modelo por premissa — se precisar de LLM para resumir, entra com teto e
+   com o custo no rodapé, como todo o resto.
+
+O que isso NÃO resolve, e vale dizer: o mesmo post do "empresário" (C3)
+continua sem sujeito. Contexto por assunto não nomeia pessoa, e não deve —
+a tentação de usar a mesma máquina para responder "de quem ele está
+falando" é exatamente o princípio 1 pela porta dos fundos.
+
 **O gabarito** (`src/gabarito.py`, `gabaritos/*.json`) é o que impede a
 próxima regra de reabrir a anterior: casos fixos com resposta esperada
 escrita à mão (revisão assinada pelo conteúdo — editar o esperado invalida a

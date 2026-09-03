@@ -28,6 +28,7 @@ import json
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -39,6 +40,22 @@ URL_API = "https://api.x.ai/v1/responses"
 MODELO = "grok-4.6"
 TICK_USD = 1e-10
 TIMEOUT = 180
+
+TENTATIVAS = 3
+ESPERA = 45
+"""Repetição da busca, e o motivo dela: em 03/09/2026 a xAI estourou os
+180s de leitura às 12:00 e o boletim do dia inteiro morreu ali — uma
+tentativa só, sem repetição, e a próxima chance 24h depois. Timeout e
+erro de servidor (5xx, 429) são passageiros por definição; a espera
+cresce a cada tentativa para não insistir em cima de uma API que já está
+lenta. Erro de requisição (4xx que não 429) NÃO repete: parâmetro
+inválido ou falta de crédito não melhoram na segunda vez, e repetir só
+atrasaria o aviso.
+
+A espera saiu de 20 para 45 segundos na mesma tarde: a rodada manual das
+12:06 levou 429 "at capacity, try again in a few minutes". 45 e 90
+somam os poucos minutos que a própria xAI pede, e é o que um trabalho
+diário pode esperar sem virar processo pendurado."""
 
 _DELIM = re.compile(r"^POST\s+(\d+)", re.MULTILINE)
 
@@ -290,29 +307,48 @@ def _posts_de(texto: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     return tuple(posts), tuple(notas)
 
 
+def _pede(chave: str, handles: tuple[str, ...], dias: int,
+          dormir=time.sleep) -> dict:
+    """A chamada à xAI, com repetição no que é passageiro.
+
+    Devolve o JSON já decodificado. `dormir` existe para o teste não
+    esperar de verdade."""
+    ultimo = ""
+    for tentativa in range(1, TENTATIVAS + 1):
+        try:
+            resposta = requests.post(
+                URL_API,
+                headers={"Authorization": f"Bearer {chave}",
+                         "Content-Type": "application/json"},
+                json=_corpo(handles, dias), timeout=TIMEOUT)
+            if resposta.status_code >= 400:
+                # O corpo carrega o motivo real (modelo inexistente, sem
+                # crédito, parâmetro inválido); só o código não diz nada.
+                ultimo = (f"xAI respondeu {resposta.status_code}: "
+                          f"{resposta.text[:300]}")
+                if resposta.status_code < 500 and resposta.status_code != 429:
+                    raise FalhaNoRadar(ultimo)
+            else:
+                # JSONDecodeError do requests é RequestException, e corpo
+                # 200 que não é JSON também é "resposta ilegível" — cai no
+                # except abaixo e vira mais uma tentativa.
+                return resposta.json()
+        except requests.RequestException as erro:
+            ultimo = f"busca na xAI falhou: {type(erro).__name__}: {erro}"
+        if tentativa < TENTATIVAS:
+            print(f"  {ultimo} — tentativa {tentativa}/{TENTATIVAS}, "
+                  f"repetindo em {ESPERA * tentativa}s")
+            dormir(ESPERA * tentativa)
+    raise FalhaNoRadar(f"{ultimo} (após {TENTATIVAS} tentativas)")
+
+
 def busca(handles: tuple[str, ...], dias: int = 2) -> Rodada:
     chave = os.environ.get("XAI_API_KEY", "")
     if not chave:
         raise FalhaNoRadar(
             "XAI_API_KEY ausente no .env — o radar é o único módulo que "
             "usa a xAI, e é opcional. Ver .env.example.")
-    try:
-        resposta = requests.post(
-            URL_API,
-            headers={"Authorization": f"Bearer {chave}",
-                     "Content-Type": "application/json"},
-            json=_corpo(handles, dias), timeout=TIMEOUT)
-        if resposta.status_code >= 400:
-            # O corpo carrega o motivo real (modelo inexistente, sem
-            # crédito, parâmetro inválido); só o código não diz nada.
-            raise FalhaNoRadar(
-                f"xAI respondeu {resposta.status_code}: "
-                f"{resposta.text[:300]}")
-        # Dentro do try: JSONDecodeError do requests é RequestException,
-        # e corpo 200 que não é JSON também é "resposta ilegível".
-        dados = resposta.json()
-    except requests.RequestException as erro:
-        raise FalhaNoRadar(f"busca na xAI falhou: {erro}") from erro
+    dados = _pede(chave, handles, dias)
 
     bruto = json.dumps(dados, ensure_ascii=False)
     texto = "\n".join(_textos_de(dados.get("output", dados)))

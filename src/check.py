@@ -34,7 +34,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from pydantic.json_schema import SkipJsonSchema
 
-from . import config, grafo, indice, llm, vocabulario
+from . import apelidos, config, grafo, indice, llm, vocabulario
 from .canonico import chave_canonica
 from .storage import conecta, salva_consulta
 from .vocabulario import Relacao
@@ -206,11 +206,14 @@ def versao_prompt() -> str:
     veredito de prompt (ou modelo) diferente não é comparável, e a
     coluna `prompt_versao` de `consultas` é o que permite ao gabarito
     dizer 'isto já falhava antes ou é novo'."""
+    from .canonico import assinatura_apelidos
+
     material = INSTRUCOES_ESTRUTURA + INSTRUCOES_JULGAMENTO + json.dumps(
         {"estrutura": AfirmacaoRecebida.model_json_schema(),
          "julgamento": Julgamento.model_json_schema(),
          "modelo": llm.VERIFICACAO.id,
-         "esforco": llm.VERIFICACAO.esforco},
+         "esforco": llm.VERIFICACAO.esforco,
+         "apelidos": assinatura_apelidos()},
         sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
 
@@ -387,7 +390,8 @@ def estrutura(texto: str) -> tuple[AfirmacaoRecebida, llm.Uso]:
 
 
 def _por_chave(afirmacao: AfirmacaoRecebida,
-               acervo: list[grafo.Afirmacao]) -> list[indice.Achado]:
+               acervo: list[grafo.Afirmacao],
+               mapa: dict[str, str] | None = None) -> list[indice.Achado]:
     """Tudo que o acervo afirma sobre (sujeito, relação), por identidade exata.
 
     Esta rota existia no docstring e não no código: a "chave exata" era, na
@@ -413,9 +417,18 @@ def _por_chave(afirmacao: AfirmacaoRecebida,
     grafia — evidência que não chega, sem erro nenhum.
     """
     achados = []
-    alvo = chave_canonica(afirmacao.sujeito_canonico)
+    # Os alvos incluem os apelidos FUNDADOS no acervo e ainda não promovidos:
+    # "lula" também procura por "luiz inacio lula da silva" porque algum
+    # veículo escreveu as duas formas na mesma matéria. Isto só AMPLIA a
+    # recuperação — o que entrar passa pelo juiz e pelo freio como qualquer
+    # candidata, e a identidade só vira oficial por promoção humana
+    # (src/apelidos.py). É a diferença entre propor e fornecer.
+    alvos = {chave_canonica(afirmacao.sujeito_canonico)}
+    if mapa:
+        alvos |= {chave_canonica(x) for x in
+                  apelidos.equivalentes(afirmacao.sujeito_canonico, mapa)}
     for a in acervo:
-        if (chave_canonica(a.sujeito) == alvo
+        if (chave_canonica(a.sujeito) in alvos
                 and a.relacao == afirmacao.relacao.value):
             achados.append(indice.Achado(
                 texto=indice.texto_da_tripla(a.sujeito, a.relacao, a.objeto,
@@ -437,7 +450,8 @@ def _por_chave(afirmacao: AfirmacaoRecebida,
 
 
 def recupera(afirmacao: AfirmacaoRecebida,
-             acervo: list[grafo.Afirmacao] | None = None) -> list[indice.Achado]:
+             acervo: list[grafo.Afirmacao] | None = None,
+             mapa: dict[str, str] | None = None) -> list[indice.Achado]:
     """Junta candidatas por proximidade semântica e por identidade exata.
 
     As duas rotas são complementares e cobrem falhas uma da outra: a vetorial
@@ -449,7 +463,7 @@ def recupera(afirmacao: AfirmacaoRecebida,
     ordem, e porque um teto de candidatas cortaria o fim — que era exatamente
     onde a evidência certa estava caindo.
     """
-    achados = _por_chave(afirmacao, acervo or [])
+    achados = _por_chave(afirmacao, acervo or [], mapa)
     vistos = {_chave_candidata(a) for a in achados}
 
     # Busca FATOR_BUSCA× e escolhe com teto por veículo: sem isso um
@@ -592,7 +606,13 @@ def verifica(texto: str, verboso: bool = False,
               f"{afirmacao.relacao.value}, {afirmacao.objeto_canonico or '—'})")
         print(f"  busca: \"{afirmacao.busca}\"\n")
 
-    evidencias = recupera(afirmacao, acervo)
+    # Apelidos fundados no acervo e ainda não promovidos ampliam a rota por
+    # chave; falha ao montá-los não derruba a verificação.
+    try:
+        mapa = apelidos.mapa_vivo(conexao) if conexao is not None else {}
+    except Exception:  # noqa: BLE001
+        mapa = {}
+    evidencias = recupera(afirmacao, acervo, mapa)
 
     if verboso and evidencias:
         # As candidatas que o modelo VAI ver, antes de ele escolher.

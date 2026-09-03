@@ -34,9 +34,15 @@ Hierarquia ("Ministério da Saúde" ⊂ "governo federal") continua fora de
 escopo, como o ARCHITECTURE assume: não é normalização, é inferência.
 """
 
+import json
 import re
 import unicodedata
 from functools import lru_cache
+from pathlib import Path
+
+ARQUIVO_APELIDOS = Path(__file__).resolve().parent.parent / "apelidos.json"
+"""Onde moram os apelidos PROMOVIDOS. Versionado no Git de propósito: é
+decisão curada, e o diff mostra quando uma identidade nova passou a valer."""
 
 SUFIXOS_SOCIETARIOS = re.compile(
     r"\s+(s\.\s?a\.?|s\s?/\s?a|sa\.|ltda\.?|inc\.?|corp\.?|holding)\s*$",
@@ -63,9 +69,43 @@ APELIDOS: dict[str, str] = {
     "presidencia da republica do brasil": "presidencia da republica",
 }
 
+def _promovidos() -> dict[str, str]:
+    """Apelidos minerados do acervo e promovidos à mão (`src/apelidos.py`).
+
+    Ficam em arquivo, não no código, porque a lista cresce por promoção e o
+    Git precisa mostrar quando uma identidade nova passou a valer. Arquivo
+    ausente ou ilegível não derruba nada: o mapa fixo acima é o piso."""
+    if not ARQUIVO_APELIDOS.exists():
+        return {}
+    try:
+        with open(ARQUIVO_APELIDOS, encoding="utf-8-sig") as arquivo:
+            return {str(k): str(v) for k, v in
+                    json.load(arquivo).get("apelidos", {}).items()}
+    except (json.JSONDecodeError, OSError, AttributeError):
+        return {}
+
+
+APELIDOS.update(_promovidos())
+
 VERSAO_APELIDOS = 1
-"""Versão da lista de apelidos. Cresce como o vocabulário: dado propõe,
-humano promove, versão incrementa."""
+"""Versão da lista FIXA de apelidos. Cresce como o vocabulário: dado propõe,
+humano promove, versão incrementa. Os promovidos em arquivo têm versão
+própria — `assinatura_apelidos`, abaixo, que entra no hash do check."""
+
+
+def assinatura_apelidos() -> str:
+    """Identidade do mapa inteiro, fixo mais promovido.
+
+    Entra na versão do prompt do check porque apelido muda o que a rota por
+    chave recupera E o que o freio de alinhamento considera o mesmo sujeito:
+    vereditos de mapas diferentes não são comparáveis, e o gabarito precisa
+    saber sob qual deles cada rodada correu."""
+    import hashlib
+
+    material = json.dumps({"versao": VERSAO_APELIDOS,
+                           "apelidos": dict(sorted(APELIDOS.items()))},
+                          sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:8]
 
 
 def _normaliza(nome: str) -> str:

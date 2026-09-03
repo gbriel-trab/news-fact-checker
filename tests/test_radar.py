@@ -11,8 +11,8 @@ from src.radar import (_corpo, _handles_de, _links_de, _posts_de, _prompt,
 
 class TestPrompt:
     def test_nomeia_todos_os_handles(self):
-        texto = _prompt(("mentalhedgebr", "outro_perfil"), 2)
-        assert "@mentalhedgebr" in texto
+        texto = _prompt(("perfil_teste", "outro_perfil"), 2)
+        assert "@perfil_teste" in texto
         assert "@outro_perfil" in texto
 
     def test_pede_transcricao_integral(self):
@@ -46,10 +46,10 @@ class TestPrompt:
     def test_corpo_carrega_filtro_e_janela(self):
         from datetime import datetime, timedelta, timezone
         hoje = datetime.now(timezone.utc).date()
-        corpo = _corpo(("mentalhedgebr",), 3)
+        corpo = _corpo(("perfil_teste",), 3)
         ferramenta = corpo["tools"][0]
         assert ferramenta["type"] == "x_search"
-        assert ferramenta["allowed_x_handles"] == ["mentalhedgebr"]
+        assert ferramenta["allowed_x_handles"] == ["perfil_teste"]
         assert ferramenta["from_date"] == (hoje - timedelta(days=3)).isoformat()
         # to_date é AMANHÃ: o limite superior real é a meia-noite UTC do
         # to_date (medido em 31/08 e 01/09/2026) — com to_date=hoje, o
@@ -94,14 +94,14 @@ class TestParseDePosts:
 
 class TestHandles:
     def test_normaliza_e_filtra(self):
-        assert _handles_de("@mentalhedgebr, outro") == ("mentalhedgebr",
+        assert _handles_de("@perfil_teste, outro") == ("perfil_teste",
                                                         "outro")
 
     def test_arroba_sozinho_cai_fora(self):
         # '@' sobrevivia ao filtro antigo e disparava busca paga com
         # handle vazio — a normalização vem ANTES do filtro.
         assert _handles_de("@") == ()
-        assert _handles_de("@,mentalhedgebr") == ("mentalhedgebr",)
+        assert _handles_de("@,perfil_teste") == ("perfil_teste",)
 
     def test_vazio_devolve_nada(self):
         assert _handles_de(" , ") == ()
@@ -165,8 +165,8 @@ class TestParaSeparacao:
         # mesmo autor. Rotulá-las de "interlocutor" poria a premissa
         # legítima (ex.: update de posição em thread) sob suspeita.
         from src.radar import para_separacao
-        bloco = ("POST 1 (@mentalhedgebr, 01 Sep 2026):\n"
-                 "EM RESPOSTA A (@mentalhedgebr): MINERADORAS: tirando "
+        bloco = ("POST 1 (@perfil_teste, 01 Sep 2026):\n"
+                 "EM RESPOSTA A (@perfil_teste): MINERADORAS: tirando "
                  "meio hedge 20% abaixo do topo.\n"
                  "Update: retomando 25% da posição")
         saida = para_separacao(bloco)
@@ -216,3 +216,80 @@ class TestUrlDoPost:
     def test_id_status(self):
         assert id_status("https://x.com/i/status/42") == "42"
         assert id_status("https://x.com/i/user/42") is None
+
+
+class TestRepeticaoDaBusca:
+    """03/09/2026: a xAI estourou os 180s às 12:00 e o boletim do dia
+    morreu ali — uma tentativa só, e a próxima chance 24h depois. Timeout
+    e 5xx repetem; 4xx não, porque não melhoram na segunda vez."""
+
+    def _post(self, respostas):
+        """Devolve um requests.post falso que consome `respostas` em ordem;
+        cada item é uma exceção a levantar ou um (status, corpo)."""
+        chamadas = []
+
+        class Resp:
+            def __init__(self, status, corpo):
+                self.status_code, self._corpo = status, corpo
+                self.text = str(corpo)
+
+            def json(self):
+                return self._corpo
+
+        def falso(*a, **kw):
+            item = respostas[len(chamadas)]
+            chamadas.append(1)
+            if isinstance(item, Exception):
+                raise item
+            return Resp(*item)
+        return falso, chamadas
+
+    def test_timeout_repete_e_a_segunda_vale(self, monkeypatch):
+        import requests
+        from src import radar
+        falso, chamadas = self._post([
+            requests.exceptions.ReadTimeout("read timed out"),
+            (200, {"output": []}),
+        ])
+        monkeypatch.setattr(radar.requests, "post", falso)
+        dormiu = []
+        assert radar._pede("k", ("x",), 1, dormir=dormiu.append) == {"output": []}
+        assert len(chamadas) == 2 and dormiu == [radar.ESPERA]
+
+    def test_desiste_depois_de_todas_e_diz_quantas(self, monkeypatch):
+        import pytest
+        import requests
+        from src import radar
+        falso, chamadas = self._post(
+            [requests.exceptions.ReadTimeout("t")] * radar.TENTATIVAS)
+        monkeypatch.setattr(radar.requests, "post", falso)
+        with pytest.raises(radar.FalhaNoRadar, match="após 3 tentativas"):
+            radar._pede("k", ("x",), 1, dormir=lambda s: None)
+        assert len(chamadas) == radar.TENTATIVAS
+
+    def test_erro_de_requisicao_nao_repete(self, monkeypatch):
+        import pytest
+        from src import radar
+        falso, chamadas = self._post([(400, "parâmetro inválido")])
+        monkeypatch.setattr(radar.requests, "post", falso)
+        with pytest.raises(radar.FalhaNoRadar, match="400"):
+            radar._pede("k", ("x",), 1, dormir=lambda s: None)
+        assert len(chamadas) == 1
+
+    def test_servidor_e_limite_repetem(self, monkeypatch):
+        from src import radar
+        for status in (500, 429):
+            falso, chamadas = self._post([(status, "x"), (200, {"ok": 1})])
+            monkeypatch.setattr(radar.requests, "post", falso)
+            assert radar._pede("k", ("x",), 1, dormir=lambda s: None) == {"ok": 1}
+            assert len(chamadas) == 2
+
+    def test_espera_cresce_a_cada_tentativa(self, monkeypatch):
+        import requests
+        from src import radar
+        falso, _ = self._post([requests.exceptions.ReadTimeout("t")] * 2
+                              + [(200, {"ok": 1})])
+        monkeypatch.setattr(radar.requests, "post", falso)
+        dormiu = []
+        radar._pede("k", ("x",), 1, dormir=dormiu.append)
+        assert dormiu == [radar.ESPERA, radar.ESPERA * 2]

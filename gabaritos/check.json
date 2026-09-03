@@ -39,7 +39,7 @@
     "esperado": "confirmado",
     "cita_minimo": 1,
     "nota": "Regra 7 do julgamento (03/09/2026): nome incompleto casa com nome completo quando outra lacuna fecha o referente. Em código, aplica_alinhamento exige QUEM contido (chave canônica: 'andre' ⊂ 'andre esteves') e mais uma lacuna alinhada (o quê: reunião com Trump). Deixou de ser decisão pendente: virou regra. Evidências: render do índice das triplas 2828, 2868 e 2853.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #c33e13c7",
     "sujeitos_estruturados": [
       "André",
       "reunião com Donald Trump"
@@ -77,7 +77,7 @@
     ],
     "esperado": "sem_evidencia",
     "nota": "Tautologia com carimbo (consulta 82; falhou 3 vezes como fronteira). Duas barreiras: regra 6 do julgamento e, se o juiz confirmar mesmo assim, aplica_alinhamento retém em código — o sujeito estruturado 'Encontro não especificado' não nomeia ninguém. O caso mede o resultado; que a retenção seja o caminho é problema dos testes unitários.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #440b3965",
     "sujeitos_estruturados": [
       "Encontro não especificado"
     ],
@@ -103,7 +103,7 @@
     "esperado": "contradito",
     "cita_minimo": 1,
     "nota": "Mesma medida, mesma unidade, MESMO período, valores diferentes — regra 4 sem brecha temporal. Evidência no formato de texto_da_tripla e coerente com o acervo (5,3 em julho/2026). A versão sem período na afirmação é o J9.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #f6a9ff09",
     "sujeitos_estruturados": [
       "Taxa de desemprego no Brasil"
     ],
@@ -130,7 +130,7 @@
     ],
     "esperado": "sem_evidencia",
     "nota": "Prejuízo não confirma nem contradiz pedido de recuperação.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #beae3fb4",
     "sujeitos_estruturados": [
       "Braskem S.A.",
       "recuperação extrajudicial"
@@ -158,7 +158,7 @@
     ],
     "esperado": "sem_evidencia",
     "nota": "Reunião de Trump com outra pessoa não é a reunião afirmada.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #cc5dbec8",
     "sujeitos_estruturados": [
       "André",
       "reunião com Donald Trump"
@@ -186,7 +186,7 @@
     ],
     "esperado": "sem_evidencia",
     "nota": "Regra 2: a evidência não trata de reunião nenhuma, então é sem_evidencia independentemente de o juiz casar 'André' com 'André Mendonça'. Isto NÃO testa homônimo — testaria se outro André se reunisse com Trump na evidência, e nesse caso a letra da afirmação parcial dá confirmado: é o custo do nome incompleto, registrado no E1.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #6145f162",
     "sujeitos_estruturados": [
       "André",
       "reunião com Donald Trump"
@@ -215,7 +215,7 @@
     "esperado": "contradito",
     "cita_minimo": 1,
     "nota": "Cancelado vs ampliado: incompatível, não 'sem evidência'. ATENÇÃO: é o exemplo literal da regra 3 — passar aqui prova reprodução; a generalização é o J10. Evidência em frase livre, não no formato texto_da_tripla (ver J2 para o formato real).",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #b3b67486",
     "sujeitos_estruturados": [
       "Programa Pé-de-Meia"
     ],
@@ -254,7 +254,7 @@
     "cita_minimo": 1,
     "fronteira": true,
     "nota": "A lição do Bitcoin (ARCHITECTURE, 'Detecção de contradição'): valor diferente em data diferente é evolução, não contradição — entre evidências. Para uma AFIRMAÇÃO no presente ('está em'), o dado mais recente (5,3, julho) contradiz; mas 'confirmado por abril' e 'sem_evidencia por falta de período' são leituras honestas do prompt, que não fala de data na regra 4. Fronteira até o juiz ter regra temporal.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #962e31fb",
     "sujeitos_estruturados": [
       "Taxa de desemprego no Brasil"
     ],
@@ -282,7 +282,7 @@
     "esperado": "contradito",
     "cita_minimo": 1,
     "nota": "Regra 3 sem o vocabulário do exemplo: 'encerrado' vs 'prorrogado até dezembro de 2026' são incompatíveis em qualquer data anterior a dezembro. Se J7 passa e J10 falha, a regra 3 só funciona por memorização do exemplo.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #461a9e34",
     "sujeitos_estruturados": [
       "Programa Desenrola"
     ],
@@ -309,7 +309,7 @@
     ],
     "esperado": "sem_evidencia",
     "nota": "Regra 2: mesmas entidades, outro fato. Crítica pública não é reunião. Se confirmar aqui, o juiz está casando por nomes — o segundo apoio da decisão J1 tem de ser o FATO (reunião com Trump), não só a presença de 'Trump'.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #29f9b963",
     "sujeitos_estruturados": [
       "André",
       "reunião com Donald Trump"
@@ -338,7 +338,7 @@
     "esperado": "contradito",
     "cita_minimo": 1,
     "nota": "Regra 3 aplicada a DITOS: o mesmo Galípolo, 'não vai cortar' vs 'vai cortar'. O juízo é sobre o que ele disse, não sobre a Selic. Se sair sem_evidencia, o juiz não está lendo a negação dentro do dito. A guarda do conteúdo do dito vive aqui, porque no estruturador (E5) ela não se pina por substring.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #c8bcebff",
     "sujeitos_estruturados": [
       "Gabriel Galípolo"
     ],
@@ -414,7 +414,7 @@
     "esperado": "contradito",
     "cita_minimo": 1,
     "nota": "Judicial e extrajudicial são institutos distintos: o acervo afirma um e a afirmação diz o outro — regra 3. Regressão para confirmado é o falso positivo do princípio 5 sobre o fato mais corroborado do acervo.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #7072775e",
     "sujeitos_estruturados": [
       "Braskem S.A.",
       "recuperação judicial"
@@ -434,7 +434,7 @@
     },
     "fronteira": true,
     "nota": "participou_de é o que a EXTRAÇÃO escolheu para reunião (triplas 2828/2838/2853/2861) — não decorre do vocabulário, que pede evento como objeto e oferece 'outro' sem hesitar. Fronteira até DEFINICOES[PARTICIPOU_DE] dizer que reunião ou encontro entre pessoas é evento com objeto 'reunião entre X e Y'. Sobre o nome: 'sujeito_contem: André' passa com 'André' e com 'André Esteves'; o schema (sujeito_canonico = 'nome completo e oficial') MANDA completar, e isso é load-bearing — _por_chave compara chave_canonica, e 'andre' ≠ 'andre esteves': com nome incompleto a rota por chave nunca casa, só a semântica. Decisão registrada: a v3 do separador não completa; o estruturador completa um passo depois. Completar errado produz falso negativo, não falso positivo.",
-    "revisado_por": null
+    "revisado_por": "gabriel 2026-09-03 #32928ecf"
   },
   {
     "id": "E2",
@@ -446,7 +446,7 @@
       "sujeito_contem": "Selic"
     },
     "nota": "tem_atributo é a única relação para número sem objeto. Só relação e sujeito são conferidos; objeto/valor/unidade não são medidos pelo comparador nem usados pelo pipeline (recupera usa sujeito+relacao+busca; julga recebe o texto cru).",
-    "revisado_por": null
+    "revisado_por": "gabriel 2026-09-03 #ce3ea994"
   },
   {
     "id": "E3",
@@ -459,7 +459,7 @@
       ]
     },
     "nota": "INSTRUCOES_ESTRUTURA: afirmação negativa vira fato positivo, e a busca também. SÓ a negação é conferida: relação e sujeito ficam livres — (Copom, outro, Selic) e (Selic, tem_atributo) são estruturações honestas do mesmo fato positivo, e o schema pode devolver 'Comitê de Política Monetária'. 'não' já cobre 'nao' (o comparador normaliza acento).",
-    "revisado_por": null
+    "revisado_por": "gabriel 2026-09-03 #bc76ff8f"
   },
   {
     "id": "E4",
@@ -472,7 +472,7 @@
     },
     "fronteira": true,
     "nota": "Par do E1 com nome completo: aqui a rota por chave exata casa com o acervo, e a relação decide a recuperação. participou_de é a escolha da EXTRAÇÃO, não do vocabulário. Fronteira até a definição de PARTICIPOU_DE nomear reunião entre pessoas — aí E1 e E4 caem na mesma relação por regra, e a marca sai dos dois.",
-    "revisado_por": null
+    "revisado_por": "gabriel 2026-09-03 #43a87b4c"
   },
   {
     "id": "E5",
@@ -484,7 +484,7 @@
       "sujeito_contem": "Galípolo"
     },
     "nota": "Relação afirmou e sujeito Galípolo decorrem do vocabulário ('declarou algo, sem valoração'; 'defendeu' pede apoio, 'preve' pede projeto como sujeito) — não é fronteira. A lacuna real é outra e NÃO está medida aqui: a regra de negação e a descrição do campo busca ('sem negação, sem quem disse') podem apagar o 'não' de DENTRO do dito. Retenção de negação não se pina por substring ('descartou corte' é paráfrase honesta sem 'não'); a guarda do conteúdo do dito é o J12, no juiz.",
-    "revisado_por": null
+    "revisado_por": "gabriel 2026-09-03 #ebcccfb0"
   },
   {
     "id": "E6",
@@ -496,7 +496,7 @@
       "sujeito_contem": "Braskem"
     },
     "nota": "SOLICITOU: 'pediu formalmente algo PARA SI a quem pode conceder — recuperação judicial'. Única relação que a definição licencia. O acervo tem este fato como 'outro' (extraído sob vocab v1) — a rota por chave não casa por defasagem do ACERVO, não por erro daqui; não 'corrigir' o esperado para outro.",
-    "revisado_por": null
+    "revisado_por": "gabriel 2026-09-03 #fa36b489"
   },
   {
     "id": "J15",
@@ -528,7 +528,7 @@
     "esperado": "confirmado",
     "cita_minimo": 2,
     "nota": "QUEM 'Braskem' = 'Braskem S.A.' pela chave canônica (sufixo societário cai); O QUÊ 'recuperação extrajudicial' coincide. Duas evidências idênticas de veículos diferentes: as duas têm de ser citadas — é a corroboração que o recupera descartava até 03/09 (dedup sem veículo).",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #5fa68464",
     "sujeitos_estruturados": [
       "Braskem S.A.",
       "recuperação extrajudicial"
@@ -557,7 +557,7 @@
     "esperado": "confirmado",
     "cita_minimo": 1,
     "nota": "QUEM 'Selic' ⊂ 'Taxa Selic'; QUANTO 15% = 15 %. Confirmação com uma lacuna além do sujeito.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #caf1fdfe",
     "sujeitos_estruturados": [
       "Taxa Selic"
     ],
@@ -585,7 +585,7 @@
     "esperado": "confirmado",
     "cita_minimo": 1,
     "nota": "QUEM 'desemprego' ⊂ 'taxa de desemprego no Brasil'; QUANTO e QUANDO coincidem. Se J3 (5,8 vs 5,3) dá contradito e este dá confirmado, a regra 4 está lendo o valor, não o assunto.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #e99bc694",
     "sujeitos_estruturados": [
       "Taxa de desemprego no Brasil"
     ],
@@ -612,7 +612,7 @@
     ],
     "esperado": "sem_evidencia",
     "nota": "O QUÊ coincide, o QUEM não: 'Petrobras' não casa com 'Braskem' pela chave canônica. Se confirmar, ou o juiz casou por predicado ou aplica_alinhamento não rodou.",
-    "revisado_por": null,
+    "revisado_por": "gabriel 2026-09-03 #7f4937f0",
     "sujeitos_estruturados": [
       "Petrobras",
       "recuperação extrajudicial"

@@ -224,7 +224,11 @@ def _tem_entidade_ou_numero(ref: Referente) -> bool:
     sigla ("TODOS os outros empresários"); sigla curta (BC, IPCA, RIOT)
     continua valendo."""
     tokens = ref.valor.split()
-    abre_o_trecho = bool(tokens) and ref.trecho.strip().startswith(tokens[0])
+    # A posição só é evidência quando há mais de um token: um referente de
+    # uma palavra ("André", "Esteves") não oferece contraste nenhum, e
+    # descartá-lo por abrir o trecho matava justamente a charada.
+    abre_o_trecho = (len(tokens) > 1
+                     and ref.trecho.strip().startswith(tokens[0]))
     for i, token in enumerate(tokens):
         limpo = token.strip("\"'(),.;:!?«»")
         if not limpo:
@@ -238,6 +242,10 @@ def _tem_entidade_ou_numero(ref: Referente) -> bool:
         if limpo[0].isupper() and limpo.casefold() not in _ARTIGOS:
             return True
     return False
+
+
+def _tem_numero(ref: Referente) -> bool:
+    return any(c.isdigit() for c in ref.valor)
 
 
 def _vazio(ref: Referente) -> bool:
@@ -271,8 +279,13 @@ def roteia(analise: Analise, texto: str) -> Analise:
        do post estava no texto, ela vinha de graça.)
     3. `o_que` não é vazio: pronome, advérbio ou indefinido ("André foi
        lá", "Esteves se reuniu com um empresário").
-    4. `o_que` traz entidade nomeada ou número — é ele que sustenta o
-       fato, e o nome do sujeito não pode carregá-lo sozinho.
+    4. O SUJEITO traz entidade nomeada, ou o predicado traz número. É a
+       condição por slot: procedência não é determinação — "O encontro que
+       ocorreu" é substring literal do post e ancora perfeitamente, e ainda
+       assim não identifica encontro nenhum. Conferir só o `o_que` deixava
+       passar "o encontro" + "o Brasil". Exigir entidade no sujeito sempre
+       mataria "o desemprego está em 5,3%"; por isso o número no predicado
+       é a segunda porta, e só ele.
 
     O que passa é o que tem QUEM e O QUÊ nomeados no texto do autor. O
     resto vira nao_verificavel com o motivo na trilha, e o referente
@@ -292,9 +305,17 @@ def roteia(analise: Analise, texto: str) -> Analise:
         elif _vazio(p.o_que):
             motivo = "o QUÊ é pronome, advérbio ou indefinido"
             rejeitado = p.o_que
-        elif not _tem_entidade_ou_numero(p.o_que):
-            motivo = "o QUÊ não traz entidade nomeada nem número"
-            rejeitado = p.o_que
+        elif not (_tem_entidade_ou_numero(p.quem) or _tem_numero(p.o_que)):
+            # A heurística é POR SLOT, e o slot que importa é o sujeito:
+            # conferir só o o_que deixava passar "o encontro que ocorreu"
+            # + "o Brasil" — sujeito indeterminado com objeto nomeado, que
+            # é a tautologia de 01/09 com outra roupa. Mas exigir entidade
+            # no sujeito sempre mataria "o desemprego está em 5,3%", que é
+            # conferível: sujeito genérico passa quando o predicado traz
+            # NÚMERO, porque é o número que a evidência confirma ou nega.
+            motivo = ("sujeito sem entidade nomeada e predicado sem número: "
+                      "não há o que casar no acervo")
+            rejeitado = p.quem
         else:
             continue
         p.tipo = "nao_verificavel"
