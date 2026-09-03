@@ -34,14 +34,21 @@ class TestPrompt:
         # transcrição normal já basta. Mesma receita do EM RESPOSTA A.
         assert "CITANDO" in _prompt(("a",), 2)
 
-    def test_resposta_a_terceiro_fica_fora_e_thread_propria_entra(self):
-        # Decisão de 01/09/2026, sobre os dados do próprio usuário: a
-        # substância do handle vive em post, quote e thread própria;
-        # resposta a terceiro era a maioria do custo e do ruído (e a
-        # fome da charada). A API não filtra por tipo; o prompt dirige.
+    def test_prompt_pede_DADO_e_nao_filtragem(self):
+        """O prompt ENCOLHEU em 03/09/2026, e essa é a correção.
+
+        Ele mandava "NÃO TRANSCREVA respostas a outros usuários" desde
+        01/09 e o modelo transcrevia assim mesmo — pior, apontava a RAIZ
+        da thread como pai quando o pai era um terceiro. Um terço do
+        prompt era regra desobedecida, e regra desobedecida é pior que
+        ausente: dá a impressão de que a barreira existe. Agora o prompt
+        pede o LINK do post respondido e manda trazer tudo; quem filtra
+        é `filtra_respostas`, em código."""
         texto = _prompt(("a",), 2)
-        assert "NÃO TRANSCREVA respostas a outros usuários" in texto
-        assert "respondendo a si" in texto
+        assert "NÃO TRANSCREVA respostas" not in texto
+        assert "link do post respondido" in texto
+        assert "quem descarta é o programa" in texto
+        assert len(texto) < 900, f"o prompt voltou a crescer: {len(texto)}"
 
     def test_corpo_carrega_filtro_e_janela(self):
         from datetime import datetime, timedelta, timezone
@@ -448,3 +455,75 @@ class TestRespostaATerceiro:
         assert all("@grok" not in p for p in r.posts)
         assert any("Expansao" in p for p in r.posts), "thread propria sumiu"
         assert any("descartada" in n and "@grok" in n for n in r.notas)
+
+
+class TestCadeiaDeRespostas:
+    """Os sete blocos que o usuario classificou a mao em 03/09/2026,
+    olhando a timeline. O veredito de cada um e dele, nao meu."""
+
+    H = ("perfil_teste",)
+    RAIZ = "https://x.com/perfil_teste/status/1000000000000000007"
+    TERCEIRO = "https://x.com/streetmanwtf/status/1000000000000000008"
+
+    def _b(self, n, sid, corpo, pai=None, quem="perfil_teste"):
+        L = [f"POST {n} (@perfil_teste, 03 Sep 2026):",
+             f"URL: https://x.com/perfil_teste/status/{sid}"]
+        if pai:
+            L.append(f"EM RESPOSTA A (@{quem}, {pai}): texto do pai")
+        L.append(corpo)
+        return chr(10).join(L)
+
+    def test_o_caso_Vaza_cai_pelo_ID_do_pai(self):
+        """"Vaza... furazoio" veio com EM RESPOSTA A (@perfil_teste) --
+        o modelo apontou a RAIZ da thread. O pai REAL e o comentario do
+        @streetmanwtf, e o ID entrega isso mesmo com o handle mentindo."""
+        from src.radar import filtra_respostas
+        posts = (self._b(1, "1000000000000000007", "Como eu gosto"),
+                 self._b(2, "1000000000000000009", "Vaza... furazoio",
+                         pai=self.TERCEIRO))
+        ficam, fora = filtra_respostas(posts, self.H)
+        assert len(ficam) == 1 and "Como eu gosto" in ficam[0]
+        assert len(fora) == 1 and "Vaza" in fora[0][0]
+
+    def test_o_17_thread_propria_FICA(self):
+        """"Completando: expansao" responde ao proprio post. E o caso
+        que nao pode ser derrubado -- o C25 do gabarito depende dele."""
+        from src.radar import filtra_respostas
+        posts = (self._b(1, "111", "Tremenda absorcao. Absorcao precede __?"),
+                 self._b(2, "222", "Completando: expansao",
+                         pai="https://x.com/perfil_teste/status/111"))
+        ficam, fora = filtra_respostas(posts, self.H)
+        assert len(ficam) == 2, [f[1] for f in fora]
+
+    def test_o_6_cai_pela_CADEIA(self):
+        """Ele responde a SI MESMO dentro de uma resposta a terceiro. O
+        pai imediato e legitimo; quem entrega e o avo. Sem seguir a
+        cadeia, este passava -- e o usuario disse que nao era para
+        chegar onde chegou."""
+        from src.radar import filtra_respostas
+        posts = (self._b(1, "9001", "resposta a terceiro", pai=self.TERCEIRO),
+                 self._b(2, "9002", "*vem depois...",
+                         pai="https://x.com/perfil_teste/status/9001"))
+        ficam, fora = filtra_respostas(posts, self.H)
+        assert ficam == (), [f[1] for f in fora]
+        assert any("cadeia" in m for _, m in fora)
+
+    def test_post_puro_e_quote_ficam(self):
+        from src.radar import filtra_respostas
+        posts = (self._b(1, "111", "post puro"),
+                 chr(10).join(["POST 2 (@perfil_teste, 03 Sep 2026):",
+                           "URL: https://x.com/perfil_teste/status/222",
+                           "CITANDO (@outro): pergunta dele",
+                           "comentario proprio"]))
+        ficam, _ = filtra_respostas(posts, self.H)
+        assert len(ficam) == 2
+
+    def test_sem_link_de_pai_cai_no_handle(self):
+        """Terceira camada: modelo antigo, sem link. O handle decide."""
+        from src.radar import filtra_respostas
+        posts = (chr(10).join(["POST 1 (@perfil_teste, 03 Sep 2026):",
+                           "URL: https://x.com/perfil_teste/status/1",
+                           "EM RESPOSTA A (@grok): explica",
+                           "nem o grok deu conta"]),)
+        ficam, fora = filtra_respostas(posts, self.H)
+        assert ficam == () and fora[0][1] == "@grok"

@@ -63,13 +63,16 @@ from . import config
 
 DIR_GABARITOS = Path(__file__).resolve().parent.parent / "gabaritos"
 
-CUSTO_ESTIMADO = {"premissas": 0.012, "check": 0.012}
+CUSTO_ESTIMADO = {"premissas": 0.012, "check": 0.012,
+                  "extracao": 0.045}
 """Por caso e por vez. Medido na primeira rodada completa (03/09/2026):
 premissas 50 separações por US$ 0,31 (média 0,006; a primeira chamada de
 cada rodada paga a escrita do cache do prompt, ~0,02, e o post longo de
 análise custa 0,02 sempre); check 19 chamadas por US$ 0,145 (média
 0,008, o estruturador com nome incompleto chegou a 0,027). Arredondado
-para cima — serve para o aviso antes de gastar, o custo real vem da
+extração 0,045 — medido sobre as 347 extrações já pagas do acervo
+(média 0,038, máximo 0,271; matéria longa com muita entidade é a cara).
+Arredondado para cima — serve para o aviso antes de gastar, o custo real vem da
 fatura."""
 
 PALAVRAS_EXEMPLO = 8
@@ -182,6 +185,111 @@ class Resultado:
 
 # ------------------------------------------------------------- premissas
 
+def valida_expectativa(caso: dict) -> list[str]:
+    """Avisos sobre a EXPECTATIVA, não sobre o modelo. Puro, sem API.
+
+    Existe porque errei três vezes no mesmo dia (03/09/2026) escrevendo
+    `contem` com um pedaço que `_contem` nunca casaria: "recupera" não
+    casa "recuperação" e "alário mínimo" não casa "Salário mínimo",
+    porque a busca ancora em fronteira de PALAVRA — a mesma guarda que
+    impede "maio" casar "maior". Nas três, o modelo tinha acertado e o
+    gabarito cobrava dele um erro meu.
+
+    A regra: todo pedaço de `contem` tem de aparecer no TEXTO do próprio
+    caso. Se não aparece, ou a expectativa está mal escrita ou o caso é
+    o errado — e nos dois casos o número que a bateria dá é mentira."""
+    corpo = " ".join(str(x) for x in
+                     [caso.get("titulo", "")] + list(caso.get("sentencas", [])))
+    avisos = []
+    for pedido in caso.get("deve_conter", []):
+        for campo in ("sujeito_contem", "objeto_contem"):
+            pedaco = pedido.get(campo)
+            if pedaco and not _contem(corpo, pedaco):
+                avisos.append(
+                    f"{caso['id']}: \"{pedaco}\" ({campo}) não casa nada no "
+                    f"texto do caso — expectativa quebrada, não o modelo")
+    return avisos
+
+
+def confere_extracao(caso: dict, triplas: list) -> list[str]:
+    """Compara uma extração com o esperado do caso. Puro: sem API.
+
+    NÃO cobra o conjunto exato de triplas. Matéria de 5 sentenças rende
+    dezenas, a ordem varia, e um gabarito assim falharia por variação
+    legítima — viraria ruído e seria ignorado, que é como uma barreira
+    morre. Cobra o que os DEFEITOS CONHECIDOS produzem:
+
+    * `deve_conter`: a tripla que o texto claramente afirma tem de estar.
+    * `relacao_proibida`: o par existe mas com a relação errada — é a
+      assinatura do fallback para `outro`, que é 20,8% do acervo.
+    * `max_outro`: teto da proporção de `outro`. `outro` é a relação que
+      diz "não achei relação"; muito dela é vocabulário ou prompt falhando.
+    * `proibido_no_canonico`: sobrenome puro, cargo ou nome curto onde o
+      acervo já usa o longo. Fragmentar entidade é o que `canonico.py`
+      existe para remendar na LEITURA — e remendo não é conserto.
+    * `valor_esperado`: o número que a matéria dá tem de aparecer.
+    """
+    falhas: list[str] = []
+    if not triplas:
+        return ["nenhuma tripla extraída"]
+
+    def _txt(t, campo):
+        return str(getattr(t, campo, "") or "")
+
+    for pedido in caso.get("deve_conter", []):
+        def bate(t, p=pedido):
+            if not _contem(_txt(t, "sujeito_canonico"), p["sujeito_contem"]):
+                return False
+            if p.get("relacao") and _txt(t, "relacao") != p["relacao"]:
+                return False
+            if p.get("objeto_contem") and not _contem(
+                    _txt(t, "objeto_canonico"), p["objeto_contem"]):
+                return False
+            return True
+        if not any(bate(t) for t in triplas):
+            falhas.append(
+                f"faltou ({pedido['sujeito_contem']}, "
+                f"{pedido.get('relacao', '*')}, "
+                f"{pedido.get('objeto_contem', '*')})")
+
+    for proib in caso.get("relacao_proibida", []):
+        for t in triplas:
+            if _txt(t, "relacao") != proib["nao_use"]:
+                continue
+            if not _contem(_txt(t, "sujeito_canonico"),
+                           proib["sujeito_contem"]):
+                continue
+            if proib.get("objeto_contem") and not _contem(
+                    _txt(t, "objeto_canonico"), proib["objeto_contem"]):
+                continue
+            falhas.append(
+                f"usou '{proib['nao_use']}' em "
+                f"({_txt(t, 'sujeito_canonico')[:28]}, ..., "
+                f"{_txt(t, 'objeto_canonico')[:28]})")
+
+    teto = caso.get("max_outro")
+    if teto is not None:
+        n_outro = sum(1 for t in triplas if _txt(t, "relacao") == "outro")
+        proporcao = n_outro / len(triplas)
+        if proporcao > teto:
+            falhas.append(f"'outro' em {n_outro}/{len(triplas)} "
+                          f"({proporcao:.0%}) — teto {teto:.0%}")
+
+    for nome in caso.get("proibido_no_canonico", []):
+        for t in triplas:
+            for campo in ("sujeito_canonico", "objeto_canonico"):
+                if _normaliza(_txt(t, campo)) == _normaliza(nome):
+                    falhas.append(f"canônico proibido: \"{nome}\" "
+                                  f"(em {campo})")
+                    break
+
+    for valor in caso.get("valor_esperado", []):
+        if not any(getattr(t, "valor_numero", None) == valor
+                   for t in triplas):
+            falhas.append(f"faltou valor {valor:g}")
+    return falhas
+
+
 def confere_premissas(caso: dict, premissas: list) -> list[str]:
     """Compara uma separação com o esperado do caso. Puro: sem API.
 
@@ -264,6 +372,55 @@ def _grava_rodada(conexao, qual: str, caso: str, versao: str, vez: int,
          json.dumps(r.falhas, ensure_ascii=False), r.obtido, r.custo,
          datetime.now(timezone.utc).isoformat()))
     conexao.commit()
+
+
+def roda_extracao(casos: list[dict], vezes: int, resultados: list,
+                  conexao=None, mostrar: bool = True) -> None:
+    """A bateria que faltava, e é a do MAIOR prompt do sistema.
+
+    Montada em 03/09/2026, depois de um diagnóstico externo achar, só
+    lendo, três exemplos marcados `Certo:` que usam relação inexistente
+    no enum fechado. Nada disso era medido: o gabarito cobria separador,
+    juiz e estruturador — os três prompts pequenos — e deixava de fora os
+    16 mil caracteres da extração, que é quem produz o acervo inteiro.
+
+    A entrada de cada caso é CONGELADA (título, veículo, data e as 5
+    sentenças do corte de lide) para a bateria não depender do banco nem
+    da segmentação de hoje."""
+    from . import extract
+
+    for caso in casos:
+        for vez in range(1, vezes + 1):
+            resposta = extract.extrai(caso["titulo"], caso["veiculo"],
+                                      caso.get("data_publicacao"),
+                                      caso["sentencas"])
+            triplas = list(resposta.dados.triplas)
+            r = Resultado(caso=caso["id"],
+                          falhas=confere_extracao(caso, triplas),
+                          obtido=_mostra_triplas(triplas),
+                          custo=resposta.uso.custo,
+                          fronteira=bool(caso.get("fronteira")))
+            resultados.append(r)
+            _grava_rodada(conexao, "extracao", caso["id"],
+                          extract.versao_prompt(), vez, r)
+            _imprime_vez(caso, vez, vezes, r, mostrar)
+
+
+def _mostra_triplas(triplas: list) -> str:
+    if not triplas:
+        return "      (nenhuma tripla)"
+    linhas = []
+    for t in triplas[:14]:
+        valor = ""
+        if getattr(t, "valor_numero", None) is not None:
+            valor = f" = {t.valor_numero:g} {t.valor_unidade or ''}".rstrip()
+        ctx = getattr(t, "valor_contexto", None)
+        linhas.append(f"      ({t.sujeito_canonico[:26]}, {t.relacao}, "
+                      f"{(t.objeto_canonico or '—')[:24]}){valor}"
+                      + (f"  «{ctx[:26]}»" if ctx else ""))
+    if len(triplas) > 14:
+        linhas.append(f"      … e mais {len(triplas) - 14}")
+    return chr(10).join(linhas)
 
 
 def roda_premissas(casos: list[dict], vezes: int, resultados: list,
@@ -510,6 +667,9 @@ def _ao_menos_um(valor: str) -> int:
 
 
 def _prompt_de(qual: str) -> str:
+    if qual == "extracao":
+        from . import extract
+        return extract.INSTRUCOES
     if qual == "premissas":
         from . import premissas
         return premissas.INSTRUCOES
@@ -524,7 +684,8 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(
         description="Gabarito: o que já funcionava continua funcionando?")
-    parser.add_argument("qual", choices=("premissas", "check"))
+    parser.add_argument("qual",
+                        choices=("premissas", "check", "extracao"))
     parser.add_argument("--vezes", type=_ao_menos_um, default=1,
                         help="repetições por caso (variância do modelo)")
     parser.add_argument("--so", help="ids separados por vírgula")
@@ -553,6 +714,12 @@ def main() -> None:
         raise SystemExit("nenhum caso selecionado")
     prompt = _prompt_de(args.qual)
     repr_ = [c["id"] for c in casos if reproduz_exemplo(c, prompt)]
+    quebradas = [m for c in casos for m in valida_expectativa(c)]
+    if quebradas:
+        print("EXPECTATIVAS QUEBRADAS — conserte antes de gastar:")
+        for m in quebradas:
+            print(f"  {m}")
+        sys.exit(3)
     estimado = len(casos) * args.vezes * CUSTO_ESTIMADO[args.qual]
     print(f"GABARITO {args.qual} · {len(casos)} caso(s) × {args.vezes} vez(es)"
           f" · estimado ~US$ {estimado:.2f}\n")
@@ -580,7 +747,10 @@ def main() -> None:
         resultados: list[Resultado] = []
         incompleto = False
         try:
-            if args.qual == "premissas":
+            if args.qual == "extracao":
+                roda_extracao(casos, args.vezes, resultados, conexao,
+                              mostrar=not args.quieto)
+            elif args.qual == "premissas":
                 roda_premissas(casos, args.vezes, resultados, conexao,
                                mostrar=not args.quieto)
             else:

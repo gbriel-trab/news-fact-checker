@@ -755,19 +755,33 @@ def main() -> None:
     # o boletim de verdade saía vazio. Descoberto em 03/09/2026, depois
     # de uma rodada de US$ 1,68 que marcou 20 posts sem mandar nenhum.
     # Marca = "o leitor recebeu", e com --sem-envio ninguém recebeu.
-    if not args.sem_envio:
+    # E marca DEPOIS DE ENTREGAR, não antes. Em 03/09/2026 o boletim de
+    # 9 dias marcou 14 posts às 20:05 e o Telegram recusou a mensagem
+    # inteira (tag cortada no pedaço): 25 posts apurados, nada entregue,
+    # e todos queimados. Marca = "o leitor recebeu"; envio que falhou não
+    # é recebimento. Telegram NÃO CONFIGURADO é o único caso em que a
+    # marca vale sem envio, porque aí o arquivo é o registro, como sempre
+    # foi.
+    status = "pulada — nada novo"
+    entregue = False
+    if contidos and not args.sem_envio:
+        # O celular recebe a rendição HTML; o texto puro é a trilha,
+        # gravada no arquivo acima.
+        status = _envia_telegram(html, html=True)
+        entregue = not status.startswith("FALHOU")
+    elif args.sem_envio:
+        status = "pulada — --sem-envio"
+    print(f"entrega: {status}")
+
+    if contidos and not args.sem_envio and entregue:
         conexao = conecta(config.BANCO)
         for chaves, post in contidos:
             for chave in chaves:
                 _marca_entregue(conexao, chave, post)
         conexao.close()
-
-    if contidos and not args.sem_envio:
-        # O celular recebe a rendição HTML; o texto puro é a trilha,
-        # gravada no arquivo acima.
-        print(f"entrega: {_envia_telegram(html, html=True)}")
-    elif not contidos:
-        print("entrega: pulada — nada novo")
+    elif contidos and not args.sem_envio:
+        print("NADA foi marcado como entregue: a entrega falhou e os "
+              "posts continuam inéditos para a próxima rodada.")
 
 
 if __name__ == "__main__":

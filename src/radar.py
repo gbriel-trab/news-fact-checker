@@ -104,18 +104,16 @@ def _prompt(handles: tuple[str, ...], dias: int) -> str:
         "comentar. Formato obrigatório, um bloco por post:\n"
         "POST N (@handle, data):\n"
         "URL: <link do PRÓPRIO post transcrito, x.com/.../status/...>\n"
-        "EM RESPOSTA A (@autor): <texto do post respondido — inclua esta "
-        "linha SOMENTE se o post for uma resposta; senão, omita>\n"
+        "EM RESPOSTA A (@autor, <link do post respondido>): <texto do "
+        "post respondido — inclua esta linha SOMENTE se o post for uma "
+        "resposta; senão, omita>\n"
         "CITANDO (@autor): <texto do post citado/quotado — inclua esta "
         "linha SOMENTE se o post cita outro post; senão, omita>\n"
         "<texto literal>\n---\n"
         "A linha URL de cada bloco tem de apontar para o post transcrito "
-        "NAQUELE bloco, nunca para outro. "
-        "NÃO TRANSCREVA respostas a outros usuários — ignore-as por "
-        "completo. Transcreva apenas: posts originais, quote-posts, e "
-        "continuações de thread própria (o handle respondendo a si "
-        "mesmo — nesse caso a linha EM RESPOSTA A traz o post anterior "
-        "da própria thread). "
+        "NAQUELE bloco, nunca para outro; e o link em EM RESPOSTA A, para "
+        "o post respondido. Traga TUDO que encontrar — post, quote e "
+        "resposta —, sem filtrar: quem descarta é o programa. "
         "Se um handle não retornar nada, diga qual, numa linha à parte."
     )
 
@@ -327,6 +325,66 @@ def resposta_a_terceiro(bloco: str, handles: tuple[str, ...]) -> str | None:
     return "@" + quem
 
 
+def _id_proprio(bloco: str) -> str | None:
+    """O status ID do post transcrito NESTE bloco (a linha URL)."""
+    m = _RE_LINHA_URL.search(bloco)
+    return id_status(m.group(0)) if m else None
+
+
+def _id_do_pai(bloco: str) -> str | None:
+    """O status ID do post RESPONDIDO, se o modelo tiver dado o link."""
+    m = _RE_RESPOSTA_CAPT.search(bloco)
+    return id_status(m.group(0)) if m else None
+
+
+def filtra_respostas(posts, handles) -> tuple[tuple, list]:
+    """Descarta resposta a terceiro, SEGUINDO A CADEIA. (fica, descartado)
+
+    Três camadas, da mais confiável para a menos:
+
+    1. ID DO PAI. Se o link do post respondido aponta para um status que
+       NÃO é de nenhum post do próprio autor nesta rodada, é resposta a
+       terceiro — não importa o handle que o modelo escreveu. Esta camada
+       existe porque o modelo MENTE: em 03/09/2026 ele deu
+       `EM RESPOSTA A (@perfil_teste)` para "Vaza… furazoio", que é
+       resposta ao @streetmanwtf; apontou a RAIZ da thread como pai.
+    2. CADEIA. Filho de bloco descartado cai junto. É o caso que o ID do
+       pai sozinho não pega: o autor responde a SI MESMO dentro de uma
+       resposta a terceiro, e o pai imediato é legítimo. Itera até
+       estabilizar.
+    3. HANDLE. Quando não há link (modelo antigo, ou dado truncado), cai
+       na comparação de handle de `resposta_a_terceiro`.
+
+    O que FICA: post próprio, quote, e continuação de thread própria — o
+    autor respondendo a si mesmo, que é o caso do C25 e o único tipo de
+    resposta que o dono do projeto quer ver."""
+    meus = {i for i in (_id_proprio(b) for b in posts) if i}
+    fora: dict[int, str] = {}
+    for k, bloco in enumerate(posts):
+        alvo = resposta_a_terceiro(bloco, handles)
+        pai = _id_do_pai(bloco)
+        if alvo:
+            fora[k] = alvo
+        elif pai and pai not in meus:
+            # Tem link de pai e o pai NÃO é post meu: terceiro, e este é
+            # o sinal que o handle mentiroso não derruba.
+            fora[k] = "pai fora da conta do autor"
+    # Cadeia: enquanto alguém novo cair, quem responde a ele cai também.
+    mudou = True
+    while mudou:
+        mudou = False
+        ids_fora = {_id_proprio(posts[k]) for k in fora}
+        for k, bloco in enumerate(posts):
+            if k in fora:
+                continue
+            pai = _id_do_pai(bloco)
+            if pai and pai in ids_fora:
+                fora[k] = "responde a bloco já descartado (cadeia)"
+                mudou = True
+    ficam = tuple(b for k, b in enumerate(posts) if k not in fora)
+    return ficam, [(posts[k], m) for k, m in sorted(fora.items())]
+
+
 def _posts_de(texto: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Separa os blocos POST N do resto. Devolve (posts, notas).
 
@@ -448,15 +506,12 @@ def busca(handles: tuple[str, ...], dias: int = 2) -> Rodada:
     # e o modelo transcreve assim mesmo; aqui elas sao descartadas ANTES
     # de custar separacao, check e demanda. O descarte e CONTADO e vai
     # para as notas: descarte silencioso e o que esconde defeito.
-    descartadas = [(bloco, alvo) for bloco in posts
-                   if (alvo := resposta_a_terceiro(bloco, handles))]
+    posts, descartadas = filtra_respostas(posts, handles)
     if descartadas:
-        fora = {bloco for bloco, _ in descartadas}
-        posts = tuple(bloco for bloco in posts if bloco not in fora)
-        alvos = ", ".join(sorted({alvo for _, alvo in descartadas}))
+        motivos = ", ".join(sorted({m for _, m in descartadas}))
         notas = tuple(notas) + (
             f"{len(descartadas)} resposta(s) a terceiro descartada(s) "
-            f"antes de custar: {alvos}",)
+            f"antes de custar: {motivos}",)
     uso = dados.get("usage", {})
     ticks = uso.get("cost_in_usd_ticks", 0)
     buscas = sum(1 for item in dados.get("output", [])

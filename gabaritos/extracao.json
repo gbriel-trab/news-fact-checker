@@ -1,0 +1,186 @@
+[
+  {
+    "id": "X1",
+    "slug": "braskem pede recuperacao extrajudicial",
+    "artigo_id": 119,
+    "porque": "DEFEITO CENTRAL: o acervo tem (Braskem S.A., outro, Recuperacao extrajudicial) quando `solicitou` existe e e exatamente isto. `outro` e 20,8% do acervo.",
+    "titulo": "Braskem protocola pedido de recuperação extrajudicial para reestruturar dívida de R$ 56 bilhões",
+    "veiculo": "G1",
+    "data_publicacao": "2026-08-24T20:17:58+00:00",
+    "sentencas": [
+      "Braskem Divulgação A Braskem, uma das maiores empresas petroquímicas do país, protocolou nesta segunda-feira (24) um pedido de recuperação extrajudicial para reestruturar cerca de US$ 10,9 bilhões (R$ 56 bilhões) em dívidas.",
+      "\"A Braskem S.A.vem comunicar aos seus acionistas e ao mercado em geral que protocolou, nesta data, em conjunto com certas controladas, pedido de recuperação extrajudicial , distribuída na 2ª Vara de Falências e Recuperações Judiciais da Comarca da Capital do Estado de São Paulo\", escreveu a companhia em fato relevante.",
+      "As tabelas financeiras anexadas ao plano mostram que o valor total envolvido é maior quando também são consideradas as dívidas entre as próprias empresas do grupo, chamadas de obrigações intercompany.",
+      "Somadas, essas dívidas chegam a R$ 130,6 bilhões, sendo R$ 51,5 bilhões da Braskem S.A., R$ 34,5 bilhões da Braskem Netherlands B.V., R$ 44,2 bilhões da Braskem Netherlands Inc. B.V. e R$ 372 milhões da Braskem Trading & Shipping B.V. Com a soma das dívidas internas e externas, o total de créditos relacionados ao plano chega a aproximadamente R$ 187,1 bilhões.",
+      "O pedido foi apresentado com o apoio de credores que representam 39,6% dos créditos incluídos na reestruturação — percentual acima do mínimo de um terço exigido para o protocolo da recuperação extrajudicial."
+    ],
+    "revisado_por": null,
+    "deve_conter": [
+      {
+        "sujeito_contem": "Braskem",
+        "relacao": "solicitou",
+        "objeto_contem": "recuperação"
+      }
+    ],
+    "relacao_proibida": [
+      {
+        "sujeito_contem": "Braskem",
+        "objeto_contem": "recuperação",
+        "nao_use": "outro"
+      }
+    ],
+    "valor_esperado": [
+      130600000000.0
+    ],
+    "max_outro": 0.2,
+    "nota": "O acervo gravou (Braskem S.A., outro, Recuperacao extrajudicial). `solicitou` existe na lista fechada e o texto diz \"protocolou pedido\". Este caso vigia o fallback para `outro`. CORRIGIDO: a primeira versao pedia \"recupera\", que NAO casa \"recuperação\" -- _contem exige fronteira de palavra. O modelo acertou e o gabarito e que estava errado. CORRIGIDO 2x: proibir o canonico \"Braskem\" era rigor meu. chave_canonica(\"Braskem\") == chave_canonica(\"Braskem S.A.\") porque SUFIXOS_SOCIETARIOS tira o sufixo na LEITURA -- a fusao ja acontece. O que resta proibido e sobrenome puro e cargo, que a chave NAO resolve.",
+    "proibido_no_canonico": []
+  },
+  {
+    "id": "X2",
+    "slug": "salario minimo 2027",
+    "artigo_id": 457,
+    "porque": "Valor com unidade e recorte: mede se valor_contexto sai canonicalizado ou em prosa livre.",
+    "titulo": "Salário mínimo deverá subir para R$ 1.741 em 2027",
+    "veiculo": "Agência Brasil",
+    "data_publicacao": "2026-08-25T00:11:00+00:00",
+    "sentencas": [
+      "O salário mínimo deverá subir para R$ 1.741 em 2027, disse nesta segunda-feira (24) o ministro da Fazenda, Dario Durigan.",
+      "A estimativa será incluída no Projeto de Lei Orçamentária Anual (PLOA), que será enviado ao Congresso Nacional até 31 de agosto.",
+      "O valor representa um aumento de R$ 120, ou 7,4%, sobre os atuais R$ 1.621.",
+      "A nova projeção também ficou R$ 24 acima da estimativa de R$ 1.717 apresentada pelo governo no projeto da Lei de Diretrizes Orçamentárias (LDO) em abril .",
+      "Notícias relacionadas: Governo fará esforço por fim da taxa das blusinhas, diz Durigan."
+    ],
+    "revisado_por": null,
+    "deve_conter": [
+      {
+        "sujeito_contem": "Salário mínimo",
+        "relacao": "tem_atributo"
+      }
+    ],
+    "valor_esperado": [
+      1741.0
+    ],
+    "max_outro": 0.2,
+    "nota": "Valor com unidade e recorte temporal. O 1741 e de 2027 e o 1621 e o atual: se os dois sairem sem recorte distinguivel no valor_contexto, o grafo funde dois fatos diferentes. CORRIGIDO: pedia \"alário mínimo\" e _contem ancora no inicio da palavra. Mesmo erro do \"recupera\"."
+  },
+  {
+    "id": "X3",
+    "slug": "pesquisa eleitoral no RS",
+    "artigo_id": 464,
+    "porque": "obteve_percentual_em tem de vencer `outro`. E o caso que o E1 do check ja marcou como fronteira.",
+    "titulo": "Juliana Brizola lidera disputa ao governo do RS, diz pesquisa",
+    "veiculo": "Poder360",
+    "data_publicacao": "2026-08-25T19:49:44+00:00",
+    "sentencas": [
+      "Levantamento da Real Time Big Data, divulgado nesta 3ª feira (25.ago.2026), mostra que a advogada e ex-deputada estadual do Rio Grande do Sul Juliana Brizola (PDT) lidera a disputa pelo governo do Estado.",
+      "No 1º turno, Juliana tem 38% das intenções de voto, ante 32% de Zucco (PL).",
+      "Gabriel Souza (MDB) soma 19% e Marcelo Maranata (PSDB), 4%.",
+      "2º TURNO A pesquisa testou 3 cenários de 2º turno.",
+      "No 1º, Juliana (PDT) tem 45% das intenções de voto entre os eleitores, contra 41% de Zucco (PL)."
+    ],
+    "revisado_por": null,
+    "deve_conter": [
+      {
+        "sujeito_contem": "Juliana Brizola",
+        "relacao": "obteve_percentual_em"
+      }
+    ],
+    "relacao_proibida": [
+      {
+        "sujeito_contem": "Juliana Brizola",
+        "nao_use": "outro"
+      }
+    ],
+    "valor_esperado": [
+      38.0
+    ],
+    "max_outro": 0.15,
+    "nota": "obteve_percentual_em tem de vencer `outro` e `tem_atributo`. O E1 do check ja marcou esta fronteira. 1o e 2o turno tem percentuais diferentes para a mesma pessoa: o recorte tem de separar."
+  },
+  {
+    "id": "X4",
+    "slug": "TRE-SP nega recurso de Marcal",
+    "artigo_id": 448,
+    "porque": "Decisao judicial: rejeitou/suspendeu/adiou, par sem exemplo no prompt.",
+    "titulo": "TRE-SP nega recurso de Marçal e mantém inelegibilidade",
+    "veiculo": "Agência Brasil",
+    "data_publicacao": "2026-08-24T16:53:00+00:00",
+    "sentencas": [
+      "O presidente do Tribunal Regional Eleitoral de São Paulo (TRE-SP), José Antonio Encinas Manfré, decidiu pela inadmissão de recurso especial eleitoral apresentado pelo candidato à presidência Pablo Marçal e, portanto, manteve sua inelegibilidade até 2032.",
+      "A decisão, proferida na última sexta-feira (21), manteve também a multa de R$ 420 mil.",
+      "Ex-candidato a prefeito de São Paulo, Marçal foi condenado por uso indevido dos meios de comunicação durante a campanha de 2024.",
+      "Notícias relacionadas: Confira a agenda dos candidatos à Presidência nesta segunda-feira (24).",
+      "Saiba quais são as atribuições dos governadores e vice-governadores."
+    ],
+    "revisado_por": null,
+    "deve_conter": [
+      {
+        "sujeito_contem": "Encinas",
+        "relacao": "preside",
+        "objeto_contem": "Tribunal Regional Eleitoral"
+      }
+    ],
+    "proibido_no_canonico": [
+      "Manfré",
+      "Marçal",
+      "Presidente do TRE-SP",
+      "O presidente"
+    ],
+    "max_outro": 0.25,
+    "nota": "Decisao judicial: rejeitou/suspendeu/adiou sao o par confundivel sem exemplo no prompt. E proibido_no_canonico vigia o patch 4 -- sobrenome puro e cargo nao podem ser canonico (regra 2)."
+  },
+  {
+    "id": "X5",
+    "slug": "PEC da escala 6x1 na CCJ",
+    "artigo_id": 1947,
+    "porque": "submeteu_a vs tramita_em, outro par sem exemplo.",
+    "titulo": "Fim da 6x1: Aziz mantém relatório com mesmo teor de texto aprovado pela Câmara para acelerar votação no Senado",
+    "veiculo": "G1",
+    "data_publicacao": "2026-08-27T16:22:09+00:00",
+    "sentencas": [
+      "O senador Omar Aziz (PSD-AM) entregou nesta quinta-feira (27) à Comissão de Constituição e Justiça (CCJ) do Senado relatório a favor da Proposta de Emenda à Constituição (PEC) do fim da escala 6x1.",
+      "O parlamentar sugeriu no relatório a manutenção do texto já aprovado pela Câmara, em uma estratégia para agilizar a análise do tema em um ano eleitoral.",
+      "Aziz rejeitou todas as mudanças pedidas por senadores, incluindo o retorno das 44 horas semanais, defendido por integrantes da bancada do PL.",
+      "A proposta será votada pela CCJ do Senado na próxima semana, após ser destravada pelo presidente da Casa, Davi Alcolumbre (União Brasil-AP), que se reaproximou do presidente Lula nas últimas semanas.",
+      "Agora no g1 Alcolumbre, no entanto, não garantiu, após reunião com Lula e Hugo Motta nesta quarta-feira (26), que a PEC será levada para análise do plenário principal do Senado na próxima semana."
+    ],
+    "revisado_por": null,
+    "deve_conter": [
+      {
+        "sujeito_contem": "Omar Aziz",
+        "relacao": "submeteu_a"
+      }
+    ],
+    "proibido_no_canonico": [
+      "Aziz",
+      "O senador",
+      "O parlamentar"
+    ],
+    "max_outro": 0.2,
+    "nota": "submeteu_a vs tramita_em. A sentenca 2 diz \"Aziz rejeitou todas as mudancas\" -- sobrenome puro no texto, que NAO pode virar canonico."
+  },
+  {
+    "id": "X6",
+    "slug": "contexto da crise da Braskem",
+    "artigo_id": 128,
+    "porque": "Materia longa: fragmentacao de canonico, sobrenome puro e cargo como canonico.",
+    "titulo": "Desastre em Maceió, dívida alta e queda no setor: o caminho da Braskem até a recuperação extrajudicial",
+    "veiculo": "G1",
+    "data_publicacao": "2026-08-24T13:39:25+00:00",
+    "sentencas": [
+      "Justiça do Trabalho determina que Braskem pague plano de saúde de químico diagnosticado com leucemia na Bahia Divulgação/Braskem A decisão da Braskem de recorrer à recuperação extrajudicial marca o capítulo mais recente de uma crise que se arrasta há vários anos. 🗒️ Tem alguma sugestão de reportagem?",
+      "Mande para o g1 O processo é resultado da combinação de três pressões: os custos bilionários do desastre geológico em Maceió, um período longo de margens mais baixas na indústria petroquímica global e o alto nível de endividamento.",
+      "A recuperação extrajudicial é um mecanismo que permite renegociar dívidas com credores fora de uma recuperação judicial tradicional, com posterior homologação da Justiça.",
+      "Esse cenário passou a afetar diretamente a capacidade da companhia de gerar caixa e manter o pagamento regular de suas obrigações. À medida que as despesas aumentavam e os resultados operacionais se enfraqueciam, o equilíbrio financeiro da empresa se deteriorava.",
+      "A seguir, o g1 explica os fatores que levaram a Braskem, maior petroquímica da América Latina, a enfrentar uma das crises mais profundas de sua história."
+    ],
+    "revisado_por": null,
+    "max_outro": 0.2,
+    "proibido_no_canonico": [
+      "A companhia",
+      "a empresa"
+    ],
+    "nota": "Materia longa. `Braskem` puro e proibido porque o acervo ja usa `Braskem S.A.` -- fragmentar a entidade e o que canonico.py existe para remendar na leitura. E o caso com mais `outro` do lote (3 nas 3 primeiras triplas). CORRIGIDO 2x: proibir o canonico \"Braskem\" era rigor meu. chave_canonica(\"Braskem\") == chave_canonica(\"Braskem S.A.\") porque SUFIXOS_SOCIETARIOS tira o sufixo na LEITURA -- a fusao ja acontece. O que resta proibido e sobrenome puro e cargo, que a chave NAO resolve."
+  }
+]

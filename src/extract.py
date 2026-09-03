@@ -611,19 +611,22 @@ Regras que importam mais que as outras:
 
    Errado: (Pesquisa X, teve_margem_de_erro, margem de erro)
    Errado: (Pesquisa X, custou, Instituto Y)
-   Certo:  (Pesquisa X, teve_margem_de_erro, —) valor 2 "pontos percentuais"
-   Certo:  (Pesquisa X, teve_custo, —)          valor 24000 "BRL"
+   Certo:  (Pesquisa X, tem_atributo, —) valor 2 "pontos percentuais"
+                                          contexto "margem de erro"
+   Certo:  (Pesquisa X, tem_atributo, —) valor 24000 "BRL"
+                                          contexto "custo"
 
    Margem de erro, custo e nível de confiança são propriedades da pesquisa, não
    relações com algo. Inventar um objeto para preencher o campo produz tripla
    que não se conecta a nada no grafo.
 
    ISTO NÃO VALE PARA DECLARAÇÃO. Relação de fala — afirmou, criticou,
-   defendeu, chamou, declarou — SEMPRE tem objeto: é o conteúdo do que foi
+   defendeu, criticou, declarou — SEMPRE tem objeto: é o conteúdo do que foi
    dito. Objeto nulo ali apaga a afirmação inteira.
 
    Errado: (Ruas, afirmou, —)
-   Certo:  (Ruas, afirmou, ADPF 635 transformou o Rio em resort para criminosos)
+   Certo:  (Cláudio Castro, afirmou, ADPF 635 transformou o Rio em resort
+                                  para criminosos)
 
    Regra geral: toda tripla precisa carregar OU um objeto OU um valor
    numérico. Sem nenhum dos dois, ela não afirma nada e não deve existir.
@@ -638,14 +641,14 @@ Regras que importam mais que as outras:
 
    Frase:  "o PL 2.234/2022, que legaliza cassinos"
    Errado: (PL 2.234/2022, legalizou, Jogos de azar) EXTRACTED
-   Certo:  (PL 2.234/2022, preve_legalizacao_de, Jogos de azar) EXTRACTED
+   Certo:  (PL 2.234/2022, preve, legalização dos jogos de azar) EXTRACTED
 
    O projeto legalizaria. Ele está em tramitação. Registrar como consumado
    coloca no acervo um fato que não ocorreu.
 
 8. RELAÇÃO PRECISA SIGNIFICAR ALGO. Nunca use verbos vazios como "foi", "teve"
    ou "esteve" sozinhos. (Jonathan Karter, foi, Poder360) não afirma nada.
-   Prefira exercer_cargo_em, integrou, foi_transmitido_em.
+   Prefira exercer_cargo_em, integra, divulgou.
 
 9. IGNORE TEXTO INSTITUCIONAL DO VEÍCULO. Chamada de podcast, agregador,
    newsletter, canal no YouTube e descrição da própria redação não são
@@ -669,7 +672,8 @@ Regras que importam mais que as outras:
    Frase:  "a prova amealhada nos autos não autoriza a condenação do
             recorrente", escreveu o magistrado.
    Errado: (Recorrente, afirmou, a prova não autoriza a condenação)
-   Certo:  (Magistrado, afirmou, a prova não autoriza a condenação do recorrente)
+   Certo:  (Ministro Relator do STJ, afirmou, a prova não autoriza a
+                                            condenação do recorrente)
 
    O recorrente é sobre quem se fala; o magistrado é quem fala. Trocar os dois
    põe na boca de alguém a frase que o condena, e sai do sistema com fonte
