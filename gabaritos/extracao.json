@@ -181,8 +181,9 @@
         "relacao": "submeteu_a"
       },
       {
-        "sujeito_contem": "PEC",
-        "relacao": "tramita_em"
+        "relacao": "tramita_em",
+        "objeto_contem": "Comissão",
+        "sujeito_contem": ""
       }
     ],
     "proibido_no_canonico": [
@@ -191,7 +192,7 @@
       "O parlamentar"
     ],
     "max_outro": 0.2,
-    "nota": "submeteu_a vs tramita_em. A sentenca 2 diz \"Aziz rejeitou todas as mudancas\" -- sobrenome puro no texto, que NAO pode virar canonico. REFORCADO: submeteu_a e do ATO (Aziz entregou), tramita_em e do ESTADO (a PEC esta na CCJ). Trocar os dois e o erro que a glosa longa evita -- entao o caso tem de cobrar os dois lados.",
+    "nota": "submeteu_a vs tramita_em. A sentenca 2 diz \"Aziz rejeitou todas as mudancas\" -- sobrenome puro no texto, que NAO pode virar canonico. REFORCADO: submeteu_a e do ATO (Aziz entregou), tramita_em e do ESTADO (a PEC esta na CCJ). Trocar os dois e o erro que a glosa longa evita -- entao o caso tem de cobrar os dois lados. CORRIGIDO (7a expectativa minha errada no dia): eu exigia sujeito contendo \"PEC\" e o modelo expandiu para \"Proposta de Emenda a Constituicao\", que e o que a regra 2 MANDA. A tripla estava la. O caso passa a cobrar a RELACAO sobre a materia, nao a grafia do nome.",
     "relacao_proibida": [
       {
         "sujeito_contem": "Omar Aziz",

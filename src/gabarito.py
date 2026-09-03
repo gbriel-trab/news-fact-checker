@@ -245,7 +245,12 @@ def confere_extracao(caso: dict, triplas: list) -> list[str]:
 
     for pedido in caso.get("deve_conter", []):
         def bate(t, p=pedido):
-            if not _contem(_txt(t, "sujeito_canonico"), p["sujeito_contem"]):
+            # `sujeito_contem` vazio = não cobra o sujeito. Existe porque
+            # exigir a GRAFIA do canônico punia o modelo por obedecer a
+            # regra 2: em X5 ele expandiu "PEC" para "Proposta de Emenda
+            # à Constituição", que é o pedido, e o caso falhou (03/09).
+            if p.get("sujeito_contem") and not _contem(
+                    _txt(t, "sujeito_canonico"), p["sujeito_contem"]):
                 return False
             if p.get("relacao") and _txt(t, "relacao") != p["relacao"]:
                 return False
