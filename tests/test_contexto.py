@@ -86,6 +86,33 @@ class TestContagem:
         assert c.de == "" and c.ate == ""
         assert "(" not in contexto.linha(c)
 
+    def test_sindicacao_nao_ocupa_duas_vagas_da_amostra(self):
+        """G1 e BBC publicam "Do Habib's às Casas Bahia" com o MESMO
+        título. Com a amostra por proximidade pura, uma matéria só comia
+        duas das três vagas e nenhuma marca aparecia (03/09/2026)."""
+        c = contexto.do_assunto("x", busca_de([
+            achado("Do Habib's às Casas Bahia", "G1", 0.79, 1),
+            achado("Do Habib's às Casas Bahia", "BBC", 0.78, 2),
+            achado("Braskem tem RJ aprovada", "Folha", 0.77, 3),
+            achado("Dona de Habib's entra em RJ", "Valor", 0.76, 4),
+        ]))
+        titulos = [t for _, t in c.amostra]
+        assert titulos.count("Do Habib's às Casas Bahia") == 1
+        assert "Braskem tem RJ aprovada" in titulos
+
+    def test_sindicacao_continua_contando_como_corroboracao(self):
+        """O pareado, e é o que não pode quebrar: veículo distinto
+        publicando a mesma matéria É corroboração. A dedup por título
+        muda o que se MOSTRA, nunca o que se CONTA."""
+        c = contexto.do_assunto("x", busca_de([
+            achado("mesmo titulo", "G1", 0.79, 1),
+            achado("mesmo titulo", "BBC", 0.78, 2),
+            achado("outro", "Folha", 0.77, 3),
+        ]))
+        assert c.materias == 3
+        assert len(c.veiculos) == 3
+        assert len(c.amostra) == 2
+
     def test_a_amostra_carrega_a_fonte(self):
         """Princípio 2: nada aparece sem de onde veio."""
         c = contexto.do_assunto("x", busca_de([
@@ -94,7 +121,7 @@ class TestContagem:
             achado("longe", "Valor", 0.76, 3),
             achado("mais longe", "BBC", 0.755, 4)]))
         assert c.amostra[0] == ("G1", "mais perto")
-        assert len(c.amostra) == 3
+        assert len(c.amostra) == 4
 
 
 class TestSaturacao:

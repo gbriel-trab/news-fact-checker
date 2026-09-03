@@ -73,6 +73,10 @@ TETO_BUSCA = 4096
 """Onde a expansão para. Acima disso a saída diz "mais de N", que é
 verdade, em vez de um número que não foi medido."""
 
+AMOSTRA = 5
+"""Quantos títulos mostrar. Ver a nota em `do_assunto`: com três, o post
+das recuperações judiciais não exibia marca nenhuma."""
+
 TETO_POR_RODADA = 8
 """Buscas de contexto por rodada do boletim. A busca é local e não custa
 API, mas vetorizar não é grátis em tempo e um post com dez
@@ -142,7 +146,25 @@ def do_assunto(assunto: str, buscar=None) -> Contexto | None:
 
     datas = sorted(d[:10] for d in
                    (str(a.meta.get("data") or "") for a in unicos) if d)
-    melhores = sorted(unicos, key=lambda a: -a.proximidade)[:3]
+    # A amostra é o que o leitor de fato lê, e ela precisa MOSTRAR o
+    # assunto, não só provar que ele existe. Duas regras, e as duas
+    # nasceram do post das recuperações judiciais (03/09/2026):
+    #
+    # 1. Dedup por TÍTULO. G1 e BBC publicam "Do Habib's às Casas Bahia"
+    #    com o mesmo título, e Agência Brasil e G1 idem com "Dona de
+    #    Habib's e Ragazzo" — sindicação comia 2 das 3 vagas com uma
+    #    matéria só. Isso NÃO muda a contagem: veículo distinto publicando
+    #    a mesma matéria continua sendo corroboração e continua contando.
+    #    Muda só o que se mostra.
+    # 2. Cinco, não três. Com três, a amostra saía "explicador genérico do
+    #    InfoMoney + o mesmo título duas vezes" e nenhuma marca aparecia,
+    #    embora as marcas estivessem nos títulos das outras sete.
+    por_titulo: dict[str, object] = {}
+    for a in sorted(unicos, key=lambda a: -a.proximidade):
+        titulo = str(a.meta.get("titulo", "")).strip().casefold()
+        if titulo not in por_titulo:
+            por_titulo[titulo] = a
+    melhores = list(por_titulo.values())[:AMOSTRA]
     return Contexto(
         assunto=assunto.strip(),
         materias=len(unicos),
