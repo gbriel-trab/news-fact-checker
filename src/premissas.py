@@ -248,6 +248,57 @@ def _tem_numero(ref: Referente) -> bool:
     return any(c.isdigit() for c in ref.valor)
 
 
+_QUANTIDADE = frozenset(
+    "quantas quantos muitas muitos varias varios tantas tantos diversas "
+    "diversos inumeras inumeros recorde onda alta baixa aumento aumentou "
+    "cresceu subiu caiu despencou disparou dobrou triplicou explodiu "
+    "maioria minoria".split())
+"""Palavra que torna o predicado MENSURÁVEL: o acervo consegue medir o
+fenômeno sem nomear nenhum membro da classe.
+
+Fora daqui de propósito: "todos", "todo", "infindáveis", "praticamente".
+Elas quantificam mas não são mensuráveis pelo acervo, e todas as três
+aparecem no post do "empresário" (C3) — "TODOS os outros empresários no
+bolso", "Participação societária em infindáveis empresas". Incluí-las
+abriria exatamente o caso que a regra 8 existe para fechar."""
+
+
+def _e_classe(ref: Referente) -> bool:
+    """O sujeito é uma CLASSE, não um indivíduo não identificado.
+
+    Classe é substantivo comum no PLURAL — "marcas icônicas", "empresas",
+    "bancos". Indivíduo é singular — "o cara", "o empresário", "o
+    encontro". A diferença importa porque decide se falta informação para
+    conferir: para "há muitas recuperações judiciais em marcas conhecidas"
+    NÃO preciso saber quais marcas; para "o cara tem banco dele" preciso
+    saber quem é o cara."""
+    uteis = [t for t in _normaliza(ref.valor).split() if t not in _ARTIGOS]
+    return bool(uteis) and all(t.endswith("s") for t in uteis[:1])
+
+
+def _classe_mensuravel(p: "Premissa") -> bool:
+    """A terceira porta do roteador: classe no sujeito E quantidade no
+    que o texto escreveu.
+
+    Exige as DUAS, e a segunda olha o TRECHO — o texto do autor —, não o
+    valor resolvido: é lá que "quantas" aparece. Uma só não basta:
+    "marcas icônicas estão em crise" tem classe e não tem medida;
+    "TODOS os outros empresários" tem quantificador e não tem classe
+    mensurável.
+
+    Fundada em 03/09/2026 pelo C19, com o veredito na mão: a afirmação
+    que o roteador rebaixava voltou CONFIRMADO por 4 veículos. Regra que
+    manda descartar o que o acervo sustenta está errada."""
+    if not (p.quem and _e_classe(p.quem)):
+        return False
+    texto = _normaliza(" ".join(
+        filter(None, [p.trecho, p.quem.trecho if p.quem else "",
+                      p.o_que.trecho if p.o_que else "",
+                      p.quem.valor if p.quem else "",
+                      p.o_que.valor if p.o_que else ""])))
+    return any(t in _QUANTIDADE for t in texto.split())
+
+
 def _vazio(ref: Referente) -> bool:
     """O valor não identifica nada: só pronome/advérbio, ou aberto por
     determinante indefinido ("um empresário", "algum lugar")."""
@@ -305,7 +356,8 @@ def roteia(analise: Analise, texto: str) -> Analise:
         elif _vazio(p.o_que):
             motivo = "o QUÊ é pronome, advérbio ou indefinido"
             rejeitado = p.o_que
-        elif not (_tem_entidade_ou_numero(p.quem) or _tem_numero(p.o_que)):
+        elif not (_tem_entidade_ou_numero(p.quem) or _tem_numero(p.o_que)
+                  or _classe_mensuravel(p)):
             # A heurística é POR SLOT, e o slot que importa é o sujeito:
             # conferir só o o_que deixava passar "o encontro que ocorreu"
             # + "o Brasil" — sujeito indeterminado com objeto nomeado, que
@@ -420,6 +472,28 @@ Regras que importam mais que as outras:
    encontro. NÃO adivinhe o referente: o que você desconfia vai em
    `hipotese`, sem âncora, e NUNCA um nome próprio que o texto não
    escreveu — `hipotese` é diagnóstico interno, não sai para o leitor.
+
+   MAS INDIVÍDUO NÃO IDENTIFICADO É DIFERENTE DE CLASSE. A pergunta que
+   decide é uma só: PARA CONFERIR ESTA AFIRMAÇÃO, PRECISO SABER QUEM É?
+
+   * "O cara tem banco dele" — preciso. Sem saber quem, não há o que
+     conferir: nao_verificavel.
+   * "Há muitas recuperações judiciais em marcas conhecidas" — NÃO
+     preciso. O sujeito é uma CLASSE ("marcas conhecidas") e o que se
+     afirma é sobre a classe, não sobre um membro dela; o acervo mede o
+     fenômeno sem nomear ninguém. É FATO, e `quem` recebe a classe como
+     o texto a escreve.
+
+   A classe entra como fato só quando o predicado é MENSURÁVEL — muitos,
+   recorde, aumentou, caiu, N por cento. "As marcas conhecidas estão em
+   crise" é juízo e continua opiniao.
+
+   Medido em 03/09/2026, e é o caso que fundou esta distinção: "quantas
+   recuperações judiciais estão acontecendo em marcas icônicas" saía
+   nao_verificavel, e a mesma afirmação levada ao verificador voltou
+   CONFIRMADO por 4 veículos (CNN, Folha, G1, Agência Brasil), com a CNN
+   escrevendo "onda de recuperações judiciais". A regra estava mandando
+   descartar o que o acervo sustentava.
 
    RESOLVER não é COMPLETAR, e a diferença decide o `valor`: RESOLVER
    anáfora cujo antecedente está NO TEXTO é obrigatório ("O lucro dela"

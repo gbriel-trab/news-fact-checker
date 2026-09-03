@@ -183,6 +183,57 @@ class TestRoteador:
             quem=ref(quem), o_que=ref(o_que), quando=ref(quando))])
         return roteia(analise, texto).premissas[0]
 
+    def test_positivo_classe_mensuravel_passa(self):
+        """C19, e a barreira nasce com o VEREDITO na mao: esta afirmacao
+        era rebaixada, e levada ao verificador voltou CONFIRMADO por 4
+        veiculos (CNN, Folha, G1, Agencia Brasil) em 03/09/2026. Regra
+        que manda descartar o que o acervo sustenta esta errada."""
+        texto = ("POST 4 (@x, 31 Aug 2026):\nAlguem consegue ainda manter "
+                 "as contas de quantas recuperacoes judiciais estao "
+                 "acontecendo em marcas iconicas?")
+        p_ = self._fato(
+            texto, quem=("marcas iconicas", "marcas iconicas"),
+            o_que=("recuperacoes judiciais", "recuperacoes judiciais"))
+        assert p_.tipo == "fato", p_.roteado
+
+    def test_negativo_classe_sem_medida_continua_rebaixada(self):
+        """O pareado. Classe sozinha nao abre a porta: sem palavra de
+        quantidade nao ha o que o acervo meca."""
+        texto = ("POST 4 (@x, 31 Aug 2026):\nAs marcas iconicas estao "
+                 "sofrendo com recuperacoes judiciais.")
+        p_ = self._fato(
+            texto, quem=("marcas iconicas", "marcas iconicas"),
+            o_que=("recuperacoes judiciais", "recuperacoes judiciais"))
+        assert p_.tipo == "nao_verificavel"
+
+    def test_negativo_o_empresario_nao_entra_pela_porta_nova(self):
+        """As frases do C3 que QUANTIFICAM sem medir. "todos",
+        "infindaveis" e "praticamente" ficaram fora de _QUANTIDADE
+        justamente por isto: e o caso que a regra 8 existe para fechar,
+        e a porta nova nao pode reabri-lo."""
+        base = "POST 7 (@x, 01 Sep 2026):\n"
+        for trecho, quem, o_que in (
+            ("TODOS os outros empresarios no bolso via divida",
+             ("os outros empresarios", "os outros empresarios"),
+             ("no bolso", "no bolso")),
+            ("Participacao societaria em infindaveis empresas",
+             ("infindaveis empresas", "infindaveis empresas"),
+             ("participacao societaria", "Participacao societaria")),
+            ("Praticamente o mundo politico todo tem dinheiro com ele",
+             ("o mundo politico", "o mundo politico"),
+             ("dinheiro", "dinheiro")),
+        ):
+            p_ = self._fato(base + trecho, quem=quem, o_que=o_que)
+            assert p_.tipo == "nao_verificavel", (trecho, p_.roteado)
+
+    def test_negativo_o_encontro_continua_fora(self):
+        """O caso que fundou a regra por slot nao pode voltar."""
+        texto = ("POST 3 (@x, 01 Sep 2026):\nO encontro que ocorreu muda "
+                 "mais o rumo do Brasil que eleicao.")
+        p_ = self._fato(texto, quem=("O encontro que ocorreu", "O encontro"),
+                        o_que=("o Brasil", "o Brasil"))
+        assert p_.tipo == "nao_verificavel"
+
     def test_charada_passa(self):
         texto = ("POST 6 (@x, 01 Sep 2026):\nCharada: André se reune com "
                  "Trump, todos os rumos mudam.")
