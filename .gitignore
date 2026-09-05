@@ -9,6 +9,20 @@ teste-prompt.txt
 .env.*.local
 !.env.example
 
+# Segredo do OAuth do X: guarda o refresh token, de vida longa e rotativo.
+# data/ não é ignorado inteiro — só raw/, *.db, chroma/ e boletins/ —, então
+# estas linhas precisam existir por conta própria.
+#
+# São DUAS porque o caminho literal não bastava: a gravação atômica de
+# `_grava` (src/x_auth.py) cria `data/x_token.json.tmp` no MESMO diretório,
+# com o MESMO refresh token dentro, e um `git check-ignore -v` de 04/09/2026
+# mostrou que só o `.json` casava — o temporário estava exposto a um
+# `git add data/`. O segundo padrão cobre todo irmão que o módulo cria ao
+# lado do token (`.tmp` da gravação, `.lock` da renovação), e não casa com o
+# `.json` em si, então a primeira linha continua sendo a que o protege.
+data/x_token.json
+data/x_token.json.*
+
 # ---- Python ----
 __pycache__/
 *.py[cod]
@@ -66,3 +80,7 @@ data/boletins/
 # Procedência dos casos do gabarito: URLs reais dos posts.
 # Fora do Git porque o repositório é público e o link resolve para o tuíte.
 gabaritos/procedencia.local.json
+
+# Gabarito do separador: os casos reais reproduzem TEXTO de post do X, e o
+# Developer Agreement permite redistribuir o ID, nao o conteudo. Fica local.
+gabaritos/premissas.json

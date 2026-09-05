@@ -13,7 +13,8 @@ O fluxo por rodada:
 
     radar.busca(handles, janela)
       → descarta o que já foi entregue (tabela boletim_posts, por hash de
-        conteúdo E por ID de status quando o bloco traz URL validada)
+        conteúdo E por ID de status quando a URL do bloco confere com os
+        links da rodada)
       → para cada post inédito: premissas.separa → check de cada fato
       → monta o texto → imprime → grava em data/boletins/ → envia
 
@@ -28,15 +29,18 @@ Entrega por TELEGRAM quando TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID estiverem
 no .env (bot gratuito via @BotFather; ver .env.example). WhatsApp fica como
 camada futura — o montador é o mesmo, só troca o carteiro.
 
-Custo por rodada: a busca na xAI (~US$ 0,03) + separação por post inédito
-(~US$ 0,03) + uma verificação por premissa factual (~US$ 0,02-0,05). A soma
-do rodapé vem do LIVRO-CAIXA, não de heurística: o custo de verificação é
-lido das linhas que a rodada de fato gravou em `consultas` — veredito
-reusado não grava linha e não soma.
+Custo por rodada: a busca na API do X (US$ 0,005 por post lido) + separação
+por post inédito (~US$ 0,03) + uma verificação por premissa factual
+(~US$ 0,02-0,05). As duas metades do rodapé têm NATUREZA diferente, e ele
+diz qual é qual: a da Anthropic vem do LIVRO-CAIXA — as
+linhas que a rodada de fato gravou em `consultas`, e veredito reusado não
+grava linha e não soma; a da busca é ESTIMATIVA feita no cliente (a API do
+X não devolve preço), então sai rotulada de estimada. Estimativa
+apresentada como medição seria fatura inventada.
 
 O enquadramento é lei aqui, dobrado — e vai no CABEÇALHO além do rodapé,
 para sobreviver a entrega parcial: a saída é conferência de premissas,
-nunca placar do autor; o texto de cada post é transcrição de modelo,
+nunca placar do autor; o texto de cada post é o registro do servidor do X,
 conferível no link.
 """
 
@@ -72,8 +76,8 @@ def _hash_post(texto: str) -> str:
     """Hash do CONTEÚDO do post: cabeçalho 'POST N (...)', linha URL: e
     linha EM RESPOSTA A ficam de fora. O N muda a cada rodada — com o
     cabeçalho no hash, o mesmo post voltava como inédito na rodada
-    seguinte (defeito notado em 01/09/2026); as outras duas linhas variam
-    conforme o modelo obedece ou não ao formato."""
+    seguinte (defeito notado em 01/09/2026); as outras duas linhas dependem
+    de o post referenciado ter sido lido na mesma rodada."""
     corpo = _RE_LINHA_CITANDO.sub("", _RE_LINHA_RESPOSTA.sub(
         "", _RE_LINHA_URL.sub("", _RE_CABECALHO.sub("", texto))))
     normalizado = " ".join(corpo.lower().split())
@@ -82,11 +86,10 @@ def _hash_post(texto: str) -> str:
 
 def _chaves_do_post(post: str, links: tuple[str, ...]) -> set[str]:
     """As identidades de um post para dedup: hash do conteúdo sempre; e
-    'url:<id do status>' quando o bloco traz URL validada contra as
-    citações da busca. A URL é a identidade forte — sobrevive a variação
-    de transcrição; o hash cobre bloco sem URL e o histórico anterior à
-    linha URL:. Post editado no X ganha status novo, então a versão
-    pré-edição continua contando como inédita, como decidido."""
+    'url:<id do status>' quando o status da linha URL: está entre os links
+    da rodada. A URL é a identidade forte; o hash cobre bloco sem URL.
+    Post editado no X ganha status novo, então a versão pré-edição
+    continua contando como inédita, como decidido."""
     from . import radar
     chaves = {_hash_post(post)}
     url, confere = radar.url_do_post(post, links)
@@ -367,8 +370,8 @@ def monta(dias: int, reenviar: bool = False,
         except radar.FalhaNoRadar as erro:
             raise SystemExit(f"Busca do radar falhou: {erro}") from erro
 
-        # `vistos` acumula as chaves da própria rodada: o modelo transcrever
-        # o mesmo post duas vezes não pode virar entrega dupla.
+        # `vistos` acumula as chaves da própria rodada: o mesmo post lido
+        # duas vezes (handle repetido na lista) não pode virar entrega dupla.
         vistos = set() if reenviar else _ja_entregues(conexao)
         ineditos: list[tuple[str, set[str]]] = []
         for p in rodada.posts:
@@ -386,7 +389,8 @@ def monta(dias: int, reenviar: bool = False,
         hoje = datetime.now().astimezone().strftime("%d/%m/%Y")
         handles = ", ".join("@" + h for h in config.HANDLES_RADAR)
         linhas = [f"RADAR · {handles} · {hoje}",
-                  "transcrição de modelo — o registro é o post, no link",
+                  "texto literal do post, lido pela API oficial do X — o "
+                  "registro é o post, no link",
                   ENQUADRAMENTO, ""]
         custo = rodada.custo_usd
         contidos: list[tuple[set[str], str]] = []
@@ -418,9 +422,8 @@ def monta(dias: int, reenviar: bool = False,
             linhas.append(f"[{i}] {post}")
             url, confere = radar.url_do_post(post, rodada.links)
             if url and not confere:
-                linhas.append("  aviso: a URL que o modelo deu para este "
-                              "post não está entre as citações da busca — "
-                              "link omitido")
+                linhas.append("  aviso: a URL do bloco não confere com os "
+                              "links da rodada — link omitido")
             # Falha num post não derruba o lote — padrão do extract.main.
             try:
                 bloco, gasto, dados = _confere_post(post, conexao, estado)
@@ -443,10 +446,12 @@ def monta(dias: int, reenviar: bool = False,
         linhas.append("")
         linhas.append(ENQUADRAMENTO)
         # Duas carteiras, dois consoles: quem confere fatura precisa saber
-        # de qual bolso saiu cada parte.
+        # de qual bolso saiu cada parte. E as duas metades não têm o mesmo
+        # peso: a da busca é conta nossa, a da Anthropic é livro-caixa. O
+        # rótulo vai na linha para não confundir as duas.
         linhas.append(f"custo da rodada: US$ {custo:.4f} "
-                      f"(busca xAI US$ {rodada.custo_usd:.4f} + "
-                      f"Anthropic US$ {custo - rodada.custo_usd:.4f})")
+                      f"(busca no X US$ {rodada.custo_usd:.4f} estimado + "
+                      f"Anthropic US$ {custo - rodada.custo_usd:.4f} medido)")
         html = _formata_telegram(handles, hoje, estruturados, rodada.notas,
                                  rodada.links, custo, rodada.custo_usd)
         return "\n".join(linhas), custo, contidos, html
@@ -487,7 +492,7 @@ def _conta_tipos(nao_verificaveis) -> str:
 
 
 def _formata_telegram(handles: str, hoje: str, estruturados, notas,
-                      links, custo: float, custo_xai: float) -> str:
+                      links, custo: float, custo_busca: float) -> str:
     """A rendição HTML do Telegram: os MESMOS dados do texto puro, com
     hierarquia visual — negrito no cabeçalho, itálico no post, etiqueta
     monoespaçada no tipo e link clicável na evidência. Trilha completa
@@ -516,11 +521,11 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
         p.append("Nenhum post novo na janela.")
     pareados: set[str] = set()
     for i, post, dados, url in estruturados:
-        # A linha-cabeçalho do modelo ("POST 4 (@x, 30 Aug):") sai — o
+        # A linha-cabeçalho do bloco ("POST 4 (@x, 30 Aug):") sai — o
         # número duplica o [n] — mas o parêntese (handle, data) fica. O
         # CORPO vai na íntegra, sem truncar: post é conteúdo, não resumo.
-        # A linha URL: vira a âncora do cabeçalho (só quando validada
-        # contra as citações); EM RESPOSTA A vira a linha de contexto ↳.
+        # A linha URL: vira a âncora do cabeçalho (só quando confere com
+        # os links da rodada); EM RESPOSTA A vira a linha de contexto ↳.
         meta = ""
         corpo = post
         if post.startswith("POST"):
@@ -617,8 +622,8 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
         p.append(f"{tag('AVISO')} {_esc(nota)}")
     # Só as SOBRAS: link já pareado a um post não repete aqui. O texto da
     # âncora é o fim do ID do status, nunca um número — numerar este
-    # conjunto foi o que fez o boletim de 31/08 prometer correspondência
-    # que a API não dá (as citações vêm sem ordem nem posição).
+    # conjunto prometeria uma correspondência com os posts acima que não
+    # existe.
     sobras = [u for u in links if radar.id_status(u) not in pareados]
     if sobras:
         ancoras = " · ".join(
@@ -627,8 +632,14 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
         p.append(f"Também lidos na busca, sem par com os posts acima "
                  f"(sem ordem): {ancoras}")
     p.append("")
-    p.append(f"<i>custo: US$ {custo:.2f} (xAI {custo_xai:.2f} + "
-             f"Anthropic {custo - custo_xai:.2f})</i>")
+    # "estimado" só na busca, "medido" só na Anthropic — e isto é regra,
+    # não estilo: a API do X não devolve preço, então a
+    # metade da busca é multiplicação nossa (`x_api.custo_estimado_usd`),
+    # enquanto a da Anthropic sai das linhas gravadas em `consultas`. Este
+    # rodapé é o que chega ao celular; sem o rótulo, o dono leria as duas
+    # como fatura.
+    p.append(f"<i>custo: US$ {custo:.2f} (busca no X {custo_busca:.2f} "
+             f"estimado + Anthropic {custo - custo_busca:.2f} medido)</i>")
     return "\n".join(p)
 
 
@@ -725,6 +736,28 @@ def _envia_telegram(texto: str, html: bool = False) -> str:
     return f"enviado ao Telegram em {len(pedacos)} mensagem(ns)"
 
 
+def _avisa_falha(erro: str) -> None:
+    """Uma linha no Telegram quando o boletim morre antes de existir.
+
+    O silêncio era o pior modo de falhar. Em 03/09/2026 a busca estourou
+    e o único registro foi uma linha em `data/boletim.log`, que ninguém
+    abre: o boletim ficou parado e a descoberta veio um dia depois. Com a
+    conta pré-paga da API do X isso piora — crédito esgotado devolve 4xx,
+    e 4xx não repete.
+
+    Aviso curto de propósito: diz QUE falhou e onde está a trilha, não
+    reproduz infraestrutura. Falhar ao avisar não pode virar a falha
+    reportada — o erro que importa é o de cima, e ele sobe intacto.
+    """
+    aviso = ("<b>BOLETIM NÃO SAIU</b>\n"
+             f"{_esc(erro[:300])}\n"
+             "<i>a trilha está em data/boletim.log</i>")
+    try:
+        _envia_telegram(aviso, html=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def main() -> None:
     for fluxo in (sys.stdout, sys.stderr):
         if hasattr(fluxo, "reconfigure"):
@@ -741,7 +774,15 @@ def main() -> None:
                              "janela inteira (CARO: refaz busca e checks)")
     args = parser.parse_args()
 
-    texto, custo, contidos, html = monta(args.dias, reenviar=args.reenviar)
+    try:
+        texto, custo, contidos, html = monta(args.dias,
+                                             reenviar=args.reenviar)
+    except (SystemExit, Exception) as erro:
+        # --sem-envio nao avisa: e' o modo de pre-visualizar, e quem
+        # o roda esta olhando a tela.
+        if not args.sem_envio:
+            _avisa_falha(f"{type(erro).__name__}: {erro}")
+        raise
     print(texto)
     caminho = _grava(texto)
     print(f"\ngravado em {caminho}")

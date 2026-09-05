@@ -1,9 +1,7 @@
 """Verificação de uma afirmação contra o acervo.
 
-    python -m src.check "o governo cancelou o programa X"
-
-É o produto. Recebe uma afirmação que NÃO veio do acervo, procura evidência, e
-devolve um veredito com as fontes que o sustentam.
+É o motor, chamado pelo boletim. Recebe uma afirmação que NÃO veio do acervo,
+procura evidência, e devolve um veredito com as fontes que o sustentam.
 
 O que este módulo é e o que não é:
 
@@ -27,16 +25,15 @@ passo — por isso não há ciclo, e por isso não há agente.
 import hashlib
 import json
 import re
-import sys
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic.json_schema import SkipJsonSchema
 
-from . import apelidos, config, grafo, indice, llm, normalize, vocabulario
+from . import apelidos, grafo, indice, llm, normalize, vocabulario
 from .canonico import chave_canonica
-from .storage import conecta, salva_consulta
+from .storage import salva_consulta
 from .vocabulario import Relacao
 
 LACUNAS = ("quem", "o_que", "quando", "onde", "quanto")
@@ -601,7 +598,7 @@ Medido no livro-caixa em 31/08/2026: das 29 consultas gravadas, 7 eram
 repetições da mesma afirmação — 29% do gasto de consulta pagando de novo
 pela mesma resposta. A janela é curta de propósito: "sem evidência" muda
 conforme o acervo cresce, e um dia depois a repetição volta a valer a pena.
-`--forcar` ignora a janela.
+O boletim ignora a janela quando re-verifica (`forcar=True`).
 """
 
 
@@ -639,7 +636,7 @@ def verifica(texto: str, verboso: bool = False,
                   f"  {rotulo} · {anterior['veiculos']} veículo(s)\n")
             print(f"POR QUE\n  {anterior['justificativa']}\n")
             print("  Sem custo: veredito gravado nas últimas "
-                  f"{HORAS_REUSO}h. Use --forcar para re-verificar "
+                  f"{HORAS_REUSO}h e reaproveitado "
                   "(o acervo pode ter crescido desde então).")
             return
 
@@ -799,32 +796,3 @@ def _fontes_citadas(citadas) -> list[dict]:
                       "url": url,
                       "data": a.meta.get("data_fato", "")})
     return saida
-
-
-def main() -> None:
-    for fluxo in (sys.stdout, sys.stderr):
-        if hasattr(fluxo, "reconfigure"):
-            fluxo.reconfigure(encoding="utf-8", errors="replace")
-
-    args = [a for a in sys.argv[1:] if a not in ("-v", "--forcar")]
-    if not args:
-        print('Uso: python -m src.check "afirmação" [-v] [--forcar]')
-        sys.exit(1)
-
-    conexao = conecta(config.BANCO)
-    # Carregado uma vez e passado adiante: a rota por chave exata precisa do
-    # acervo em memoria, e le-lo duas vezes so gastaria tempo.
-    acervo = grafo.carrega(conexao)
-    if not acervo:
-        print("Acervo sem afirmações. Rode a coleta, a extração e o índice.")
-        sys.exit(1)
-    try:
-        verifica(" ".join(args), verboso="-v" in sys.argv,
-                 conexao=conexao, acervo=acervo,
-                 forcar="--forcar" in sys.argv)
-    finally:
-        conexao.close()
-
-
-if __name__ == "__main__":
-    main()

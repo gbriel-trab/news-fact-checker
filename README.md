@@ -10,16 +10,30 @@ resposta não carrega fonte. Aqui o LLM nunca julga verdade. Ele estrutura; a
 evidência vem de um acervo próprio de notícias, e todo veredito cita quem
 afirmou o quê, com link.
 
-Saída real de uma consulta ao acervo (agosto/2026):
+Como o boletim diário apresenta um post: o separador tira dele a premissa
+factual e o veredito sai do acervo. O formato é o real; o caso abaixo é uma
+reconstrução de uma verificação de agosto/2026, com o perfil omitido.
 
 ```
-$ python -m src.check "juliana brizola tem 38% no primeiro turno no RS"
+$ python -m src.boletim
 
-VEREDITO   CONFIRMADO · 1 veículo
-POR QUE    A pesquisa Real Time Big Data de agosto de 2026 registra
-           Juliana Brizola com 38% no primeiro turno no RS, exatamente
-           como afirmado; o valor distinto de 23% vem de outro instituto
-           (Quaest), não sendo medida da mesma pesquisa.
+RADAR · @perfil · 25/08/2026
+texto literal do post, lido pela API oficial do X — o registro é o post, no link
+Conferência de premissas contra o acervo — não avalia o autor.
+
+[1] POST 1 (@perfil, 25 Aug 2026):
+juliana brizola tem 38% no primeiro turno no RS, ganha no primeiro
+  [previsao] ganha no primeiro — nada a conferir
+  premissa: "Juliana Brizola tem 38% no primeiro turno no RS"
+    VEREDITO
+      CONFIRMADO · 1 veículo
+    POR QUE
+      A pesquisa Real Time Big Data de agosto de 2026 registra Juliana
+      Brizola com 38% no primeiro turno no RS, exatamente como afirmado;
+      o valor distinto de 23% vem de outro instituto (Quaest), não sendo
+      medida da mesma pesquisa.
+
+      ATENÇÃO: um veículo só. Sem confirmação independente.
 ```
 
 Repare no que o sistema **não** fez: havia um "23%" no acervo que
@@ -44,17 +58,16 @@ para evitar.
 
 | | Gatilho | O que entrega |
 |-|-|-|
-| **`check`** | uma afirmação de fora (boato, post, mensagem) | veredito `confirmado / contradito / sem evidência`, com fontes |
+| **`boletim`** | os posts do dia nos perfis acompanhados no X | cada premissa factual com veredito `confirmado / contradito / sem evidência`, e as fontes |
 | **`digest`** | o acervo do dia | o que 2+ veículos sustentam, e onde os números deles não batem |
 
-Duas frentes auxiliares completam o ciclo: **`premissas`** recebe um texto
-argumentativo (análise de mercado, post de rede social) e separa o que é
-previsão/opinião/relato — que não se verifica, e não deve ser — e o que é
-afirmação sem referente identificável — que não dá para verificar — das
-premissas factuais, cada uma com sujeito, objeto e data **ancorados no
-trecho literal** e conferidos em código antes de custar uma chamada;
-**`radar`** captura os posts de perfis públicos acompanhados no X e
-alimenta essa conferência, entregue diariamente pelo Telegram.
+Duas peças montam o boletim: **`radar`** captura os posts dos perfis
+públicos acompanhados no X, e **`premissas`** recebe o texto do post e
+separa o que é previsão/opinião/relato — que não se verifica, e não deve
+ser — e o que é afirmação sem referente identificável — que não dá para
+verificar — das premissas factuais, cada uma com sujeito, objeto e data
+**ancorados no trecho literal** e conferidos em código antes de custar uma
+chamada. O resultado é entregue diariamente pelo Telegram.
 
 Os prompts do separador e do juiz têm **gabarito de regressão**
 (`gabaritos/`, `python -m src.gabarito`): casos fixos com resposta esperada
@@ -74,9 +87,10 @@ INGESTÃO (a cada 15 min, sem LLM no caminho crítico)
        ↓
   SQLite (acervo) · ChromaDB (busca semântica) · grafo de corroboração
 
-CONSULTA (quando chega uma afirmação)
-  afirmação → tripla → busca em duas rotas (chave exata + vetorial)
-  → LLM julga contra a evidência recuperada → veredito com fontes
+CONFERÊNCIA (diária, sobre os posts que o radar capturou)
+  post → separador tira dele as premissas factuais → tripla → busca em
+  duas rotas (chave exata + vetorial) → LLM julga contra a evidência
+  recuperada → veredito com fontes
 ```
 
 Decisões que fazem diferença, todas documentadas com medição no
@@ -101,12 +115,13 @@ Decisões que fazem diferença, todas documentadas com medição no
 
 ## Números atuais (medidos, não estimados)
 
-* Acervo: ~3.100 matérias de 20 veículos, coleta a cada 15 min
-* 880 afirmações extraídas de 99 matérias sob o vocabulário v2
+* Acervo: 11.022 matérias de 20 veículos, coleta a cada 15 min
+* 3.056 afirmações extraídas de 298 matérias
 * **71 fatos confirmados por 2+ veículos independentes**
-* 296 testes; a camada de verificação — onde erro é silencioso — é a mais
+* 649 testes; a camada de verificação — onde erro é silencioso — é a mais
   coberta
-* Gabarito de regressão dos prompts: 25 casos do separador (× 2 rodadas) e
+* Gabarito de regressão dos prompts: 25 casos do separador (× 2 rodadas —
+  ficam fora do repositório, porque reproduzem texto de post) e
   23 do juiz, 0 regressões na primeira rodada completa (03/09/2026),
   US$ 0,79 no total — e aplicado de graça às separações antigas gravadas,
   acusa todos os incidentes que motivaram cada regra
@@ -115,16 +130,19 @@ Decisões que fazem diferença, todas documentadas com medição no
 
 ```bash
 python -m venv venv && venv\Scripts\pip install -r requirements.txt
-copy .env.example .env   # e preencha a ANTHROPIC_API_KEY
+copy .env.example .env   # ANTHROPIC_API_KEY sempre; o boletim pede também
+                         # X_CLIENT_ID, HANDLES_RADAR e as duas do Telegram
 
 python -m src.collect                  # coleta (grátis, agende a cada 15min)
 python -m src.extract --historias 10   # extração aos pares (paga, ~US$0,05/matéria)
 python -m src.indice                   # reindexa a busca semântica (grátis)
 python -m src.digest --horas 24        # o que se sustenta hoje (grátis)
-python -m src.check "afirmação"        # verifica (paga, ~US$0,03/consulta)
+python -m src.x_auth                   # consentimento no navegador, uma vez (grava data/x_token.json)
+python -m src.boletim                  # posts do dia → premissas → vereditos (paga)
 ```
 
-Todo comando pago tem `--dry-run` para inspecionar o que seria enviado.
+A extração tem `--dry-run` para inspecionar o que seria enviado antes de
+gastar; o boletim tem `--sem-envio`, que monta e grava sem entregar.
 
 ## O que este projeto não é
 
@@ -132,8 +150,8 @@ Todo comando pago tem `--dry-run` para inspecionar o que seria enviado.
   sustentam", jamais "é verdade". O acervo cataloga o que cada veículo
   afirmou — inclusive quando erram.
 * **Não raspa sites nem contorna paywall.** Usa o que o RSS entrega.
-* **Não detecta desinformação sozinho.** A afirmação a verificar é entrada,
-  não descoberta.
+* **Não varre a internet atrás de desinformação.** As afirmações vêm dos
+  perfis que você escolheu acompanhar, não do que circula em geral.
 
 ## Roadmap honesto
 

@@ -3,22 +3,20 @@
     python -m src.painel            # sobe em http://127.0.0.1:8765
 
 Ferramenta de operação, não produto: mostra a saúde da coleta, o funil da
-extração com os custos gravados, o digest, e permite disparar verificações
-— sempre com o preço estimado na tela e confirmação antes de qualquer
-chamada paga.
+extração com os custos gravados, o digest, as últimas verificações que o
+boletim gravou, e permite disparar o radar — sempre com o preço estimado
+na tela e confirmação antes de qualquer chamada paga.
 
 Stdlib pura de propósito (http.server + um HTML): o projeto não tem
 framework web e um painel de desenvolvimento não justifica adicionar um.
 Escuta só em 127.0.0.1 — não há autenticação porque não há rede.
 
-As ações pagas reaproveitam os módulos reais (check.verifica,
-premissas.separa, radar.busca); a saída do verifica é capturada do stdout
-em vez de refatorada, de propósito: o painel mostra EXATAMENTE o que o
-terminal mostraria, e não existe uma segunda implementação para divergir.
+A única ação paga daqui é radar.busca, que reaproveita o módulo real. A
+verificação em si acontece no boletim (radar → premissas → check), e o
+resultado dela aparece aqui pela tabela `consultas`, que o boletim
+alimenta.
 """
 
-import contextlib
-import io
 import json
 import sqlite3
 import sys
@@ -32,8 +30,8 @@ from . import config
 PORTA = 8765
 _HTML = Path(__file__).with_name("painel.html")
 
-# check/grafo carregam o modelo de embedding (~10 s na primeira vez); o
-# lock impede duas requisições simultâneas de pagarem essa carga juntas.
+# grafo carrega o modelo de embedding (~10 s na primeira vez); o lock
+# impede duas requisições simultâneas de pagarem essa carga juntas.
 _trava = threading.Lock()
 
 
@@ -142,54 +140,6 @@ def digest_json(horas: int, topicos: list[str]) -> dict:
 
 # ------------------------------------------------------------ ações (pagas)
 
-def checar(afirmacao: str) -> dict:
-    from . import check, grafo
-    from .storage import conecta
-
-    con = conecta(config.BANCO)
-    with _trava:
-        acervo = grafo.carrega(con)
-        saida = io.StringIO()
-        with contextlib.redirect_stdout(saida):
-            check.verifica(afirmacao, conexao=con, acervo=acervo)
-    custo = con.execute(
-        "SELECT custo_usd FROM consultas ORDER BY id DESC LIMIT 1"
-    ).fetchone()
-    con.close()
-    return {"saida": saida.getvalue(),
-            "custo_usd": custo["custo_usd"] if custo else None}
-
-
-def conferir_post(texto: str) -> dict:
-    from . import check, grafo, premissas
-    from .storage import conecta
-
-    con = conecta(config.BANCO)
-    with _trava:
-        acervo = grafo.carrega(con)
-        if not acervo:
-            con.close()
-            return {"erro": "Acervo vazio — rode coleta, extração e índice."}
-        analise, uso = premissas.separa(texto, conexao=con)
-        conferencias = []
-        for p in analise.premissas:
-            if p.tipo != "fato":
-                continue
-            saida = io.StringIO()
-            with contextlib.redirect_stdout(saida):
-                check.verifica(p.texto, conexao=con, acervo=acervo)
-            conferencias.append({"trecho": p.trecho, "saida": saida.getvalue()})
-    con.close()
-    return {
-        # p.texto, não p.afirmacao: desde a v2 do separador (01/09/2026)
-        # não-fato não tem reescrita, e o painel mostrava "null".
-        "nao_verificaveis": [{"tipo": p.tipo, "afirmacao": p.texto}
-                             for p in analise.premissas if p.tipo != "fato"],
-        "conferencias": conferencias,
-        "custo_separacao_usd": round(uso.custo, 4),
-    }
-
-
 def rodar_radar(dias: int) -> dict:
     from . import radar
     rodada = radar.busca(config.HANDLES_RADAR, dias)
@@ -240,19 +190,7 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             tamanho = int(self.headers.get("Content-Length", 0))
             corpo = json.loads(self.rfile.read(tamanho) or b"{}")
-            if self.path == "/api/checar":
-                afirmacao = (corpo.get("afirmacao") or "").strip()
-                if not afirmacao:
-                    self._json({"erro": "afirmação vazia"}, 400)
-                    return
-                self._json(checar(afirmacao))
-            elif self.path == "/api/premissas":
-                texto = (corpo.get("texto") or "").strip()
-                if not texto:
-                    self._json({"erro": "texto vazio"}, 400)
-                    return
-                self._json(conferir_post(texto))
-            elif self.path == "/api/radar":
+            if self.path == "/api/radar":
                 self._json(rodar_radar(int(corpo.get("dias", 2))))
             else:
                 self._json({"erro": "rota desconhecida"}, 404)

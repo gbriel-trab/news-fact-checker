@@ -4,11 +4,11 @@
     python -m src.digest --horas 72
     python -m src.digest --topicos "Braskem,eleições,juros"
 
-É a saída PROATIVA do sistema, e a contraparte do `check.py`. Os dois respondem
+É a saída PROATIVA do sistema, e a contraparte do boletim. Os dois respondem
 perguntas diferentes:
 
-    check.py   você traz uma afirmação   →  o acervo sustenta?
-    digest.py  você não traz nada        →  o que o acervo sustenta hoje?
+    boletim.py  um post do radar afirma algo  →  o acervo sustenta?
+    digest.py   ninguém afirmou nada          →  o que o acervo sustenta hoje?
 
 Não chama modelo nenhum. Tudo que ele reporta já foi extraído e pago antes; o
 digest é leitura, agrupamento e contagem. Custo zero por execução, de propósito

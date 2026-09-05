@@ -1,0 +1,31 @@
+┌─ 1. COLETA ──────────────────────────────── a cada 15 min, agendador ────┐
+│                                                                    │
+│   coleta_agendada.pyw → collect.py → RSS de N veículos             │
+│                                          ↓                         │
+│                                    tabela `artigos`   (12.282)     │
+└──────────────────────────────────────────────────────────────────┘
+
+┌─ 2. EXTRAÇÃO ──────────────────────── manual: python -m src.extract ───┐
+│                                                                    │
+│   agrupa (histórias) → LLM → valida_origens → `triplas`  (3.056)   │
+│                                          ↓                         │
+│                          índice Chroma (afirmações + artigos)      │
+└──────────────────────────────────────────────────────────────────┘
+                                           │
+                    ┌──────────────────────┘
+                    ↓
+┌─ 3. BOLETIM ── diário, agendador ─────────────────────────────────┐
+│  radar → API oficial do X (posts do handle)                        │
+│    ↓  filtros em código                                            │
+│  premissas (Opus) separa                                           │
+│    ↓  só `fato` segue                                              │
+│  ┌─────────────────────────────┐                                   │
+│  │ demanda: acervo não cobre?  │                                   │
+│  │   extrai 2-4 matérias AGORA │◄──── só depois de "sem evidência" │
+│  │   (teto por rodada)         │                                   │
+│  └─────────────────────────────┘                                   │
+│    ↓                                                               │
+│  check (juiz, Opus) → veredito com as fontes                       │
+│    ↓                                                               │
+│  Telegram                                                          │
+└──────────────────────────────────────────────────────────────────┘

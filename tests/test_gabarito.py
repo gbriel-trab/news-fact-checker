@@ -6,6 +6,7 @@ e (b) que o comparador julga certo — porque um comparador frouxo faria a
 bateria passar sempre, e aí ela protegeria de nada.
 """
 
+import hashlib
 from dataclasses import dataclass
 
 import pytest
@@ -27,8 +28,38 @@ class P:
         return self.afirmacao or self.trecho
 
 
-CHARADA = ("POST 6 (@perfil_teste, 01 Sep 2026):\nCharada: André se reune "
-           "com Trump, todos os rumos mudam imediatamente. Quem manda no Brasil?")
+def carrega_local(nome: str) -> list[dict]:
+    """`carrega`, mas pulando o teste quando o gabarito é de máquina.
+
+    `gabaritos/premissas.json` está no .gitignore: os casos reais carregam
+    o TEXTO de posts do X, e o Developer Agreement deixa redistribuir o ID
+    do post, não o conteúdo. Na máquina que tem o arquivo o teste roda
+    inteiro; num clone do repositório público ele não existe, e o teste
+    tem de PULAR dizendo por quê — quebrar com FileNotFoundError seria
+    ruído, e passar em silêncio seria pior.
+    """
+    try:
+        return carrega(nome)
+    except FileNotFoundError:
+        pytest.skip(f"gabaritos/{nome}.json não vem no repositório público: "
+                    f"os casos reproduzem texto de post do X e o gabarito "
+                    f"fica local. Rode na máquina que tem o arquivo.")
+
+
+# Bloco SINTÉTICO no formato exato que `radar.para_separacao` entrega ao
+# separador. O texto é inventado de propósito — o repositório é público e o
+# conteúdo do post não pode ser redistribuído. O caso REAL equivalente é o
+# C1, que mora só em `gabaritos/premissas.json`; a estrutura do bloco
+# (cabeçalho "POST N (@handle, data):" e o corpo na linha seguinte) é o que
+# importa aqui, e ela é preservada byte a byte.
+BLOCO = ("POST 6 (@perfil_teste, 01 Sep 2026):\nVale registrar: André "
+         "desembarca em Washington na sexta. Daqui a um mês ninguém vai "
+         "lembrar disso.")
+
+# sha256 do `texto` do C1 no gabarito local. Prende o caso real byte a byte
+# — exatamente o que o antigo `c1["texto"] == CHARADA` prendia — sem trazer
+# o texto do post para dentro do repositório.
+SHA256_C1 = "baf2e198de025aaac59a23781818a2848af2650050ec594f67faf8e8832ba3aa"
 
 
 class TestContem:
@@ -48,13 +79,13 @@ class TestContem:
 
 class TestComparadorDePremissas:
     def test_passa_quando_bate_tudo(self):
-        caso = {"texto": CHARADA, "fatos": 1,
-                "esperado": [{"tipo": "fato", "contem": "Trump"},
-                             {"tipo": "opiniao", "contem": "rumos"}],
+        caso = {"texto": BLOCO, "fatos": 1,
+                "esperado": [{"tipo": "fato", "contem": "Washington"},
+                             {"tipo": "opiniao", "contem": "lembrar"}],
                 "proibido_em_fato": ["Esteves"]}
-        premissas = [P("fato", "André se reune com Trump",
-                       "André se reuniu com Trump"),
-                     P("opiniao", "todos os rumos mudam imediatamente")]
+        premissas = [P("fato", "André desembarca em Washington na sexta",
+                       "André desembarcou em Washington na sexta"),
+                     P("opiniao", "Daqui a um mês ninguém vai lembrar disso")]
         assert confere_premissas(caso, premissas) == []
 
     def test_conta_fatos_exato(self):
@@ -106,15 +137,15 @@ class TestComparadorDePremissas:
     def test_trecho_tem_de_ser_literal(self):
         """Regra 4, conferível sem modelo: o trecho é o que o boletim
         exibe como citação do post."""
-        caso = {"texto": CHARADA, "esperado": []}
+        caso = {"texto": BLOCO, "esperado": []}
         assert confere_premissas(
-            caso, [P("fato", "André se reune com Trump")]) == []
+            caso, [P("fato", "André desembarca em Washington")]) == []
         falhas = confere_premissas(
-            caso, [P("fato", "André Esteves se reune com Trump")])
+            caso, [P("fato", "André Esteves desembarca em Washington")])
         assert falhas and "literal" in falhas[0]
         # Quebra de linha e acento não contam como diferença.
-        caso2 = {"texto": "POST 1 (@x, 01 Sep 2026):\nO cara tem:\n\nBanco dele"}
-        assert confere_premissas(caso2, [P("opiniao", "O cara tem: Banco dele")]) == []
+        caso2 = {"texto": "POST 1 (@x, 01 Sep 2026):\nA lista tem:\n\nquatro nomes"}
+        assert confere_premissas(caso2, [P("opiniao", "A lista tem: quatro nomes")]) == []
 
 
 class TestComparadorDoCheck:
@@ -228,7 +259,7 @@ class TestResumo:
 
 class TestArquivosDeCasos:
     def test_premissas_bem_formado(self):
-        casos = carrega("premissas")
+        casos = carrega_local("premissas")
         assert len(casos) >= 18
         for c in casos:
             assert {"id", "origem", "texto", "esperado", "nota",
@@ -265,23 +296,29 @@ class TestArquivosDeCasos:
                 assert relacao is None or Relacao(relacao)
 
     def test_caso_real_e_o_que_o_boletim_envia(self):
-        """Todo caso real carrega o bloco como o radar o transcreveu; o
+        """Todo caso real carrega o bloco como o radar o montou; o
         texto tem de ser byte a byte o que `para_separacao` produz dele —
         senão o gabarito mede um texto que o boletim nunca enviou."""
         from src import radar
-        reais = [c for c in carrega("premissas") if "bloco_radar" in c]
+        reais = [c for c in carrega_local("premissas") if "bloco_radar" in c]
         assert len(reais) >= 8
         for c in reais:
             assert c["texto"] == radar.para_separacao(c["bloco_radar"]), c["id"]
             assert c["bloco_radar"].startswith("POST "), c["id"]
 
-    def test_c1_e_a_charada_exata(self):
-        c1 = next(c for c in carrega("premissas") if c["id"] == "C1")
-        assert c1["texto"] == CHARADA
+    def test_c1_e_o_bloco_real_byte_a_byte(self):
+        """O C1 é o bloco real que a v2 engoliu — o exemplo trabalhado da
+        regra 8. O texto do post não pode morar no repositório, então o
+        que se prende aqui é o digest: mudou um byte do caso, cai."""
+        c1 = next(c for c in carrega_local("premissas") if c["id"] == "C1")
+        assert hashlib.sha256(
+            c1["texto"].encode("utf-8")).hexdigest() == SHA256_C1
 
     def test_fronteira_e_booleano_quando_presente(self):
-        for nome in ("premissas", "check"):
-            for c in carrega(nome):
+        # "check" primeiro de propósito: ele está no repositório e continua
+        # conferido mesmo quando o pulo do gabarito local vem em seguida.
+        for nome in ("check", "premissas"):
+            for c in carrega_local(nome):
                 if "fronteira" in c:
                     assert c["fronteira"] is True, c["id"]
 
@@ -289,7 +326,7 @@ class TestArquivosDeCasos:
         """C1 é o exemplo trabalhado da regra 8; C14 é a paráfrase que mede
         generalização. O relatório tem de distinguir os dois."""
         from src.premissas import INSTRUCOES
-        casos = {c["id"]: c for c in carrega("premissas")}
+        casos = {c["id"]: c for c in carrega_local("premissas")}
         assert reproduz_exemplo(casos["C1"], INSTRUCOES)
         assert reproduz_exemplo(casos["C2"], INSTRUCOES)
         assert not reproduz_exemplo(casos["C14"], INSTRUCOES)

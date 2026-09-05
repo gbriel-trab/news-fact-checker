@@ -139,18 +139,20 @@ FEEDS: tuple[Feed, ...] = (
 # porque só um veículo cobre, e afirmação de fonte única nunca pode ser
 # corroborada por fonte independente.
 
-# ---- Radar de rede social (ver src/radar.py e a seção da xAI no
-# ARCHITECTURE.md) ----
+# ---- Radar de rede social (ver src/radar.py e a seção "Rede social pela
+# API oficial do X" no ARCHITECTURE.md) ----
 #
 # O critério de seleção é o INVERSO do dos feeds: aqui entram os perfis que
 # PRODUZEM alegação, nunca os veículos em que se confia — @g1 na lista
 # devolveria o acervo conversando consigo mesmo. Post não entra no acervo.
 #
-# Duas condições por handle, ambas medidas em 30/08/2026:
-#   1. conta PÚBLICA — post protegido é invisível a qualquer busca, por
-#      desenho do X; conta privada fica no fluxo manual (colar no premissas)
-#   2. TESTADO no x_search antes de entrar (~US$ 0,03 a chamada) — o índice
-#      não cobre tudo, e handle cego aqui falharia em silêncio
+# Duas condições por handle:
+#   1. conta PÚBLICA — a API não confirma que devolve post de conta
+#      protegida (ver x_auth.ESCOPOS); handle protegido fica de fora até
+#      isso ser medido
+#   2. TESTADO no radar antes de entrar (python -m src.radar --handles X,
+#      ~US$ 0,005 por post lido) — handle errado ou vazio falharia em
+#      silêncio, como nota de rodada e não como erro
 #
 # A lista vem do .env, não daqui: quem alguém acompanha é dado pessoal, e o
 # repositório é público. Ver .env.example.

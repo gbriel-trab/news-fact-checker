@@ -41,13 +41,15 @@ indexadas), com controle negativo, não escolhidos por gosto:
                   cobrindo assunto, é coincidência de vocabulário.
 
                   Subiu de 3/2 para 5/3 em 03/09/2026, com dois pontos
-                  medidos: "É amigo, nem o grok deu conta" gerou a
-                  hipótese "uma ferramenta de IA não conseguiu resolver
-                  algo... o texto não identifica a tarefa", e o contexto
-                  saiu com 3 matérias em 2 veículos sobre engenharia de
-                  prompt e IA em recrutamento — nada a ver, e no piso
-                  exato. O C19, que é o caso bom, dá 10 matérias em 7
-                  veículos. 5/3 separa os dois com folga dos dois lados.
+                  medidos. O caso ruim é o post de uma frase do status
+                  1000000000000000006 (boletim de 03/09/2026, item [3]):
+                  gerou a hipótese "uma ferramenta de IA não conseguiu
+                  resolver algo... o texto não identifica a tarefa", e o
+                  contexto saiu com 3 matérias em 2 veículos sobre
+                  engenharia de prompt e IA em recrutamento — nada a ver,
+                  e no piso exato. O C19, que é o caso bom, dá 10 matérias
+                  em 7 veículos. 5/3 separa os dois com folga dos dois
+                  lados.
 
 O que esta saída NÃO faz, e o ARCHITECTURE assume que faria: contar
 ENTIDADES ("7 empresas"). Nada no código extrai nome de empresa de título

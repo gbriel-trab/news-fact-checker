@@ -1,4 +1,4 @@
-"""Lançador da coleta para o Agendador de Tarefas do Windows.
+r"""Lançador da coleta para o Agendador de Tarefas do Windows.
 
 Existe por dois motivos que o agendador impõe:
 
@@ -33,8 +33,9 @@ with open(LOG, "a", encoding="utf-8", buffering=1) as saida:
     print(f"\n===== {datetime.now(timezone.utc).isoformat()} =====")
     # Direto em coleta_tudo, sem collect.main(): o main reconfigura o
     # console (que aqui não existe) e o arquivo já nasce UTF-8.
-    from src.collect import coleta_tudo
-    codigo = coleta_tudo()
+    try:
+        from src.collect import coleta_tudo
+        codigo = coleta_tudo()
     except BaseException:  # noqa: BLE001
         # Traceback com o arquivo AINDA ABERTO: fora do `with` ele iria
         # para um stderr fechado e sumiria (achado de 03/09/2026).

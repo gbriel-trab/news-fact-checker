@@ -1,8 +1,5 @@
 """Confere as premissas de um texto que argumenta.
 
-    python -m src.premissas "cole o texto aqui"
-    python -m src.premissas < post.txt
-
 O `check.py` recebe UMA afirmação e responde. Este módulo recebe um ARGUMENTO
 — análise, comentário, previsão — e separa o que dá para conferir do que não
 dá, antes de gastar.
@@ -33,11 +30,9 @@ a conclusão errada; é assim que análise funciona. O que este módulo detecta 
 o contrário: raciocínio impecável partindo de um número que não bate.
 """
 
-import argparse
 import hashlib
 import json
 import re
-import sys
 import unicodedata
 from datetime import datetime, timezone
 from typing import Literal
@@ -45,8 +40,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
-from . import check, config, grafo, llm
-from .storage import conecta
+from . import llm
 
 
 class Referente(BaseModel):
@@ -630,94 +624,3 @@ def separa(texto: str, conexao=None,
                 "AND prompt_versao = ?", (_hash_texto(texto), PROMPT_VERSAO))
         _grava_separacao(conexao, _hash_texto(texto), r.dados, r.uso.custo)
     return r.dados, r.uso
-
-
-def main() -> None:
-    # stdin entra na lista porque este módulo LÊ da entrada padrão: sem o
-    # reconfigure, arquivo UTF-8 redirecionado no Windows chega em cp1252 e
-    # o texto vai mojibake para o modelo ("cÃºpula") — visto em 30/08/2026.
-    for fluxo in (sys.stdin, sys.stdout, sys.stderr):
-        if hasattr(fluxo, "reconfigure"):
-            fluxo.reconfigure(encoding="utf-8", errors="replace")
-
-    parser = argparse.ArgumentParser(
-        description="Confere as premissas de um texto que argumenta.")
-    parser.add_argument("texto", nargs="*",
-                        help="o texto; se omitido, lê da entrada padrão")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="mostra o que seria enviado, sem chamar a API")
-    parser.add_argument("-v", action="store_true", help="mostra as candidatas")
-    parser.add_argument("--forcar", action="store_true",
-                        help="re-separa mesmo com separação gravada desta "
-                             "versão de prompt")
-    args = parser.parse_args()
-
-    texto = " ".join(args.texto).strip() or sys.stdin.read().strip()
-    if not texto:
-        print('Uso: python -m src.premissas "texto"  ou  ... < arquivo.txt')
-        sys.exit(1)
-
-    if args.dry_run:
-        print(f"--- system (fixo, cacheado) ---\n{INSTRUCOES}")
-        print(f"--- user ---\nTexto:\n{texto}\n")
-        print(f"~{(len(INSTRUCOES) + len(texto)) // 4} tokens de entrada")
-        print("\nNada foi enviado. Remova --dry-run para rodar.")
-        return
-
-    print(f"TEXTO\n  {texto[:300]}{'...' if len(texto) > 300 else ''}\n")
-
-    conexao = conecta(config.BANCO)
-    analise, uso = separa(texto, conexao=conexao, forcar=args.forcar)
-    if uso.custo == 0:
-        print("(separação reusada — já paga nesta versão de prompt; "
-              "--forcar re-separa)\n")
-    fatos = [p for p in analise.premissas if p.tipo == "fato"]
-    resto = [p for p in analise.premissas if p.tipo != "fato"]
-
-    print(f"{len(analise.premissas)} afirmações · {len(fatos)} verificáveis\n")
-
-    if resto:
-        # Impresso ANTES, e nomeado pelo que é. Previsão e opinião não são
-        # defeito do texto — são o texto. Mostrá-las como descarte sugeriria
-        # que o autor deveria tê-las evitado.
-        print("=" * 78)
-        print("NÃO VERIFICÁVEL — e não deve ser")
-        print("=" * 78)
-        for p in resto:
-            print(f"  [{p.tipo}] {p.texto}{anotacao(p)}")
-        print()
-
-    if not fatos:
-        print("Nenhuma afirmação factual. Nada a conferir.")
-        print(f"\n  custo: US$ {uso.custo:.4f}")
-        conexao.close()
-        return
-
-    acervo = grafo.carrega(conexao)
-    if not acervo:
-        print("Acervo vazio. Rode a coleta, a extração e o índice.")
-        conexao.close()
-        sys.exit(1)
-
-    print("=" * 78)
-    print("PREMISSAS, CONFERIDAS CONTRA O ACERVO")
-    print("=" * 78)
-    for i, p in enumerate(fatos, 1):
-        print(f"\n[{i}/{len(fatos)}] no texto: \"{p.trecho[:110]}\"")
-        check.verifica(p.texto, verboso=args.v,
-                       conexao=conexao, acervo=acervo)
-    conexao.close()
-
-    print("\n" + "=" * 78)
-    # O aviso fecha a saída de propósito: é a última coisa lida, e é a que
-    # impede a leitura errada. Ver o cabeçalho do módulo.
-    print("Isto confere NÚMEROS contra o acervo, não avalia o autor.")
-    print("Premissa sem evidência significa que os veículos coletados não")
-    print("cobrem o assunto — não que a afirmação seja falsa.")
-    print(f"\n  separação das premissas: US$ {uso.custo:.4f}"
-          f" · mais uma verificação por premissa"
-          f" · prompt {PROMPT_VERSAO}")
-
-
-if __name__ == "__main__":
-    main()

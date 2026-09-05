@@ -40,14 +40,14 @@ class TestEstadoDoBoletim:
         sem = _hash_post("texto do post")
         assert com == sem
 
-    def test_chave_de_url_so_com_citacao_que_confere(self):
+    def test_chave_de_url_so_quando_o_status_esta_nos_links_da_rodada(self):
         from src.boletim import _chaves_do_post
         post = ("POST 1 (@x, data):\nURL: https://x.com/x/status/123\n"
                 "texto")
         # x.com/i/status/N e x.com/handle/status/N são o mesmo status.
         chaves = _chaves_do_post(post, ("https://x.com/i/status/123",))
         assert "url:123" in chaves and _hash_post(post) in chaves
-        # URL alegada fora das citações não vira identidade.
+        # URL fora dos links da rodada não vira identidade.
         chaves = _chaves_do_post(post, ("https://x.com/i/status/999",))
         assert chaves == {_hash_post(post)}
 
@@ -144,8 +144,10 @@ class TestRendicaoTelegram:
         inteiro. Os tipos saem nomeados e contados, sem o texto; a trilha
         completa fica no arquivo."""
         from src.boletim import _conta_tipos, _formata_telegram
+        # O caso que motivou o pedido é o status 1000000000000000001; o
+        # corpo aqui é sintético — só precisa ser de UMA frase.
         post = ("POST 1 (@x, 01 Sep 2026):\n"
-                "Charada: André se reune com Trump, todos os rumos mudam.")
+                "Frase única de corpo sintético para este teste.")
         html = _formata_telegram("@x", "02/09", [(1, post, {
             "nao_verificaveis": [
                 ("opiniao", "todos os rumos mudam"),
@@ -169,7 +171,7 @@ class TestRendicaoTelegram:
         post = ("POST 3 (@x, 01 Sep 2026):\n"
                 "URL: https://x.com/x/status/123\n"
                 "EM RESPOSTA A (@y): qual a resposta?\n"
-                "Expansão")
+                "Corpo sintetico do post")
         vazio = {"nao_verificaveis": [], "checks": [], "sem_premissas": True}
         html = _formata_telegram(
             "@x", "01/09", [(1, post, vazio, "https://x.com/x/status/123")],
@@ -181,7 +183,7 @@ class TestRendicaoTelegram:
         # no rodapé de sobras.
         assert "URL:" not in html
         assert "também lidos" not in html
-        assert "<i>Expansão</i>" in html
+        assert "<i>Corpo sintetico do post</i>" in html
 
     def test_corte_html_respeita_linhas(self):
         # Cortar no meio de uma tag quebraria o parse do Telegram inteiro.
@@ -267,7 +269,7 @@ class TestSoFatoCustaDinheiro:
 
         con = conecta(tmp_path / "t.db")
         texto, custo, dados = boletim._confere_post(
-            "POST 1 (@x, 01 Sep 2026):\nO cara tem banco dele.", con,
+            "POST 1 (@x, 01 Sep 2026):\ncorpo do post neste bloco", con,
             {"acervo": [], "orcamento": 1.0})
         con.close()
         assert chamadas == [], "check chamado para premissa que não é fato"
@@ -387,6 +389,71 @@ def _uso_zero():
     from src import llm
     return llm.Uso(modelo=llm.VERIFICACAO, entrada=0, saida=0,
                    cache_leitura=0, cache_escrita=0)
+
+
+class TestAvisoDeFalha:
+    """Falha do boletim tem de CHEGAR ao leitor, não só ao log.
+
+    Em 03/09/2026 a busca do radar estourou e o único registro foi uma
+    linha em data/boletim.log: o boletim ficou parado e ninguém soube. A
+    conta pré-paga da API do X torna isso pior — crédito esgotado devolve
+    4xx, 4xx não repete, e o silêncio duraria até alguém abrir o log.
+    """
+
+    def _main(self, monkeypatch, argv, erro=None):
+        """Roda boletim.main() com `monta` estourando, e devolve o que foi
+        parar no Telegram."""
+        from src import boletim
+        enviados = []
+        monkeypatch.setattr(boletim, "_envia_telegram",
+                            lambda texto, html=False: enviados.append(texto))
+        if erro is not None:
+            def _estoura(*a, **k):
+                raise erro
+            monkeypatch.setattr(boletim, "monta", _estoura)
+        monkeypatch.setattr("sys.argv", ["boletim"] + argv)
+        return boletim, enviados
+
+    def test_falha_do_radar_avisa_no_telegram(self, monkeypatch):
+        boletim, enviados = self._main(
+            monkeypatch, [], SystemExit("Busca do radar falhou: 429"))
+        with pytest.raises(SystemExit):
+            boletim.main()
+        assert len(enviados) == 1, "a falha não chegou ao Telegram"
+        assert "BOLETIM NÃO SAIU" in enviados[0]
+        assert "429" in enviados[0], "o motivo da falha não foi junto"
+
+    def test_o_erro_original_sobe_intacto(self, monkeypatch):
+        # Avisar não pode engolir a falha: quem chamou precisa do código
+        # de saída, senão o agendador acha que deu certo.
+        boletim, _ = self._main(
+            monkeypatch, [], RuntimeError("crédito esgotado"))
+        with pytest.raises(RuntimeError, match="crédito esgotado"):
+            boletim.main()
+
+    def test_falha_ao_avisar_nao_mascara_a_falha_de_cima(self, monkeypatch):
+        from src import boletim
+
+        def _telegram_quebrado(*a, **k):
+            raise ConnectionError("telegram fora")
+        monkeypatch.setattr(boletim, "_envia_telegram", _telegram_quebrado)
+
+        def _estoura(*a, **k):
+            raise SystemExit("Busca do radar falhou: 503")
+        monkeypatch.setattr(boletim, "monta", _estoura)
+        monkeypatch.setattr("sys.argv", ["boletim"])
+        # O erro que sobe é o do radar, NUNCA o do Telegram.
+        with pytest.raises(SystemExit, match="503"):
+            boletim.main()
+
+    def test_sem_envio_nao_avisa(self, monkeypatch):
+        # --sem-envio é o modo de pré-visualizar: quem o roda está olhando
+        # a tela, e não deve gastar uma mensagem por isso.
+        boletim, enviados = self._main(
+            monkeypatch, ["--sem-envio"], SystemExit("qualquer falha"))
+        with pytest.raises(SystemExit):
+            boletim.main()
+        assert enviados == []
 
 
 class TestCorteEmPedacos:

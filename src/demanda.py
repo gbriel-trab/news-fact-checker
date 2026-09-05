@@ -1,8 +1,5 @@
 """Extração sob demanda: premissa sem cobertura busca no que foi coletado.
 
-    python -m src.demanda "afirmação"            # ciclo completo (paga API)
-    python -m src.demanda "afirmação" --dry-run  # só mostra as candidatas
-
 O caso que motivou (01/09/2026): um post pergunta "André se reúne com
 Trump, quem manda no Brasil?" — a matéria do G1 sobre a reunião estava
 COLETADA havia horas, mas o seletor de extração não a tinha priorizado,
@@ -38,13 +35,10 @@ Freios, na ordem em que seguram:
    CUSTO_ESTIMADO a demanda recusa ANTES de chamar a API.
 """
 
-import argparse
 import sqlite3
-import sys
 from dataclasses import dataclass
 
-from . import check, config, extract, indice
-from .storage import conecta
+from . import extract, indice
 
 LIMIAR_CANDIDATA = 0.60
 """Piso premissa↔título+lead para uma matéria virar candidata.
@@ -219,68 +213,3 @@ def garante(conexao: sqlite3.Connection, texto: str,
             # CLI. Registrar e seguir.
             pass
     return Resultado("extraiu", len(grupo), triplas, custo)
-
-
-def main() -> None:
-    for fluxo in (sys.stdout, sys.stderr):
-        if hasattr(fluxo, "reconfigure"):
-            fluxo.reconfigure(encoding="utf-8", errors="replace")
-
-    parser = argparse.ArgumentParser(
-        description="Extração sob demanda: cobre uma premissa e verifica.")
-    parser.add_argument("afirmacao")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="mostra as candidatas, sem extrair nem verificar")
-    args = parser.parse_args()
-
-    conexao = conecta(config.BANCO)
-    try:
-        if args.dry_run:
-            indice.indexa_artigos(conexao)
-            achadas = indice.busca("artigos", args.afirmacao, quantos=8)
-            print(f'candidatas para: "{args.afirmacao}" '
-                  f"(piso {LIMIAR_CANDIDATA:.0%})\n")
-            for a in achadas:
-                marca = "✓" if a.proximidade >= LIMIAR_CANDIDATA else " "
-                print(f"  {marca} {a.proximidade:.0%}  "
-                      f"[{a.meta['veiculo']}] {a.meta['titulo'][:64]}")
-            print("\nNada foi extraído. Remova --dry-run para rodar.")
-            return
-
-        from . import grafo
-        acervo = grafo.carrega(conexao)
-        if not acervo:
-            print("Acervo vazio — rode coleta e extração antes.")
-            sys.exit(1)
-
-        # O rito é o do boletim: check primeiro; demanda só sobre
-        # "sem evidência"; re-check com forcar depois de extrair.
-        check.verifica(args.afirmacao, conexao=conexao, acervo=acervo)
-        ultima = check.consulta_recente(conexao, args.afirmacao)
-        if ultima is None or ultima["veredito"] != "sem_evidencia":
-            return
-
-        r = garante(conexao, args.afirmacao)
-        rotulos = {
-            "sem_candidata": "nenhuma matéria coletada passa do piso",
-            "sem_tripla": (f"{r.materias} matéria(s) extraída(s), NENHUMA "
-                           f"tripla · US$ {r.custo:.4f} — o acervo não mudou"),
-            "teto": "orçamento insuficiente para extrair",
-            "extraiu": (f"{r.materias} matéria(s) extraída(s), "
-                        f"{r.triplas} triplas · US$ {r.custo:.4f}"),
-        }
-        print(f"\ndemanda: {rotulos[r.motivo]}\n")
-        if r.motivo != "extraiu":
-            return
-
-        acervo = grafo.carrega(conexao)
-        # forcar: sem isso, a janela de reuso de 24h devolvia o
-        # "sem evidência" que acabou de motivar a extração.
-        check.verifica(args.afirmacao, conexao=conexao, acervo=acervo,
-                       forcar=True)
-    finally:
-        conexao.close()
-
-
-if __name__ == "__main__":
-    main()

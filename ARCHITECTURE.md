@@ -27,9 +27,10 @@ que tenho sustentam isso"*, jamais *"isso é verdade"*. A saída mostra
 sistema que afirmasse verdade seria o oráculo que este projeto recusa.
 
 **O sistema não gera as próprias perguntas.** Ele é um motor de verificação: a
-afirmação a ser checada é entrada dele, não parte dele. Monitorar redes sociais
-em busca de boatos é um produto separado, e é a parte que exige API paga. Dizer
-que o sistema "detecta desinformação sozinho" seria falso.
+afirmação a ser checada é escrita por outra pessoa — o autor do post que o radar
+captura —, nunca pelo sistema. O que ele escolhe é QUAIS perfis ler, e a lista
+vem do `.env`, não dele. Dizer que o sistema "detecta desinformação sozinho"
+seria falso.
 
 ## Duas metades, dois gatilhos
 
@@ -45,7 +46,7 @@ O sistema não é um pipeline só. São dois, com gatilhos diferentes.
                                                     │
                                                     │ consulta
                                                     ↓
-┌── CONSULTA ─────────────────── gatilho: uma afirmação de fora ────┐
+┌── CONSULTA ─────────────────── gatilho: um post do radar ─────────┐
 │                                                                   │
 │   afirmação → vira tripla → busca no acervo → julga → veredito    │
 │                                   ↑              │                │
@@ -57,7 +58,7 @@ O sistema não é um pipeline só. São dois, com gatilhos diferentes.
 A **ingestão** roda sozinha, em intervalo fixo. Prepara o acervo. É trabalho
 caro e estável: cada matéria é processada uma vez, e o resultado vira índice.
 
-A **consulta** roda quando chega uma afirmação. Não coleta nem extrai matéria —
+A **consulta** roda quando o radar traz um post. Não coleta nem extrai matéria —
 apenas consulta o que a ingestão preparou.
 
 A regra que separa as duas, e vale para qualquer sistema RAG: **o que é caro e
@@ -71,98 +72,82 @@ Esta é a decisão que define se o sistema verifica ou apenas agrega.
 
 **A afirmação e o acervo precisam ser populações diferentes.** Checar imprensa
 contra imprensa é redundante: o resultado seria "três veículos disseram o
-mesmo". O valor aparece quando a afirmação vem de fora da imprensa — um boato,
-uma mensagem encaminhada, um post — e o acervo serve de corpo de evidência.
+mesmo". O valor aparece quando a afirmação vem de fora da imprensa — um post de
+rede social — e o acervo serve de corpo de evidência.
 
 | Origem | População distinta? | Autônoma? | Papel no projeto |
 |-|-|-|-|
-| Afirmação digitada na CLI | Sim | Não | Demonstração e uso real |
 | RSS de agências de checagem | Sim — são boatos de rede social | Sim, mas já vêm com o veredito | **Gabarito de avaliação** |
-| Rede social via API do X | Sim | Sim | Descartada: US$ 0,005 por **post lido** |
-| Rede social via API da xAI | Sim | Sim | Viável, ver abaixo |
-| Análise econômica (premissas) | Sim | Sim | Direção registrada, ver abaixo |
+| Rede social via API oficial do X | Sim | Sim | **A origem: é por onde a afirmação entra** |
+| Análise econômica (premissas) | Sim | Sim | Implementada, ver abaixo |
 
-### Rede social pela API da xAI
+### Rede social pela API oficial do X
 
-Identificado e precificado, não implementado.
+Implementado em `radar.py` (a rodada e o bloco), `x_api.py` (o cliente de
+dados) e `x_auth.py` (OAuth 2.0): é a única porta de entrada do sistema.
 
-A API do X cobra **por post lido** (US$ 0,005), o que inviabiliza volume: 500
-posts/dia dariam ~US$ 75/mês. A API da xAI expõe busca no X como ferramenta e
-cobra **por chamada de busca**, ao mesmo preço unitário — e uma busca devolve
-vários posts. Cinco buscas por dia ficam em torno de US$ 0,75/mês, cerca de
-cem vezes menos.
+**A afirmação chega como registro do servidor, não como transcrição.** O
+texto do post é o que a API devolve, literal do autor, e o tipo — post,
+thread própria, citação, resposta a terceiro, retweet — é CALCULADO em código
+(`x_api.classifica`) a partir de `conversation_id`, dos posts referenciados e
+de `in_reply_to_user_id` comparado com `author_id`. É a diferença entre pedir
+um rótulo e derivá-lo: rótulo pedido a um modelo seria opinião, metadado é
+dado. Sem metadado a derivação falha FECHADO — vira `resposta`, que o radar
+descarta —, porque o projeto prefere perder post legítimo a deixar entrar
+resposta a terceiro. Afirmação sem fonte rastreável quebraria o princípio 2
+já na entrada; aqui cada bloco carrega a URL do próprio status.
 
-A diferença não é de desconto, é de unidade de cobrança. Vale registrar porque
-a conclusão anterior — "rede social está fora do orçamento" — era verdadeira
-para a API do X e falsa como afirmação geral.
+**Autenticação.** OAuth 2.0 com PKCE, em app do tipo Native/Public — sem
+segredo, porque segredo não tem onde ficar num script que roda na máquina do
+dono. Escopos `tweet.read users.read offline.access`; sem o terceiro não há
+refresh token e o acesso morre em duas horas. O primeiro consentimento é
+humano, no navegador (`python -m src.x_auth`); daí em diante o refresh renova
+sozinho. Ele é ROTATIVO — cada uso invalida o anterior —, por isso é gravado
+atomicamente em `data/x_token.json`, fora do Git, e a renovação é
+serializada por lock entre processos: duas rodadas na mesma janela gastariam
+o mesmo refresh e a segunda gravaria um par já morto.
 
-Condição para adotar: **a busca precisa devolver o post com autor e link.**
-Se devolver apenas um resumo do modelo sobre o que está circulando, não serve
-— afirmação sem fonte rastreável quebra o princípio 2 já na entrada, e o
-sistema passaria a confiar na paráfrase de um modelo como se fosse registro.
+**Custo.** US$ 0,005 por post devolvido, lido na documentação em 04/09/2026;
+o desconto de "Owned Reads" não se aplica (vale só para a conta dona do app).
+A cobrança é deduplicada numa janela de 24h UTC, então a estimativa feita no
+cliente é um TETO, não uma medição — a API não devolve preço, e o rodapé do
+boletim rotula essa metade como "estimado" e a da Anthropic como "medido". O
+teto por handle e por rodada é de 100 posts (`radar.LIMITE_POR_HANDLE`,
+US$ 0,50 no pior caso). O post referenciado não é expandido, porque a
+expansão é outro recurso cobrado: a linha de contexto do bloco (o pai da
+thread, o post citado) só sai quando o referenciado foi lido na mesma
+rodada; quando não foi, a rodada conta a falta nas notas em vez de inventar
+a linha. Retweet é lido, pago, descartado — não traz palavra do autor — e
+contado.
 
-**Testado ao vivo em 30/08/2026** (4 chamadas, ~US$ 0,10, grok-4.6): a
-condição é cumprível — pedindo transcrição, o post volta na íntegra com data
-e citação inline para o status individual. Mas apareceu uma condição nova,
-que agora governa a adoção: **visibilidade por handle.** @VitalikButerin
-retorna; o handle que motivou o radar (@OutsiderPapini) retornou zero em três
-formulações — causa confirmada depois: **a conta é privada**, e post
-protegido é invisível para qualquer busca, por desenho do X, não por
-limitação do índice. A chave da xAI não herda o grafo de seguidos de
-ninguém; ler conta protegida exigiria OAuth na API oficial do X, já
-descartada — e post que só o seguidor consegue abrir quebra o princípio 2
-(fonte rastreável) de qualquer forma. Consequência: o radar cobre apenas
-handles PÚBLICOS, testados um a um antes de entrar na lista (~US$ 0,03 a
-chamada); conta privada fica no fluxo manual (copiar e colar no premissas),
-que é o validado.
+**Duas indefinições da própria documentação, tratadas em código.** As
+páginas de fundamentos e a referência do endpoint discordam sobre os nomes
+dos campos (`tweet.fields`/`referenced_tweets` contra
+`post.fields`/`referenced_posts`); o cliente sonda os dois dialetos e guarda
+o que o servidor aceitou. E a doc nunca afirma que o endpoint devolve post de
+conta protegida — a única evidência é a descrição do escopo, que fala do que
+a conta enxerga, não do que o endpoint entrega. Consequência: o radar cobre
+apenas handles PÚBLICOS, testados um a um antes de entrar na lista; conta
+protegida fica de fora até isso ser medido.
 
-Duas notas de mecânica para o módulo futuro: `allowed_x_handles` restringe a
-busca mas o modelo não vê a lista — o prompt precisa nomear os handles; e a
-citação vem inline (`[[N]](url)`), não no campo `citations` da resposta.
+**Estado:** nada foi rodado ao vivo contra a API do X ainda — as credenciais
+não foram criadas. A camada inteira está coberta por teste sem rede
+(`tests/test_x_api.py`, `tests/test_x_auth.py`, `tests/test_radar.py`), e o
+que está escrito acima é o que a documentação diz e o que o código faz, não
+o que foi observado.
 
-**Medido em 31/08 e 01/09/2026 — o `to_date` corta na meia-noite UTC dele.**
-A documentação diz "including both dates", mas em três buscas (43 posts
-lidos) os posts mais novos vieram às 23:19 e 23:54 UTC da VÉSPERA e nenhum
-do dia corrente — com posts do dia comprovadamente existindo (timestamp
-decodificado do próprio ID do status). Leitura que reconcilia doc e medição:
-a data vira o instante 00:00:00 daquele dia, e o "inclusivo" vale para o
-instante. Consequência prática: `to_date = hoje` significa "até ontem";
-para incluir o dia corrente, o radar envia `to_date = amanhã`. Duas notas
-da mesma leva: as anotações de citação chegam com `start_index`/`end_index`
-zerados (não há pareamento estrutural link↔post — o pareamento é pedido ao
-modelo e validado por ID de status contra as anotações `url_citation`), e a
-busca não é exaustiva por chamada — duas buscas na mesma janela devolveram
-subconjuntos diferentes (10 e 20 posts), então cobertura completa de um dia
-só se acumula entre rodadas, via janela sobreposta + dedup.
+#### Não existe "o que está em alta"
 
-Fica para depois de a extração estar validada.
-
-#### Não existe trending topic
-
-Conferido na documentação oficial em 27/08/2026, no nível dos parâmetros. O
-`x_search` aceita exatamente isto:
-
-```
-allowed_x_handles           só posts destes handles (máx 20)
-excluded_x_handles          exclui estes handles (máx 20)
-from_date / to_date         janela de data, ISO8601
-enable_image_understanding  analisa imagem do post
-enable_video_understanding  analisa vídeo do post
-```
-
-Nenhum parâmetro de engajamento, contagem, popularidade, ordenação ou ranking.
-Não dá para perguntar QUAIS assuntos estão em alta — só perguntar SOBRE um
-assunto que você escolheu. Pedir ao Grok "o que está bombando" devolve a
-impressão dele a partir de uma busca, o que é pior que não ter: tem forma de
-dado e não é.
-
-Trending de verdade está na API do X, que é outro produto, outra conta, outra
-cobrança — e cobra por post lido, que é o modelo já descartado acima.
+O radar lê a timeline dos handles escolhidos, numa janela de data, e só
+isso. Não há pergunta "quais assuntos estão em alta": o sistema não escolhe
+assunto — ele confere o que os perfis acompanhados afirmaram (ver "O que o
+sistema é, e o que não é"). Trending é outro produto, e devolveria a
+impressão de alguém sobre o que circula, que tem forma de dado e não é.
 
 #### A lista de handles é o RSS do radar
 
-`allowed_x_handles` funciona como a lista de feeds: fonte curada, coleta
-periódica, janela de data. Mesmo mecanismo, **papel oposto**:
+`HANDLES_RADAR` (no `.env`) funciona como a lista de feeds: fonte curada,
+coleta periódica, janela de data. Mesmo mecanismo, **papel oposto**:
 
 ```
 RSS       →  ACERVO   →  é a evidência      →  o que os jornais afirmam
@@ -216,12 +201,6 @@ Custa pouco: um prompt que extrai PREMISSAS de um texto argumentativo, e o
 Premissa sem evidência não significa que o analista errou — significa que o
 acervo não cobre. Confundir os dois transforma a ferramenta em máquina de
 acusar, que é outro produto e não é este.
-
-A entrada é uma CLI:
-
-```
-python -m src.check "o governo cancelou o programa X"
-```
 
 ### Separar, rotear, julgar — e o gabarito
 
@@ -442,10 +421,8 @@ duplicata de re-extração compete no ranking (a dedup por veículo mitiga, não
 resolve).
 
 WhatsApp foi descartado. Ele havia sido pensado como *saída* — o sistema
-empurrando vereditos —, o que reforçava o problema: o sistema escolhendo sozinho
-o que verificar, e verificando o que já estava confirmado. Como *entrada* ele
-também não se justifica, porque exigiria integração para um caso de uso que a
-CLI cobre.
+empurrando vereditos sobre o que já estava confirmado, que é justamente o que o
+digest faz sem exigir integração nova. A entrega do boletim já sai pelo Telegram.
 
 O RSS das agências não é fonte de produto — elas já publicaram a resposta.
 É **gabarito**: roda-se o sistema sobre afirmações que Lupa, Aos Fatos ou
@@ -459,7 +436,10 @@ O sistema entrega por dois caminhos, e eles resolvem problemas diferentes.
 | | Gatilho | Entrada | O que produz |
 |-|-|-|-|
 | **Digest diário** (`digest.py`) | relógio | o acervo do dia | o que se sustenta e onde divergem |
-| **Consulta** (`check.py`) | uma pessoa | afirmação vinda de fora | veredito sobre aquela afirmação |
+| **Boletim** (`boletim.py`) | post novo no radar | afirmação do autor do post | veredito sobre aquela afirmação |
+
+`check.py` é o motor da segunda linha: recebe a premissa que o separador
+tirou do post e devolve o veredito com as fontes. Não tem entrada própria.
 
 ### Digest diário
 
@@ -483,8 +463,8 @@ medição está em "Como medir se funciona" e precede a construção.
 
 ### Consulta
 
-Recebe uma afirmação que não veio do acervo e a julga contra ele. É o caso
-não-redundante, descrito em "De onde vem a afirmação".
+Recebe do radar uma afirmação que não veio do acervo e a julga contra ele. É o
+caso não-redundante, descrito em "De onde vem a afirmação".
 
 Os dois compartilham a mesma máquina: coleta, extração, índices e detecção de
 contradição. Só o gatilho e a apresentação mudam.
@@ -551,9 +531,10 @@ projeto mais quer capturar.
 
 ## Fonte de dados
 
-**RSS de veículos de notícia é a fonte única.** X/Twitter foi descartado por
-custo; Bluesky exige autenticação para busca e Reddit exige OAuth — ambos fora
-do escopo, e não como etapa futura.
+**RSS de veículos de notícia é a fonte única de evidência.** O X entra como
+radar — é de onde vem a afirmação a conferir, nunca a evidência (ver "Rede
+social é radar, nunca evidência"). Bluesky exige autenticação para busca e
+Reddit exige OAuth — ambos fora do escopo, e não como etapa futura.
 
 Os feeds são **por editoria**, não gerais. O feed geral do G1 é dominado por
 conteúdo das afiliadas regionais — acidente municipal, evento local, grade de
@@ -639,8 +620,8 @@ sempre da instituição ou da imprensa. Isso preserva o princípio de que todo
 veredito carrega fonte rastreável — resumo de modelo sobre o que está
 circulando não seria citável.
 
-Depende da API da xAI, precificada em "De onde vem a afirmação". Fica para
-depois de a extração e o grafo existirem.
+Implementado em `radar.py` sobre a API oficial do X — ver "Rede social pela
+API oficial do X", em "De onde vem a afirmação".
 
 ### Veículo não é o mesmo que feed
 
@@ -1142,15 +1123,16 @@ Coluna `evidencias` com (veículo, título, url, data) do que o JUIZ citou,
 deduplicada por URL — uma matéria rende várias triplas e o juiz cita mais de
 uma, e sem isso o boletim mostrava "2 veículos" com quatro linhas.
 
-**Resposta a terceiro.** O prompt do radar manda ignorá-las desde 01/09 e o
-modelo transcrevia assim mesmo: das 14 entradas de 31/08, 3 eram posts e 11
-eram respostas, quase todas ao @grok e várias sem uma palavra do autor.
-`radar.resposta_a_terceiro` descarta em CÓDIGO, antes de custar separação,
-check e demanda, e CONTA o descarte nas notas da rodada. Compara handle por
-PREFIXO nos dois sentidos porque `boletim_posts.resumo` guarda `resumo[:120]`
-e o handle chega cortado — exigir o parêntese de fechamento fazia a barreira
-falhar ABERTO. O que fica: post próprio, quote, e continuação de thread
-própria (o C25 depende dela).
+**Resposta a terceiro.** O tipo do post vem do metadado do servidor
+(`x_api.classifica`) e o radar o transcreve para a linha `TIPO:` do bloco;
+`radar.declara_post_proprio` falha FECHADO — cai `resposta` e cai bloco sem
+declaração — antes de custar separação, check e demanda, e
+`radar.filtra_respostas` segue a cadeia pelo ID do pai (thread própria
+pendurada numa resposta a terceiro cai junto) e CONTA o descarte nas notas
+da rodada. A comparação de handle é por PREFIXO nos dois sentidos porque
+`boletim_posts.resumo` guarda `resumo[:120]` e o handle chega cortado —
+exigir o parêntese de fechamento faria a barreira falhar ABERTO. O que fica:
+post próprio, quote, e continuação de thread própria (o C25 depende dela).
 
 ### A medida como chave, não como prosa
 
@@ -1309,9 +1291,16 @@ National Golf Club, `tem_participacao_em` BlackRock→iShares).
 
 **2. Acurácia contra checador profissional.** Rodar ~50 afirmações já julgadas
 por Lupa, Aos Fatos ou Comprova, sem mostrar o veredito delas, e comparar.
+Essas afirmações não são posts, e a via nunca foi construída: exigiria coletar
+o RSS das checadoras e um modo de avaliação que chame `verifica` de ponta a
+ponta — o gabarito não serve, porque fixa a evidência e mede o juiz, não a
+recuperação.
 
 Concordância com checador profissional é o único número que separa este projeto
 de um agregador — e nenhum agregador consegue produzi-lo.
+
+**Em aberto:** essas afirmações não são posts, e a via de execução desta
+medição não está definida.
 
 **3. Regressão de prompt.** Não mede rendimento nem acurácia: mede se o que
 já funcionava continua funcionando quando o prompt muda. É o gabarito

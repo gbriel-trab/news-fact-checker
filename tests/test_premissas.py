@@ -67,10 +67,10 @@ class TestReescritaSoParaFato:
         assert "NÃO adivinhe o referente" in INSTRUCOES
 
     def test_nome_incompleto_e_referente_e_nao_se_completa(self):
-        """O boletim de 02/09/2026: "André se reune com Trump, todos os
-        rumos mudam" saiu como UMA opinião, sem fato — "André" sem
-        sobrenome foi lido como referente indeterminado, e o acervo tinha
-        o encontro. Nome incompleto é referente e a reescrita não o
+        """O boletim de 02/09/2026: o post da charada (status
+        1000000000000000001) saiu como UMA opinião, sem fato — "André"
+        sem sobrenome foi lido como referente indeterminado, e o acervo
+        tinha o encontro. Nome incompleto é referente e a reescrita não o
         completa; e o predicado precisa estar no texto tanto quanto o
         sujeito ("André foi lá" segue sem fato). A terceira âncora prende
         o exemplo trabalhado — se ele for trocado, ela muda junto."""
@@ -184,13 +184,14 @@ class TestRoteador:
         return roteia(analise, texto).premissas[0]
 
     def test_positivo_classe_mensuravel_passa(self):
-        """C19, e a barreira nasce com o VEREDITO na mao: esta afirmacao
-        era rebaixada, e levada ao verificador voltou CONFIRMADO por 4
-        veiculos (CNN, Folha, G1, Agencia Brasil) em 03/09/2026. Regra
-        que manda descartar o que o acervo sustenta esta errada."""
-        texto = ("POST 4 (@x, 31 Aug 2026):\nAlguem consegue ainda manter "
-                 "as contas de quantas recuperacoes judiciais estao "
-                 "acontecendo em marcas iconicas?")
+        """C19 (status 1000000000000000019), e a barreira nasce com o
+        VEREDITO na mao: a afirmacao daquele post era rebaixada, e levada
+        ao verificador voltou CONFIRMADO por 4 veiculos (CNN, Folha, G1,
+        Agencia Brasil) em 03/09/2026. Regra que manda descartar o que o
+        acervo sustenta esta errada. O texto abaixo reconstroi a forma do
+        caso -- classe no sujeito, palavra de quantidade no trecho."""
+        texto = ("POST 4 (@x, 31 Aug 2026):\nNinguem mais conta quantas "
+                 "recuperacoes judiciais atingem marcas iconicas.")
         p_ = self._fato(
             texto, quem=("marcas iconicas", "marcas iconicas"),
             o_que=("recuperacoes judiciais", "recuperacoes judiciais"))
@@ -207,36 +208,45 @@ class TestRoteador:
         assert p_.tipo == "nao_verificavel"
 
     def test_negativo_o_empresario_nao_entra_pela_porta_nova(self):
-        """As frases do C3 que QUANTIFICAM sem medir. "todos",
-        "infindaveis" e "praticamente" ficaram fora de _QUANTIDADE
-        justamente por isto: e o caso que a regra 8 existe para fechar,
-        e a porta nova nao pode reabri-lo."""
+        """O C3 (status 1000000000000000003) QUANTIFICA sem medir.
+        "TODOS", "infindaveis" e "Praticamente" ficaram fora de
+        _QUANTIDADE justamente por isto: e o caso que a regra 8 existe
+        para fechar, e a porta nova nao pode reabri-lo. Cada linha abaixo
+        carrega uma dessas tres palavras na mesma posicao do original."""
         base = "POST 7 (@x, 01 Sep 2026):\n"
         for trecho, quem, o_que in (
-            ("TODOS os outros empresarios no bolso via divida",
-             ("os outros empresarios", "os outros empresarios"),
-             ("no bolso", "no bolso")),
-            ("Participacao societaria em infindaveis empresas",
-             ("infindaveis empresas", "infindaveis empresas"),
-             ("participacao societaria", "Participacao societaria")),
-            ("Praticamente o mundo politico todo tem dinheiro com ele",
-             ("o mundo politico", "o mundo politico"),
-             ("dinheiro", "dinheiro")),
+            ("TODOS os cofres alheios sob controle",
+             ("os cofres alheios", "os cofres alheios"),
+             ("sob controle", "sob controle")),
+            ("Assento em infindaveis conselhos fechados",
+             ("infindaveis conselhos", "infindaveis conselhos"),
+             ("assento", "Assento")),
+            ("Praticamente o setor inteiro deve favores a ele",
+             ("o setor inteiro", "o setor inteiro"),
+             ("favores", "favores")),
         ):
             p_ = self._fato(base + trecho, quem=quem, o_que=o_que)
             assert p_.tipo == "nao_verificavel", (trecho, p_.roteado)
 
     def test_negativo_o_encontro_continua_fora(self):
-        """O caso que fundou a regra por slot nao pode voltar."""
-        texto = ("POST 3 (@x, 01 Sep 2026):\nO encontro que ocorreu muda "
-                 "mais o rumo do Brasil que eleicao.")
+        """O caso que fundou a regra por slot (status
+        1000000000000000002) nao pode voltar: sujeito ancorado mas
+        indeterminado, objeto com nome proprio e sem numero."""
+        texto = ("POST 3 (@x, 01 Sep 2026):\nO encontro pesa mais para o "
+                 "Brasil que qualquer votacao.")
         p_ = self._fato(texto, quem=("O encontro que ocorreu", "O encontro"),
                         o_que=("o Brasil", "o Brasil"))
         assert p_.tipo == "nao_verificavel"
+        # Prende a QUEDA NA REGRA POR SLOT: com "o Brasil" ancorado, o
+        # freio tem de ser o sujeito indeterminado, não a âncora que
+        # falta. A redação anterior caía antes disso, por acidente.
+        assert "sem entidade nomeada" in p_.roteado
 
     def test_charada_passa(self):
-        texto = ("POST 6 (@x, 01 Sep 2026):\nCharada: André se reune com "
-                 "Trump, todos os rumos mudam.")
+        # A forma do status 1000000000000000001: nome proprio de uma
+        # palavra no sujeito, ancorado, com o QUÊ nomeado ao lado.
+        texto = ("POST 6 (@x, 01 Sep 2026):\nCharada: André almocou com "
+                 "Trump e o jogo virou.")
         p_ = self._fato(texto, quem=("André", "André"),
                         o_que=("Trump", "com Trump"))
         assert p_.tipo == "fato" and p_.roteado is None
@@ -263,32 +273,34 @@ class TestRoteador:
     def test_data_nao_substitui_o_que(self):
         """A data do POST está no texto que o modelo recebe, então
         deixá-la valer como segundo apoio era o freio vazando pelo
-        cabeçalho: "O cara tem banco dele" + data do post passava."""
+        cabeçalho: sujeito indeterminado do status 1000000000000000003
+        mais a data do próprio post passava."""
         texto = ("POST 7 (@perfil_teste, 01 Sep 2026):\n"
-                 "O cara tem banco dele.")
+                 "O cara manda em tudo.")
         p_ = self._fato(texto, quem=("o cara", "O cara"),
                         quando=("01/09/2026", "01 Sep 2026"))
         assert p_.tipo == "nao_verificavel"
 
     def test_cabecalho_do_post_nao_ancora(self):
         from src.premissas import texto_ancoravel
-        texto = "POST 7 (@perfil_teste, 01 Sep 2026):\nO cara tem banco dele."
+        texto = "POST 7 (@perfil_teste, 01 Sep 2026):\nO cara manda em tudo."
         assert "01 Sep 2026" not in texto_ancoravel(texto)
-        assert "banco dele" in texto_ancoravel(texto)
+        assert "manda em tudo" in texto_ancoravel(texto)
 
     def test_fala_do_interlocutor_nao_ancora(self):
         """Trecho copiado da pergunta do terceiro ancorava perfeitamente,
         e a âncora provava que o pedaço está no texto — não que o autor o
-        afirmou. A regra 9 passa a existir em código."""
+        afirmou (status 1000000000000000004). A regra 9 passa a existir
+        em código."""
         from src.premissas import texto_ancoravel
         texto = ("POST 5 (@perfil_teste, 01/09/2026):\n"
                  "(contexto — palavras do interlocutor, não do autor do "
-                 "post: (@interlocutor_b): Esse André era estagiário?)\n"
-                 "Convivi com ele.")
+                 "post: (@interlocutor_b): Esse André era vizinho seu?)\n"
+                 "Almocei com ele.")
         ancoravel = texto_ancoravel(texto)
-        assert "estagiário" not in ancoravel and "Convivi" in ancoravel
+        assert "vizinho" not in ancoravel and "Almocei" in ancoravel
         p_ = self._fato(texto, quem=("André", "André"),
-                        o_que=("estagiário", "estagiário"))
+                        o_que=("vizinho", "vizinho"))
         assert p_.tipo == "nao_verificavel"
 
     def test_thread_propria_continua_ancorando(self):
@@ -320,17 +332,18 @@ class TestRoteador:
         assert p_.tipo == "nao_verificavel"
 
     def test_maiuscula_de_inicio_de_linha_nao_e_nome_proprio(self):
-        """O incidente de US$ 0,36: "Banco dele" abre a linha, e a
-        maiúscula era lida como nome próprio."""
-        texto = "POST 7 (@x, 01 Sep 2026):\nO cara tem:\n\nBanco dele"
+        """O incidente de US$ 0,36 (status 1000000000000000003): um item
+        de lista abre a linha depois dos dois-pontos, e a maiúscula de
+        início de linha era lida como nome próprio."""
+        texto = "POST 7 (@x, 01 Sep 2026):\nO cara junta:\n\nGrana curta"
         p_ = self._fato(texto, quem=("o cara", "O cara"),
-                        o_que=("Banco dele", "Banco dele"))
+                        o_que=("Grana curta", "Grana curta"))
         assert p_.tipo == "nao_verificavel"
 
     def test_caixa_alta_e_enfase_nao_sigla(self):
-        texto = "POST 7 (@x, 01 Sep 2026):\nTODOS os outros no bolso."
+        texto = "POST 7 (@x, 01 Sep 2026):\nTODOS os vizinhos sabem disso."
         p_ = self._fato(texto, quem=("o cara", "TODOS"),
-                        o_que=("TODOS os outros", "TODOS os outros"))
+                        o_que=("TODOS os vizinhos", "TODOS os vizinhos"))
         assert p_.tipo == "nao_verificavel"
 
     def test_ancora_respeita_fronteira_de_palavra(self):
@@ -340,11 +353,12 @@ class TestRoteador:
         assert p_.tipo == "nao_verificavel"
 
     def test_tipografia_nao_derruba_a_ancora(self):
-        """O modelo transcreve “dizer” como "dizer" — e a âncora falhava
-        por causa de um caractere."""
-        texto = 'POST 2 (@x, 01 Sep 2026):\nA confluência entra para “dizer” se vale.'
-        p_ = self._fato(texto, quem=("A confluência", "A confluência"),
-                        o_que=('Selic 15%', '"dizer" se vale'))
+        """O modelo transcreve “medir” como "medir" — e a âncora falhava
+        por causa de um caractere (a aspa curva do status
+        1000000000000000005)."""
+        texto = 'POST 2 (@x, 01 Sep 2026):\nO relatorio serve para “medir” o risco.'
+        p_ = self._fato(texto, quem=("O relatorio", "O relatorio"),
+                        o_que=('Selic 15%', '"medir" o risco'))
         assert p_.roteado != "sem o QUÊ ancorado (data não substitui)"
 
     def test_numero_basta_como_segundo_apoio(self):
