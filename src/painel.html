@@ -222,12 +222,15 @@ async function radar() {
     const r = await acaoPaga("/api/radar", "até US$ 0,50 por handle", "radarSaida", {dias: +$("rdDias").value});
     if (!r) return;
     $("radarSaida").innerHTML =
-      (r.posts.map((p, i) => `<div class="fato">[${i+1}] ${esc(p)}</div>`).join("") ||
+      (r.posts.map(p => `<div class="fato"><b>[${p.numero}]</b> ` +
+        `<span class="dim">@${esc(p.autor)} · ${esc(p.quando)} · ${esc(p.tipo)}</span>` +
+        (p.url ? ` <a href="${esc(p.url)}" target="_blank">ver no X</a>` : "") +
+        (p.contexto ? `<small>${p.contexto.proprio ? "contexto (próprio autor)" : "citando @" + esc(p.contexto.de)}: ${esc(p.contexto.texto)}</small>` : "") +
+        `<div>${esc(p.texto)}</div></div>`).join("") ||
         "<p class='dim'>nenhum post na janela</p>") +
+      r.descartados.map(d => `<p class="dim">descartado: @${esc(d.autor)} ${esc(d.url)} — ${esc(d.motivo)}</p>`).join("") +
       r.notas.map(n => `<p class="warn">aviso da busca: ${esc(n)}</p>`).join("") +
-      (r.links.length ? "<p class='dim'>links: " +
-        r.links.map(l => `<a href="${esc(l)}" target="_blank">${esc(l.split("/").pop())}</a>`).join(" · ") + "</p>" : "") +
-      `<p class="custo">busca: US$ ${r.custo_usd.toFixed(4)}</p>`;
+      `<p class="custo">${r.lidos} post(s) lido(s) · busca: US$ ${r.custo_estimado_usd.toFixed(4)} (estimado)</p>`;
   } catch (err) { $("radarSaida").innerHTML = `<p class="err">${esc(err.message)}</p>`; }
 }
 

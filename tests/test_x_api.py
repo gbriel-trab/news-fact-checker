@@ -151,9 +151,9 @@ class TestClassifica:
     def test_resposta_a_si_mesmo_e_thread(self):
         """O caso C25 do gabarito: o autor continuando a própria conversa.
 
-        É o que `filtra_respostas` precisa preservar enquanto derruba
-        resposta a terceiro. O rótulo sai de `in_reply_to_user_id ==
-        author_id`, comparação de IDS."""
+        É o que `radar.cadeia` precisa preservar enquanto derruba a thread
+        pendurada em resposta a terceiro. O rótulo sai de
+        `in_reply_to_user_id == author_id`, comparação de IDS."""
         cru = post_cru(id="8", conversation_id="7", in_reply_to_user_id=AUTOR,
                        referenced_posts=[{"type": "replied_to", "id": "7"}])
         assert classifica(cru, "handle", {AUTOR: "handle"}) == (
@@ -211,7 +211,7 @@ class TestClassifica:
         """Sem `referenced` e sem `conversation_id == id`, vira `resposta`.
 
         Não dá para provar que é raiz, e o projeto já decidiu, em
-        `radar.declara_post_proprio`, que prefere perder post legítimo a
+        `radar.separa_por_tipo`, que prefere perder post legítimo a
         deixar entrar resposta a terceiro."""
         assert classifica({"id": "8", "author_id": AUTOR}, "handle", {})[0] == (
             "resposta")
@@ -242,7 +242,7 @@ class TestPontaAPonta:
             self, monkeypatch):
         """Resposta a terceiro não pode sair como post próprio — é o que o
         radar mais precisa que o cliente acerte, antes de qualquer barreira
-        dele (`filtra_respostas` trata o pai fora da rodada, não isto).
+        dele (`radar.cadeia` trata a thread pendurada nela, não isto).
         Aqui não há a quem perguntar: `in_reply_to_user_id` é de outra
         pessoa, e o tipo cai sozinho."""
         liga(monkeypatch, usuario(),

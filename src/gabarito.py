@@ -19,8 +19,11 @@ um caso no mesmo dia.
 Quatro limites, para o gabarito não dar segurança falsa:
 
 * Ele só protege o que está listado. Por isso os casos são posts REAIS do
-  radar sempre que existirem (campo `bloco_radar`: o registro primário
-  viaja com o caso), e cada bug novo entra aqui antes do conserto.
+  radar sempre que existirem (campo `post`: o registro primário — autor,
+  data, texto e o post referenciado — viaja com o caso, e `texto`, o que o
+  separador recebe, é derivado dele por `captura_de` +
+  `radar.para_separacao`, o caminho da produção), e cada bug novo entra
+  aqui antes do conserto.
 * Resposta esperada é escrita À MÃO. Os pares-ouro do agrupamento (ver
   ARCHITECTURE) vieram da saída do sistema e estavam contaminados; caso
   cuja resposta esperada veio de um modelo passa no próprio teste para
@@ -115,6 +118,33 @@ def carrega(nome: str) -> list[dict]:
     if repetidos:
         raise ValueError(f"id repetido em {caminho.name}: {sorted(repetidos)}")
     return casos
+
+
+def captura_de(post: dict):
+    """O `radar.Captura` de um caso, a partir do registro `post` dele.
+
+    O caso carrega o registro primário — autor, data, texto e, quando
+    havia, o post referenciado (`contexto`: autor, texto, e se é do
+    próprio autor) — e `texto` é DERIVADO dele por `radar.para_separacao`,
+    o mesmo caminho da produção. Guardar só o texto pronto deixaria o
+    gabarito medir um texto que o boletim não manda no dia em que a
+    renderização mudar; o teste em `tests/test_gabarito.py` prende os
+    dois um ao outro."""
+    from . import radar
+    from .x_api import Post
+    contexto = post.get("contexto")
+    referenciado = None
+    tipo = "post"
+    if contexto:
+        referenciado = Post(id="", autor=contexto.get("autor", ""),
+                            criado_em="", texto=contexto.get("texto", ""),
+                            tipo="post")
+        tipo = "thread" if contexto.get("proprio") else "citacao"
+    return radar.Captura(
+        post=Post(id="", autor=post["autor"],
+                  criado_em=post.get("quando", ""), texto=post["texto"],
+                  tipo=tipo, url=post.get("url", "")),
+        referenciado=referenciado)
 
 
 _CHAVES_ASSINADAS = ("texto", "afirmacao", "fatos", "esperado",

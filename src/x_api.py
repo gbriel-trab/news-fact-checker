@@ -207,7 +207,7 @@ def classifica(post: dict, autor_do_handle: str,
     Falha FECHADO: post sem `referenced` e sem `conversation_id` igual ao
     próprio id vira `resposta`. Sem metadado não dá para provar que é raiz, e
     o custo dos dois erros é assimétrico — o projeto já decidiu, em
-    `radar.declara_post_proprio`, que prefere perder post legítimo a deixar
+    `radar.separa_por_tipo`, que prefere perder post legítimo a deixar
     entrar resposta a terceiro. O risco de perder é pequeno: o campo vem do
     servidor, e se ele sumir some para TODOS os posts de uma vez, o que
     aparece como uma rodada inteira virando `resposta` — barulhento, não

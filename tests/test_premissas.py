@@ -287,15 +287,23 @@ class TestRoteador:
         assert "01 Sep 2026" not in texto_ancoravel(texto)
         assert "manda em tudo" in texto_ancoravel(texto)
 
-    def test_fala_do_interlocutor_nao_ancora(self):
-        """Trecho copiado da pergunta do terceiro ancorava perfeitamente,
-        e a âncora provava que o pedaço está no texto — não que o autor o
+    def test_so_a_primeira_linha_e_cabecalho(self):
+        """O cabeçalho é tirado só do INÍCIO do texto: uma linha do autor
+        que comece com "POST" é texto dele e continua ancorável."""
+        from src.premissas import texto_ancoravel
+        texto = ("POST (@perfil_teste, 2026-09-01 12:00 UTC):\n"
+                 "primeira frase\nPOST 9 do autor, com Selic dentro")
+        assert "Selic dentro" in texto_ancoravel(texto)
+        assert "12:00 UTC" not in texto_ancoravel(texto)
+
+    def test_fala_do_post_citado_nao_ancora(self):
+        """Trecho copiado do post de um terceiro ancorava perfeitamente, e
+        a âncora provava que o pedaço está no texto — não que o autor o
         afirmou (status 1000000000000000004). A regra 9 passa a existir
         em código."""
-        from src.premissas import texto_ancoravel
-        texto = ("POST 5 (@perfil_teste, 01/09/2026):\n"
-                 "(contexto — palavras do interlocutor, não do autor do "
-                 "post: (@interlocutor_b): Esse André era vizinho seu?)\n"
+        from src.premissas import CONTEXTO_ALHEIO, texto_ancoravel
+        texto = ("POST (@perfil_teste, 2026-09-01 12:00 UTC):\n"
+                 f"({CONTEXTO_ALHEIO}: Esse André era vizinho seu?)\n"
                  "Almocei com ele.")
         ancoravel = texto_ancoravel(texto)
         assert "vizinho" not in ancoravel and "Almocei" in ancoravel
@@ -304,11 +312,10 @@ class TestRoteador:
         assert p_.tipo == "nao_verificavel"
 
     def test_thread_propria_continua_ancorando(self):
-        """Regra 9: o post anterior da própria thread É texto do autor."""
-        from src.premissas import texto_ancoravel
-        texto = ("POST 2 (@perfil_teste, 01 Sep 2026):\n"
-                 "(contexto — post anterior do próprio autor na thread: "
-                 "(@perfil_teste): A Selic está em 15%.)\n"
+        """Regra 9: o post anterior do próprio autor É texto do autor."""
+        from src.premissas import CONTEXTO_PROPRIO, texto_ancoravel
+        texto = ("POST (@perfil_teste, 2026-09-01 12:00 UTC):\n"
+                 f"({CONTEXTO_PROPRIO}: A Selic está em 15%.)\n"
                  "E vai ficar assim até 2027.")
         assert "Selic" in texto_ancoravel(texto)
         p_ = self._fato(texto, quem=("A Selic", "A Selic"),
@@ -418,6 +425,13 @@ class TestRoteador:
         assert {"quem", "o_que", "quando", "hipotese"} <= set(propriedades)
 
     def test_regra_9_e_a_ancora_da_regra_8(self):
-        assert "LINHAS DE CONTEXTO" in INSTRUCOES
+        from src.premissas import CONTEXTO_ALHEIO, CONTEXTO_PROPRIO
+        assert "LINHA DE CONTEXTO" in INSTRUCOES
+        # Os dois prefixos que o radar escreve têm de estar descritos no
+        # prompt: é a regra 9 que diz ao modelo o que cada um significa.
+        assert "post anterior do próprio autor" in INSTRUCOES
+        assert "post citado pelo autor" in INSTRUCOES
+        assert CONTEXTO_PROPRIO.startswith("contexto — ")
+        assert CONTEXTO_ALHEIO.startswith("contexto — ")
         assert "ancorado no texto" in INSTRUCOES
         assert "nao_verificavel" in INSTRUCOES

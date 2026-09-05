@@ -83,8 +83,9 @@ rede social — e o acervo serve de corpo de evidência.
 
 ### Rede social pela API oficial do X
 
-Implementado em `radar.py` (a rodada e o bloco), `x_api.py` (o cliente de
-dados) e `x_auth.py` (OAuth 2.0): é a única porta de entrada do sistema.
+Implementado em `radar.py` (a rodada, as barreiras e as duas saídas em
+texto), `x_api.py` (o cliente de dados) e `x_auth.py` (OAuth 2.0): é a única
+porta de entrada do sistema.
 
 **A afirmação chega como registro do servidor, não como transcrição.** O
 texto do post é o que a API devolve, literal do autor, e o tipo — post,
@@ -95,7 +96,29 @@ um rótulo e derivá-lo: rótulo pedido a um modelo seria opinião, metadado é
 dado. Sem metadado a derivação falha FECHADO — vira `resposta`, que o radar
 descarta —, porque o projeto prefere perder post legítimo a deixar entrar
 resposta a terceiro. Afirmação sem fonte rastreável quebraria o princípio 2
-já na entrada; aqui cada bloco carrega a URL do próprio status.
+já na entrada; aqui cada captura carrega a URL do próprio status.
+
+**O post atravessa o radar como objeto, não como texto.** As três barreiras
+— um post por id, só `post`/`thread`/`citacao` ficam, e thread pendurada em
+post descartado cai junto (cadeia, até estabilizar) — leem campos do
+`Post`, nunca o texto: o texto é do autor, e o autor escreve o que quiser.
+Texto só nasce nas duas saídas, o que o separador recebe
+(`radar.para_separacao`) e o que console e arquivo mostram
+(`radar.como_texto`), e nenhuma das duas é lida de volta por ninguém. O que
+foi lido e não virou captura sai com o motivo, no arquivo do boletim e no
+painel, e contado nas notas do Telegram: descarte silencioso é o que esconde
+defeito.
+
+O texto do separador é contrato com o prompt (regra 9) e com
+`premissas.texto_ancoravel`, e os dois prefixos de contexto moram em
+`premissas`: `contexto — post anterior do próprio autor` (a thread, ou o
+autor citando a si mesmo — texto dele, pode virar premissa) e `contexto —
+post citado pelo autor; as afirmações são de quem ele cita` (texto de
+terceiro, nunca ancora). A atribuição é comparação de autor entre o post e
+o referenciado, não de texto. O cabeçalho é `POST (@handle, data):`, sem
+número de rodada — o número entrava no hash da separação em cache e o mesmo
+post pagava separação de novo noutra rodada — e sem URL, que é ruído de
+tokens.
 
 **Autenticação.** OAuth 2.0 com PKCE, em app do tipo Native/Public — sem
 segredo, porque segredo não tem onde ficar num script que roda na máquina do
@@ -114,10 +137,9 @@ cliente é um TETO, não uma medição — a API não devolve preço, e o rodap�
 boletim rotula essa metade como "estimado" e a da Anthropic como "medido". O
 teto por handle e por rodada é de 100 posts (`radar.LIMITE_POR_HANDLE`,
 US$ 0,50 no pior caso). O post referenciado não é expandido, porque a
-expansão é outro recurso cobrado: a linha de contexto do bloco (o pai da
-thread, o post citado) só sai quando o referenciado foi lido na mesma
-rodada; quando não foi, a rodada conta a falta nas notas em vez de inventar
-a linha. Retweet é lido, pago, descartado — não traz palavra do autor — e
+expansão é outro recurso cobrado: a linha de contexto (o pai da thread, o
+post citado) só sai quando o referenciado foi lido na mesma rodada; quando
+não foi, a rodada conta a falta nas notas em vez de inventar a linha. Retweet é lido, pago, descartado — não traz palavra do autor — e
 contado.
 
 **Duas indefinições da própria documentação, tratadas em código.** As
@@ -366,8 +388,8 @@ matérias em 2 veículos** existe porque a segunda hipótese do C3 trazia uma
 matéria só, sobre um empresário preso por homicídio: um veículo não é acervo
 cobrindo assunto, é coincidência de vocabulário.
 
-O rótulo é `[ACERVO]`, não `[CONTEXTO]` — esse já significa "EM RESPOSTA A"
-no Telegram.
+O rótulo é `[ACERVO]`, não `[CONTEXTO]` — esse já significa o post anterior
+do próprio autor (a thread dele) no Telegram.
 
 Isso é CONTEXTO, não veredito, e a distinção é a mesma que separa o digest
 do check: aponta o que o acervo tem sobre um assunto, sem afirmar que
@@ -394,7 +416,9 @@ falando" é exatamente o princípio 1 pela porta dos fundos.
 **O gabarito** (`src/gabarito.py`, `gabaritos/*.json`) é o que impede a
 próxima regra de reabrir a anterior: casos fixos com resposta esperada
 escrita à mão (revisão assinada pelo conteúdo — editar o esperado invalida a
-revisão), posts reais com o bloco bruto do radar, `fronteira` para lacuna
+revisão), posts reais com o registro do post — autor, data, texto e o
+referenciado —, de que o texto do separador é derivado pelo mesmo caminho
+da produção, `fronteira` para lacuna
 conhecida, `[repr]` para caso que é exemplo literal do prompt (passar prova
 reprodução, não regra), `--vezes N` porque `temperature` não existe no Opus 5
 e a variância se mede repetindo — e, desde 03/09/2026, a distinção entre
@@ -1124,15 +1148,13 @@ deduplicada por URL — uma matéria rende várias triplas e o juiz cita mais de
 uma, e sem isso o boletim mostrava "2 veículos" com quatro linhas.
 
 **Resposta a terceiro.** O tipo do post vem do metadado do servidor
-(`x_api.classifica`) e o radar o transcreve para a linha `TIPO:` do bloco;
-`radar.declara_post_proprio` falha FECHADO — cai `resposta` e cai bloco sem
-declaração — antes de custar separação, check e demanda, e
-`radar.filtra_respostas` segue a cadeia pelo ID do pai (thread própria
-pendurada numa resposta a terceiro cai junto) e CONTA o descarte nas notas
-da rodada. A comparação de handle é por PREFIXO nos dois sentidos porque
-`boletim_posts.resumo` guarda `resumo[:120]` e o handle chega cortado —
-exigir o parêntese de fechamento faria a barreira falhar ABERTO. O que fica:
-post próprio, quote, e continuação de thread própria (o C25 depende dela).
+(`x_api.classifica`, que falha FECHADO: sem metadado que prove raiz, é
+`resposta`); `radar.separa_por_tipo` descarta `resposta` e `retweet` antes
+de custar separação, check e demanda, e `radar.cadeia` derruba junto a
+thread própria pendurada num post descartado, pelo id do pai, até
+estabilizar. Cada descarte sai com o motivo no arquivo e contado nas notas
+da rodada. O que fica: post próprio, quote, e continuação de thread própria
+(o C25 depende dela).
 
 ### A medida como chave, não como prosa
 

@@ -46,20 +46,19 @@ def carrega_local(nome: str) -> list[dict]:
                     f"fica local. Rode na máquina que tem o arquivo.")
 
 
-# Bloco SINTÉTICO no formato exato que `radar.para_separacao` entrega ao
+# Texto SINTÉTICO no formato exato que `radar.para_separacao` entrega ao
 # separador. O texto é inventado de propósito — o repositório é público e o
 # conteúdo do post não pode ser redistribuído. O caso REAL equivalente é o
-# C1, que mora só em `gabaritos/premissas.json`; a estrutura do bloco
-# (cabeçalho "POST N (@handle, data):" e o corpo na linha seguinte) é o que
-# importa aqui, e ela é preservada byte a byte.
-BLOCO = ("POST 6 (@perfil_teste, 01 Sep 2026):\nVale registrar: André "
+# C1, que mora só em `gabaritos/premissas.json`; a estrutura (cabeçalho
+# "POST (@handle, data):" e o corpo na linha seguinte) é o que importa aqui.
+BLOCO = ("POST (@perfil_teste, 01 Sep 2026):\nVale registrar: André "
          "desembarca em Washington na sexta. Daqui a um mês ninguém vai "
          "lembrar disso.")
 
 # sha256 do `texto` do C1 no gabarito local. Prende o caso real byte a byte
 # — exatamente o que o antigo `c1["texto"] == CHARADA` prendia — sem trazer
 # o texto do post para dentro do repositório.
-SHA256_C1 = "baf2e198de025aaac59a23781818a2848af2650050ec594f67faf8e8832ba3aa"
+SHA256_C1 = "8e38315de948108deac17f9313af270cede616b13fec9ee7a023e6d512e80f1b"
 
 
 class TestContem:
@@ -144,7 +143,7 @@ class TestComparadorDePremissas:
             caso, [P("fato", "André Esteves desembarca em Washington")])
         assert falhas and "literal" in falhas[0]
         # Quebra de linha e acento não contam como diferença.
-        caso2 = {"texto": "POST 1 (@x, 01 Sep 2026):\nA lista tem:\n\nquatro nomes"}
+        caso2 = {"texto": "POST (@x, 01 Sep 2026):\nA lista tem:\n\nquatro nomes"}
         assert confere_premissas(caso2, [P("opiniao", "A lista tem: quatro nomes")]) == []
 
 
@@ -295,16 +294,20 @@ class TestArquivosDeCasos:
                 relacao = c["esperado"].get("relacao")
                 assert relacao is None or Relacao(relacao)
 
-    def test_caso_real_e_o_que_o_boletim_envia(self):
-        """Todo caso real carrega o bloco como o radar o montou; o
-        texto tem de ser byte a byte o que `para_separacao` produz dele —
-        senão o gabarito mede um texto que o boletim nunca enviou."""
+    def test_todo_caso_carrega_o_registro_e_o_texto_e_derivado_dele(self):
+        """Todo caso carrega o registro do post (`post`: autor, data, texto
+        e o referenciado), e o `texto` tem de ser byte a byte o que
+        `radar.para_separacao` produz dele — senão o gabarito mede um
+        texto que o boletim nunca enviou."""
         from src import radar
-        reais = [c for c in carrega_local("premissas") if "bloco_radar" in c]
-        assert len(reais) >= 8
-        for c in reais:
-            assert c["texto"] == radar.para_separacao(c["bloco_radar"]), c["id"]
-            assert c["bloco_radar"].startswith("POST "), c["id"]
+        from src.gabarito import captura_de
+        casos = carrega_local("premissas")
+        assert len(casos) >= 25
+        for c in casos:
+            assert "post" in c and "bloco_radar" not in c, c["id"]
+            assert c["texto"] == radar.para_separacao(
+                captura_de(c["post"])), c["id"]
+            assert c["texto"].startswith("POST (@"), c["id"]
 
     def test_c1_e_o_bloco_real_byte_a_byte(self):
         """O C1 é o bloco real que a v2 engoliu — o exemplo trabalhado da

@@ -42,6 +42,15 @@ from pydantic.json_schema import SkipJsonSchema
 
 from . import llm
 
+CONTEXTO_PROPRIO = "contexto — post anterior do próprio autor"
+CONTEXTO_ALHEIO = ("contexto — post citado pelo autor; as afirmações são de "
+                   "quem ele cita")
+"""Os dois prefixos de linha de contexto que o radar escreve no texto que
+este módulo recebe (`radar.para_separacao`). Moram aqui porque são contrato
+DESTE lado: a regra 9 do prompt os descreve e `texto_ancoravel` decide por
+eles o que é texto do autor. O radar importa daqui — mudar um sem o outro
+é o separador lendo palavra de terceiro como palavra do autor."""
+
 
 class Referente(BaseModel):
     """Um pedaço da afirmação preso ao texto. O `valor` é como o texto
@@ -177,22 +186,22 @@ _INDEFINIDOS = frozenset(
 reunião", "algum lugar". Não identifica nada, e a barreira de pronome
 sozinha não os pegava — passavam com sujeito nomeado."""
 
-_RE_CABECALHO = re.compile(r"^POST\s+\d+[^\n]*\n?", re.MULTILINE)
+_RE_CABECALHO = re.compile(r"\APOST\b[^\n]*\n?")
 _RE_CONTEXTO_ALHEIO = re.compile(
-    r"^\(contexto — (?:palavras do interlocutor|post citado)[^\n]*\n?",
-    re.MULTILINE)
+    r"^\(" + re.escape(CONTEXTO_ALHEIO) + r"[^\n]*\n?", re.MULTILINE)
 
 
 def texto_ancoravel(texto: str) -> str:
     """O que conta como TEXTO DO AUTOR para ancorar um referente.
 
-    Fora: a linha de cabeçalho "POST N (@handle, data):" — senão a data
-    do post ancora como data de ocorrência, e a proibição fica só na
-    prosa da regra 8 — e as linhas de contexto que o `radar` rotula como
-    palavras de OUTRA pessoa (interlocutor, post citado): trecho copiado
-    da fala do terceiro ancorava perfeitamente, e a âncora provava que o
-    pedaço está no texto, não que o autor o afirmou. Dentro: a linha de
-    contexto da própria thread, que é texto do autor (regra 9)."""
+    Fora: a linha de cabeçalho "POST (@handle, data):" — só a PRIMEIRA
+    linha, ancorada no início do texto; senão a data do post ancora como
+    data de ocorrência, e a proibição fica só na prosa da regra 8 — e a
+    linha de contexto que o `radar` rotula como palavra de OUTRA pessoa
+    (`CONTEXTO_ALHEIO`, o post citado): trecho copiado da fala do terceiro
+    ancorava perfeitamente, e a âncora provava que o pedaço está no texto,
+    não que o autor o afirmou. Dentro: a linha de contexto do próprio
+    autor (`CONTEXTO_PROPRIO`), que é texto dele (regra 9)."""
     return _RE_CONTEXTO_ALHEIO.sub("", _RE_CABECALHO.sub("", texto))
 
 
@@ -521,15 +530,14 @@ Regras que importam mais que as outras:
    Texto:   "O cara tem banco dele, mídia dele, todos no bolso."
    nao_verificavel: (sujeito não identificado; `hipotese` se houver)
 
-9. O BLOCO E AS LINHAS DE CONTEXTO. O bloco começa por "POST N (@handle,
+9. O CABEÇALHO E A LINHA DE CONTEXTO. O texto começa por "POST (@handle,
    data):" — o handle é o AUTOR (regra 7) e a data é a do post, NUNCA
-   data de ocorrência. Depois dela pode haver linhas "(contexto — ...)",
-   em qualquer posição: "palavras do interlocutor" NÃO são premissa do
-   autor — só o que ele responde é; "post anterior do próprio autor na
-   thread" É texto do autor, mesmas regras; "post citado pelo autor" são
-   palavras de quem ele cita — o que o autor diz sobre elas é premissa, o
-   citado em si não. Nunca copie `trecho` nem ancore referente na linha
-   do interlocutor ou do post citado; da linha de thread própria, pode.
+   data de ocorrência. Depois dela pode haver uma linha "(contexto — ...)":
+   "post anterior do próprio autor" (a thread dele, ou um post dele mesmo
+   que ele cita) É texto do autor, mesmas regras; "post citado pelo autor"
+   são palavras de quem ele cita — o que o autor diz sobre elas é
+   premissa, o citado em si não. Nunca copie `trecho` nem ancore
+   referente na linha do post citado; da linha do próprio autor, pode.
 """
 
 

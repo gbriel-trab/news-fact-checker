@@ -21,7 +21,8 @@ RADAR · @perfil · 25/08/2026
 texto literal do post, lido pela API oficial do X — o registro é o post, no link
 Conferência de premissas contra o acervo — não avalia o autor.
 
-[1] POST 1 (@perfil, 25 Aug 2026):
+POST 1 (@perfil, 2026-08-25 14:02 UTC) · post
+URL: https://x.com/perfil/status/…
 juliana brizola tem 38% no primeiro turno no RS, ganha no primeiro
   [previsao] ganha no primeiro — nada a conferir
   premissa: "Juliana Brizola tem 38% no primeiro turno no RS"
@@ -71,7 +72,7 @@ chamada. O resultado é entregue diariamente pelo Telegram.
 
 Os prompts do separador e do juiz têm **gabarito de regressão**
 (`gabaritos/`, `python -m src.gabarito`): casos fixos com resposta esperada
-escrita à mão, posts reais com o bloco bruto, e a regra de que nenhum prompt
+escrita à mão, posts reais com o registro do post, e a regra de que nenhum prompt
 muda sem a bateria passar — porque uma regra escrita para um caso engoliu o
 vizinho uma vez, e foi o bastante.
 
@@ -118,7 +119,7 @@ Decisões que fazem diferença, todas documentadas com medição no
 * Acervo: 11.022 matérias de 20 veículos, coleta a cada 15 min
 * 3.056 afirmações extraídas de 298 matérias
 * **71 fatos confirmados por 2+ veículos independentes**
-* 649 testes; a camada de verificação — onde erro é silencioso — é a mais
+* 624 testes; a camada de verificação — onde erro é silencioso — é a mais
   coberta
 * Gabarito de regressão dos prompts: 25 casos do separador (× 2 rodadas —
   ficam fora do repositório, porque reproduzem texto de post) e

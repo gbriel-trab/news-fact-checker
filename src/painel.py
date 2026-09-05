@@ -143,10 +143,24 @@ def digest_json(horas: int, topicos: list[str]) -> dict:
 def rodar_radar(dias: int) -> dict:
     from . import radar
     rodada = radar.busca(config.HANDLES_RADAR, dias)
+
+    def item(i: int, c) -> dict:
+        ref = c.referenciado
+        return {"numero": i, "autor": c.post.autor,
+                "quando": radar.quando(c.post.criado_em),
+                "tipo": c.post.tipo, "url": c.post.url,
+                "texto": c.post.texto,
+                "contexto": ({"de": ref.autor, "proprio": c.contexto_proprio,
+                              "texto": " ".join(ref.texto.split())}
+                             if ref is not None and ref.texto.strip()
+                             else None)}
+
     return {"handles": list(config.HANDLES_RADAR),
-            "posts": list(rodada.posts), "notas": list(rodada.notas),
-            "links": list(rodada.links),
-            "custo_usd": round(rodada.custo_usd, 4)}
+            "posts": [item(i, c) for i, c in enumerate(rodada.capturas, 1)],
+            "descartados": [{"autor": p.autor, "url": p.url, "motivo": m}
+                            for p, m in rodada.descartados],
+            "notas": list(rodada.notas), "lidos": rodada.lidos,
+            "custo_estimado_usd": round(rodada.custo_estimado_usd, 4)}
 
 
 # ---------------------------------------------------------------- servidor

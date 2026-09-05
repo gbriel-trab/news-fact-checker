@@ -11,10 +11,23 @@ import pytest
 
 from src.boletim import _hash_post, _ja_entregues, _marca_entregue
 from src.check import consulta_recente
+from src.radar import Captura
 from src.storage import conecta, salva_consulta
+from src.x_api import Post
 
 
-POST_DE_TESTE = "POST 1 (@x, 01 Sep 2026):\nqualquer coisa."
+def _captura(texto="qualquer coisa.", ident="", autor="x",
+             referenciado=None, tipo="post"):
+    """Um `radar.Captura` sintético, sem rede: o que o boletim consome."""
+    return Captura(
+        post=Post(id=ident, autor=autor, criado_em="2026-09-01T12:00:00Z",
+                  texto=texto, tipo=tipo,
+                  url=f"https://x.com/{autor}/status/{ident}" if ident
+                  else ""),
+        referenciado=referenciado)
+
+
+CAPTURA_DE_TESTE = _captura()
 
 
 def _banco(tmp_path):
@@ -25,31 +38,17 @@ class TestEstadoDoBoletim:
     def test_hash_estavel_a_espacos_e_caixa(self):
         assert _hash_post("Bitcoin  a 80 mil") == _hash_post("bitcoin a 80 MIL")
 
-    def test_hash_ignora_o_numero_do_cabecalho(self):
-        # O N muda a cada rodada: com o cabeçalho no hash, o mesmo post
-        # voltava como "inédito" na rodada seguinte.
-        a = _hash_post("POST 1 (@x, 30 Aug 2026):\ntexto do post")
-        b = _hash_post("POST 7 (@x, 31 Aug 2026):\ntexto do post")
-        assert a == b == _hash_post("texto do post")
+    def test_hash_e_so_do_texto_do_post(self):
+        # Número da rodada, data, URL e contexto ficam fora: só o texto do
+        # autor identifica o post entre rodadas.
+        assert _hash_post("texto do post") == _hash_post(" texto  do\npost ")
 
-    def test_hash_ignora_url_e_contexto_de_resposta(self):
-        com = _hash_post("POST 1 (@x, data):\n"
-                         "URL: https://x.com/x/status/123\n"
-                         "EM RESPOSTA A (@y): pergunta\n"
-                         "texto do post")
-        sem = _hash_post("texto do post")
-        assert com == sem
-
-    def test_chave_de_url_so_quando_o_status_esta_nos_links_da_rodada(self):
+    def test_chave_de_url_vem_do_id_do_servidor(self):
         from src.boletim import _chaves_do_post
-        post = ("POST 1 (@x, data):\nURL: https://x.com/x/status/123\n"
-                "texto")
-        # x.com/i/status/N e x.com/handle/status/N são o mesmo status.
-        chaves = _chaves_do_post(post, ("https://x.com/i/status/123",))
-        assert "url:123" in chaves and _hash_post(post) in chaves
-        # URL fora dos links da rodada não vira identidade.
-        chaves = _chaves_do_post(post, ("https://x.com/i/status/999",))
-        assert chaves == {_hash_post(post)}
+        com_id = _captura("texto", ident="123")
+        assert _chaves_do_post(com_id) == {"url:123", _hash_post("texto")}
+        # Sem id não há identidade forte; o hash cobre.
+        assert _chaves_do_post(_captura("texto")) == {_hash_post("texto")}
 
     def test_post_marcado_nao_volta(self, tmp_path):
         con = _banco(tmp_path)
@@ -81,58 +80,53 @@ class TestRendicaoTelegram:
 
     def test_sem_evidencia_vira_linha_com_semaforo(self):
         from src.boletim import _formata_telegram
-        html = _formata_telegram("@x", "01/09", [(1, "post", {
+        html = _formata_telegram("@x", "01/09", [(1, CAPTURA_DE_TESTE, {
             "nao_verificaveis": [("opiniao", "opinou algo")],
             "checks": [{"afirmacao": "o IPCA foi 5,2%",
                         "veredito": "sem_evidencia", "justificativa": "",
                         "veiculos": 0, "custo": 0.02, "evidencias": []}],
             "sem_premissas": False,
-        }, None)], [], [], 0.10, 0.03)
+        })], [], 0.10, 0.03)
         assert "<b>[SEM EVIDÊNCIA]</b>" in html
         assert "<code>[OPINIÃO]</code>" in html
         assert "<b>[1]</b>" in html
 
     def test_confirmado_traz_fonte_clicavel(self):
         from src.boletim import _formata_telegram
-        html = _formata_telegram("@x", "01/09", [(1, "post", {
+        html = _formata_telegram("@x", "01/09", [(1, CAPTURA_DE_TESTE, {
             "nao_verificaveis": [],
             "checks": [{"afirmacao": "a Caixa lucrou",
                         "veredito": "confirmado", "justificativa": "bate",
                         "veiculos": 2, "custo": 0.02,
                         "evidencias": [("G1", "http://g1/x")]}],
             "sem_premissas": False,
-        }, None)], [], ["https://x.com/i/status/12345"], 0.10, 0.03)
+        })], [], 0.10, 0.03)
         assert "<b>[CONFIRMADO]</b>" in html
         assert "<code>[EVIDÊNCIA]</code>" in html
         assert '<a href="http://g1/x">G1</a>' in html
-        # Sem par com o post, o link vai para o rodapé de sobras — com o
-        # fim do ID como texto, nunca um número que prometa ordem.
-        assert '<a href="https://x.com/i/status/12345">…12345</a>' in html
-        assert "sem par" in html
 
     def test_nota_de_demanda_aparece(self):
         from src.boletim import _formata_telegram
-        html = _formata_telegram("@x", "01/09", [(1, "post", {
+        html = _formata_telegram("@x", "01/09", [(1, CAPTURA_DE_TESTE, {
             "nao_verificaveis": [],
             "checks": [{"afirmacao": "a", "veredito": "confirmado",
                         "justificativa": "ok", "veiculos": 2, "custo": 0.02,
                         "evidencias": [("G1", "http://g1/x")],
                         "demanda": "2 matéria(s) extraída(s) na hora"}],
             "sem_premissas": False,
-        }, None)], [], [], 0.10, 0.03)
+        })], [], 0.10, 0.03)
         assert "<code>[DEMANDA]</code>" in html
 
     def test_sem_emoji_na_rendicao(self):
         # Pedido de 01/09/2026: etiquetas textuais no lugar de emoji.
         from src.boletim import _formata_telegram
-        html = _formata_telegram("@x", "01/09", [(1, "post", {
+        html = _formata_telegram("@x", "01/09", [(1, CAPTURA_DE_TESTE, {
             "nao_verificaveis": [("relato", "r"), ("previsao", "p")],
             "checks": [{"afirmacao": "a", "veredito": "sem_evidencia",
                         "justificativa": "", "veiculos": 0, "custo": 0,
                         "evidencias": []}],
             "sem_premissas": False,
-        }, None)], ["nota da busca"], ["https://x.com/i/status/9"],
-            0.10, 0.03)
+        })], ["nota da busca"], 0.10, 0.03)
         for emoji in "📡💬🔮👤⚪✅❌🔗⚠️↳":
             assert emoji not in html
         assert "<code>[PREVISÃO · RELATO]</code>" in html
@@ -146,15 +140,14 @@ class TestRendicaoTelegram:
         from src.boletim import _conta_tipos, _formata_telegram
         # O caso que motivou o pedido é o status 1000000000000000001; o
         # corpo aqui é sintético — só precisa ser de UMA frase.
-        post = ("POST 1 (@x, 01 Sep 2026):\n"
-                "Frase única de corpo sintético para este teste.")
+        post = _captura("Frase única de corpo sintético para este teste.")
         html = _formata_telegram("@x", "02/09", [(1, post, {
             "nao_verificaveis": [
                 ("opiniao", "todos os rumos mudam"),
                 ("relato", "convivi com ele"),
                 ("opiniao", "André se reune com Trump")],
             "checks": [], "sem_premissas": False,
-        }, None)], [], [], 0.10, 0.03)
+        })], [], 0.10, 0.03)
         # "OPINIÃO 2" lia-se como "opinião número 2" e sugeria uma
         # opinião 1 em outro lugar; o × diz que é contagem DESTE post.
         assert "<code>[OPINIÃO ×2 · RELATO]</code> nada a conferir" in html
@@ -166,23 +159,18 @@ class TestRendicaoTelegram:
         assert _conta_tipos([("relato", "r"), ("opiniao", "a"),
                              ("opiniao", "b")]) == "OPINIÃO ×2 · RELATO"
 
-    def test_post_com_url_validada_ganha_ancora_e_contexto(self):
+    def test_post_ganha_ancora_e_contexto_dos_campos(self):
         from src.boletim import _formata_telegram
-        post = ("POST 3 (@x, 01 Sep 2026):\n"
-                "URL: https://x.com/x/status/123\n"
-                "EM RESPOSTA A (@y): qual a resposta?\n"
-                "Corpo sintetico do post")
+        pai = Post(id="100", autor="x", criado_em="", texto="qual a resposta?",
+                   tipo="post")
+        post = _captura("Corpo sintetico do post", ident="123",
+                        referenciado=pai, tipo="thread")
         vazio = {"nao_verificaveis": [], "checks": [], "sem_premissas": True}
-        html = _formata_telegram(
-            "@x", "01/09", [(1, post, vazio, "https://x.com/x/status/123")],
-            [], ["https://x.com/i/status/123"], 0.10, 0.03)
+        html = _formata_telegram("@x", "01/09", [(1, post, vazio)],
+                                 [], 0.10, 0.03)
         assert '<a href="https://x.com/x/status/123">ver no X</a>' in html
-        assert ("<code>[CONTEXTO]</code> "
-                "<i>EM RESPOSTA A (@y): qual a resposta?</i>") in html
-        # A linha URL: não aparece no corpo, e o link pareado não repete
-        # no rodapé de sobras.
+        assert "<code>[CONTEXTO]</code> <i>@x: qual a resposta?</i>" in html
         assert "URL:" not in html
-        assert "também lidos" not in html
         assert "<i>Corpo sintetico do post</i>" in html
 
     def test_corte_html_respeita_linhas(self):
@@ -269,7 +257,7 @@ class TestSoFatoCustaDinheiro:
 
         con = conecta(tmp_path / "t.db")
         texto, custo, dados = boletim._confere_post(
-            "POST 1 (@x, 01 Sep 2026):\ncorpo do post neste bloco", con,
+            _captura("corpo do post neste bloco"), con,
             {"acervo": [], "orcamento": 1.0})
         con.close()
         assert chamadas == [], "check chamado para premissa que não é fato"
@@ -317,7 +305,7 @@ class TestSoFatoCustaDinheiro:
 
         con = conecta(tmp_path / "t.db")
         _, custo, dados = boletim._confere_post(
-            POST_DE_TESTE, con,
+            CAPTURA_DE_TESTE, con,
             {"acervo": [], "orcamento": 1.0, "buscar_contexto": buscar})
         emitidas = con.execute(
             "SELECT COUNT(*) FROM consultas").fetchone()[0]
@@ -355,7 +343,7 @@ class TestSoFatoCustaDinheiro:
                             lambda *a, **k: (analise, _uso_zero()))
         con = conecta(tmp_path / "t.db")
         boletim._confere_post(
-            POST_DE_TESTE, con,
+            CAPTURA_DE_TESTE, con,
             {"acervo": [], "orcamento": 1.0,
              "buscar_contexto": lambda c, t, q: buscas.append(t) or []})
         con.close()
@@ -378,7 +366,7 @@ class TestSoFatoCustaDinheiro:
 
         con = conecta(tmp_path / "t.db")
         boletim._confere_post(
-            POST_DE_TESTE, con,
+            CAPTURA_DE_TESTE, con,
             {"acervo": [], "orcamento": 1.0,
              "buscar_contexto": lambda c, t, q: buscas.append(t) or []})
         con.close()
