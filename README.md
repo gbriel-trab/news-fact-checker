@@ -119,7 +119,7 @@ Decisões que fazem diferença, todas documentadas com medição no
 * Acervo: 11.022 matérias de 20 veículos, coleta a cada 15 min
 * 3.056 afirmações extraídas de 298 matérias
 * **71 fatos confirmados por 2+ veículos independentes**
-* 624 testes; a camada de verificação — onde erro é silencioso — é a mais
+* 625 testes; a camada de verificação — onde erro é silencioso — é a mais
   coberta
 * Gabarito de regressão dos prompts: 25 casos do separador (× 2 rodadas —
   ficam fora do repositório, porque reproduzem texto de post) e

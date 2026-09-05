@@ -97,6 +97,19 @@ class TestComparadorDePremissas:
         falhas = confere_premissas(caso, [P("opiniao", "convivi com ele")])
         assert falhas and "faltou [relato]" in falhas[0]
 
+    def test_tipo_pode_ser_lista_e_qualquer_um_serve(self):
+        """O C13 (04/09/2026): "nada mudou" saiu nao_verificavel 2/2 com o
+        esperado exigindo opinião, e a taxonomia ali não decide — o que o
+        caso cobra é zero fatos. Uma lista aceita os dois; fora dela,
+        continua falhando, com os dois nomes na mensagem."""
+        caso = {"esperado": [{"tipo": ["opiniao", "nao_verificavel"],
+                              "contem": "nada mudou"}]}
+        assert confere_premissas(caso, [P("opiniao", "nada mudou")]) == []
+        assert confere_premissas(
+            caso, [P("nao_verificavel", "nada mudou")]) == []
+        falhas = confere_premissas(caso, [P("relato", "nada mudou")])
+        assert falhas and "faltou [opiniao/nao_verificavel]" in falhas[0]
+
     def test_em_fato_o_esperado_e_conferido_na_reescrita(self):
         """O trecho é literal do post e conteria o pedaço por construção;
         o que vai ao check é a reescrita — é ela que não pode perder o
@@ -268,12 +281,18 @@ class TestArquivosDeCasos:
             assert fatos is None or (isinstance(fatos, int)
                                      and not isinstance(fatos, bool)), c["id"]
             for item in c["esperado"]:
-                assert item["tipo"] in ("fato", "previsao", "opiniao",
-                                        "relato", "nao_verificavel"), c["id"]
+                tipos = (item["tipo"] if isinstance(item["tipo"], list)
+                         else [item["tipo"]])
+                assert tipos and all(
+                    t in ("fato", "previsao", "opiniao", "relato",
+                          "nao_verificavel") for t in tipos), c["id"]
                 assert item["contem"].strip(), c["id"]
             assert all(p.strip() for p in c.get("proibido_em_fato", [])), c["id"]
             if fatos == 0:
-                assert not any(i["tipo"] == "fato" for i in c["esperado"]), c["id"]
+                # Lista com `fato` dentro também contaria como fato esperado.
+                assert not any("fato" in (i["tipo"] if isinstance(
+                    i["tipo"], list) else [i["tipo"]])
+                    for i in c["esperado"]), c["id"]
 
     def test_check_bem_formado(self):
         from src.vocabulario import Relacao

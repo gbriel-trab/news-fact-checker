@@ -370,7 +370,10 @@ def confere_premissas(caso: dict, premissas: list) -> list[str]:
     * `esperado`: cada item {tipo, contem} precisa de uma premissa daquele
       tipo cujo TEXTO EXIBIDO contenha o pedaço — em fato, a reescrita (é
       o que vai ao check; conferir o trecho aprovaria qualquer pedaço que
-      já esteja no post, mesmo que a reescrita o tenha perdido).
+      já esteja no post, mesmo que a reescrita o tenha perdido). `tipo`
+      pode ser uma LISTA: qualquer um dos tipos serve. Existe para o caso
+      em que a taxonomia não decide (C13: "nada mudou" é opinião ou
+      nao_verificavel, e o que o caso cobra é que não seja fato).
     * `proibido_em_fato`: nenhum fato pode conter estes pedaços — a
       guarda contra completar o que o texto não diz ("André" → "André
       Esteves", IPCA sem mês → "de agosto").
@@ -391,15 +394,18 @@ def confere_premissas(caso: dict, premissas: list) -> list[str]:
         # `quem` (opcional, só faz sentido em fato): o sujeito ancorado
         # que o separador v4 emite tem de conter o pedaço — é o campo,
         # não a impressão, que o gabarito passa a medir.
-        def _bate(p, item=item):
-            if p.tipo != item["tipo"] or not _contem(p.texto, item["contem"]):
+        tipos = (item["tipo"] if isinstance(item["tipo"], list)
+                 else [item["tipo"]])
+
+        def _bate(p, item=item, tipos=tipos):
+            if p.tipo not in tipos or not _contem(p.texto, item["contem"]):
                 return False
             if item.get("quem"):
                 referente = getattr(p, "quem", None)
                 return bool(referente) and _contem(referente.valor, item["quem"])
             return True
         if not any(_bate(p) for p in premissas):
-            falhas.append(f"faltou [{item['tipo']}] contendo "
+            falhas.append(f"faltou [{'/'.join(tipos)}] contendo "
                           f"\"{item['contem']}\""
                           + (f" com quem \"{item['quem']}\"" if item.get("quem")
                              else ""))

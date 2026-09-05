@@ -1341,6 +1341,23 @@ incidentes de 31/08 a 02/09. Ressalva de método: nenhum dos 48 esperados foi
 revisado pelo dono do projeto ainda; até lá a bateria cobra do modelo a
 leitura de quem a escreveu.
 
+**RODADA EM 04/09/2026**, depois de o texto do separador mudar de contrato
+(cabeçalho sem número de rodada, contexto sem handle nem link — ver "Rede
+social pela API oficial do X"): 27 casos × 2 vezes, US$ 0,53. Uma
+regressão, e ela era do gabarito, não do prompt: o C13 ("André foi lá e
+nada mudou") exigia `opiniao` para "nada mudou" e o modelo devolveu
+`nao_verificavel` nas duas vezes — a nota do próprio caso já dizia que os
+dois servem e que o que se cobra é zero fatos. O comparador passou a
+aceitar lista de tipos, o caso passou a aceitar os dois, e repetido deu
+2/2 (US$ 0,05). Os três casos reais que eram resposta a terceiro (C4, C5,
+C15) viraram contexto de post citado — resposta a outra conta não chega
+mais ao separador, e a regra 9 é a mesma para as duas formas. As
+assinaturas de revisão caíram com o texto; 20 casos em que só o cabeçalho
+mudou foram re-assinados na hora; C4, C5, C15, C25 e C26 (a linha de
+contexto mudou) aguardam o dono, e C14 e C19 seguem em disputa. O
+`--historico` deixa de casar as separações de produção gravadas antes desta
+data: o hash é do texto, e o texto mudou.
+
 ## Convenções do repositório
 
 * Nenhuma credencial no código. Tudo em `.env`, versionado apenas como
