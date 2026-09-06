@@ -39,11 +39,18 @@ from .x_api import Post
 from .x_auth import PrecisaAutorizar
 
 LIMITE_POR_HANDLE = 100
-"""Teto de posts lidos por handle numa rodada. É teto de GASTO, não de
-janela: a API do X cobra por recurso devolvido (US$ 0,005), então 100
-posts são US$ 0,50 por handle no pior caso — e o pior caso é uma janela
-larga num handle prolífico. Ver `x_api.custo_estimado_usd`: o número é
-teto, porque a cobrança é deduplicada dentro da janela de 24h UTC."""
+"""Teto de posts lidos da TIMELINE por handle numa rodada. É teto de
+GASTO, não de janela: a API do X cobra por recurso devolvido (US$ 0,005),
+então 100 posts são US$ 0,50 por handle na timeline — e o pior caso é uma
+janela larga num handle prolífico. Com a busca à parte dos referenciados
+(06/09/2026) o pior caso por handle é 3× isso, US$ 1,50: cada post citando
+um referenciado fora da janela, mais o objeto do autor que vem junto. Ver
+`x_api.custo_estimado_usd`: o número é teto, porque a cobrança é
+deduplicada dentro da janela de 24h UTC."""
+
+FATOR_PIOR_CASO = 3
+"""Timeline + referenciado buscado à parte + objeto do autor dele, por
+post: o multiplicador do teto de gasto no pior caso."""
 
 TIPOS_QUE_FICAM = frozenset({"post", "thread", "citacao"})
 """O que vira captura: post raiz, o autor continuando a si mesmo, e o
@@ -69,13 +76,14 @@ class FalhaNoRadar(Exception):
 @dataclass(frozen=True, slots=True)
 class Captura:
     """Um post que passou pelas barreiras, com o post que ele referencia
-    quando este foi lido na mesma rodada.
+    quando este foi lido — na mesma rodada, ou buscado à parte.
 
     `referenciado` é o pai da thread ou o post citado. Vem do índice da
-    rodada, não de expansão: expandir o referenciado é outra cobrança na
-    API (ver o cabeçalho de `x_api`), e no caso dominante do acervo o
-    referenciado é do próprio handle, dentro da mesma janela. Fora dela
-    fica None, e `busca` conta a falta nas notas."""
+    rodada: o que a timeline trouxe mais o que `x_api.posts_por_id` buscou
+    para as capturas que precisavam (06/09/2026) — não de expansão na
+    leitura, que pagaria o pai de cada resposta descartada. Referenciado
+    apagado, protegido ou inexistente fica None, e `busca` conta a falta
+    nas notas."""
 
     post: Post
     referenciado: Post | None = None
@@ -336,6 +344,23 @@ def como_texto(c: Captura, numero: int,
 
 # --- a rodada ----------------------------------------------------------------
 
+def _exige_humano(erro: PrecisaAutorizar) -> "FalhaNoRadar":
+    """A fronteira. `boletim.monta` captura `radar.FalhaNoRadar` e mais
+    nada, e é por ele que o aviso de falha chega ao Telegram — outra classe
+    subiria como traceback, fora do aviso. A mensagem carrega o comando
+    porque quem lê o aviso não está no terminal, e o único desfecho
+    possível é um humano no navegador. Vale para a timeline e para a busca
+    à parte: 401 é o mesmo token morto nos dois caminhos."""
+    return FalhaNoRadar(
+        f"a API do X exige autorização ({erro}). Rode à mão, no "
+        f"computador do dono: venv/Scripts/python.exe -m src.x_auth "
+        f"— nada aqui destrava sozinho.")
+
+
+_CADEIA_BUSCADA = ("thread pendurada em resposta a terceiro — o pai, buscado "
+                   "à parte, é resposta a outra conta (cadeia)")
+
+
 def _ordem_de_leitura(p: Post):
     """Chave de ordenação cronológica de um post: o instante de publicação
     (UTC), e sem instante legível vai para o fim."""
@@ -383,21 +408,17 @@ def busca(handles: tuple[str, ...], dias: int = 2, *,
     lidos: list[Post] = []
     notas: list[str] = []
     falhas: list[str] = []
+    # id da conta → handle, do que a rodada já leu: é o que resolve o autor
+    # de um referenciado quando o servidor não manda o username (grátis: o
+    # id vem do cache de `posts_de`).
+    autores: dict[str, str] = {}
     for handle in handles:
         try:
             achados = x_api.posts_de(handle, desde=desde, ate=ate,
                                      limite=LIMITE_POR_HANDLE)
+            autores[x_api.id_do_handle(handle)] = handle
         except PrecisaAutorizar as erro:
-            # A fronteira. `boletim.monta` captura `radar.FalhaNoRadar` e
-            # mais nada, e é por ele que o aviso de falha chega ao
-            # Telegram — outra classe subiria como traceback, fora do
-            # aviso. A mensagem carrega o comando porque quem lê o aviso
-            # não está no terminal, e o único desfecho possível é um humano
-            # no navegador.
-            raise FalhaNoRadar(
-                f"a API do X exige autorização ({erro}). Rode à mão, no "
-                f"computador do dono: venv/Scripts/python.exe -m src.x_auth "
-                f"— nada aqui destrava sozinho.") from erro
+            raise _exige_humano(erro) from erro
         except x_api.FalhaNaAPI as erro:
             falhas.append(f"@{handle}: {erro}")
             continue
@@ -426,19 +447,65 @@ def busca(handles: tuple[str, ...], dias: int = 2, *,
     # aí não há nada a mostrar — mas o citado de uma citação pode ser um
     # post descartado por outro motivo, e o texto dele ainda é contexto.
     indice = {p.id: p for p in lidos if p.id}
-    capturas = tuple(captura(p, indice) for p in ficam)
 
-    if (sem_referenciado := sum(
-            1 for c in capturas
-            if c.post.tipo in ("thread", "citacao") and c.post.pai_id
-            and c.referenciado is None)):
-        # Esta nota vai para o Telegram: descrever errado o que aconteceu
-        # é informação errada para quem decide se vai atrás do post que
-        # falta.
-        notas.append(
-            f"{sem_referenciado} post(s) com o post referenciado FORA da "
-            f"janela lida: vão sem a linha de contexto — expandir o "
-            f"referenciado é outra cobrança na API do X")
+    # O referenciado que NÃO veio na timeline — o post citado de outra
+    # conta, o pai de thread fora da janela — é buscado à parte, só para
+    # as capturas que precisam dele (06/09/2026): 16 das 19 citações do
+    # boletim refeito chegavam sem o texto citado. Resposta a terceiro já
+    # caiu nas barreiras e não puxa o pai: paga-se só pelo que vira
+    # contexto. Falha aqui não derruba a rodada — a captura sai sem a
+    # linha de contexto, e a nota diz por quê.
+    faltantes = sorted({p.pai_id for p in ficam
+                        if p.tipo in ("thread", "citacao") and p.pai_id
+                        and p.pai_id not in indice})
+    buscados: list[Post] = []
+    falha_busca = ""
+    if faltantes:
+        try:
+            buscados = x_api.posts_por_id(faltantes, autores=autores)
+        except PrecisaAutorizar as erro:
+            # 401 aqui é o mesmo token morto da timeline: aborta igual.
+            raise _exige_humano(erro) from erro
+        except x_api.FalhaNaAPI as erro:
+            # O que já tinha voltado foi pago e existe: entra do mesmo
+            # jeito (`erro.parciais`, ver `x_api.posts_por_id`).
+            buscados = list(getattr(erro, "parciais", None) or [])
+            falha_busca = str(erro)
+        indice.update({p.id: p for p in buscados if p.id})
+        # A falta é contada pelos IDS pedidos que não voltaram, não por
+        # subtração de posts devolvidos: post repetido na resposta não
+        # pode virar contagem negativa.
+        encontrados = {p.id for p in buscados if p.id}
+        nao_vieram = sum(1 for i in faltantes if i not in encontrados)
+        if falha_busca:
+            notas.append(
+                f"busca dos {len(faltantes)} post(s) referenciado(s) falhou"
+                + (f" depois de {len(buscados)} voltar(em)" if buscados else "")
+                + f" — os que faltam vão sem a linha de contexto: "
+                  f"{falha_busca}")
+        elif buscados:
+            notas.append(
+                f"{len(buscados)} post(s) referenciado(s) buscado(s) à "
+                f"parte (fora da janela lida), pago(s) como leitura"
+                + (f"; {nao_vieram} não encontrado(s): apagado, "
+                   f"protegido ou inexistente — vão sem a linha de "
+                   f"contexto" if nao_vieram else ""))
+        else:
+            notas.append(
+                f"{nao_vieram} post(s) com o post referenciado FORA da "
+                f"janela lida e não encontrado(s) na busca à parte "
+                f"(apagado, protegido ou inexistente): vão sem a linha "
+                f"de contexto")
+        # A cadeia vale também para o que a busca trouxe: thread cujo pai
+        # é resposta a terceiro não chega ao boletim — é a decisão do dono
+        # em `cadeia`, que antes só via o que a timeline tinha lido.
+        pais_resposta = {p.id for p in buscados
+                         if p.tipo == "resposta" and p.id}
+        for p in list(ficam):
+            if p.tipo == "thread" and p.pai_id in pais_resposta:
+                ficam.remove(p)
+                descartados.append((p, _CADEIA_BUSCADA))
+    capturas = tuple(captura(p, indice) for p in ficam)
     # Ramo DEFENSIVO: não há caso medido de `referenced_*` sem `id`, e a
     # doc do X não foi conferida quanto a isso. Contado à parte porque a
     # causa é outra (metadado incompleto, não janela curta), e descarte
@@ -451,13 +518,19 @@ def busca(handles: tuple[str, ...], dias: int = 2, *,
             f"metadado: vão sem contexto")
 
     # `lidos` conta para o CUSTO mesmo o que não virou captura: a API
-    # cobra por recurso devolvido, e retweet descartado já foi pago.
+    # cobra por recurso devolvido, e retweet descartado já foi pago. Os
+    # referenciados buscados à parte entram na mesma conta, e cada um traz
+    # o objeto do AUTOR junto (`includes.users`) — recurso devolvido, logo
+    # contado, para o estimado seguir sendo teto. Se o X cobra o usuário, e
+    # quanto, NÃO está confirmado: só a fatura diz.
+    pagos = len(lidos) + len(buscados)
+    recursos = pagos + len(buscados)
     return Rodada(
         capturas=capturas,
         descartados=tuple(descartados),
         notas=tuple(notas),
-        lidos=len(lidos),
-        custo_estimado_usd=x_api.custo_estimado_usd(len(lidos)),
+        lidos=pagos,
+        custo_estimado_usd=x_api.custo_estimado_usd(recursos),
         # A regra do dono é informar o custo ESTIMADO antes e o REAL depois.
         # Por esta via o real não existe: o X não devolve preço nenhum. O
         # que fica é uma multiplicação nossa, e ainda por cima um TETO
@@ -465,9 +538,11 @@ def busca(handles: tuple[str, ...], dias: int = 2, *,
         # console do radar; o rodapé do boletim rotula a metade da busca
         # como estimada por conta própria.
         detalhe_custo=(
-            f"custo ESTIMADO no cliente: {len(lidos)} post(s) devolvido(s) "
-            f"× US$ {x_api.PRECO_POR_POST_USD:.3f} — teto, não medição; o "
-            f"real só na fatura do X"),
+            f"custo ESTIMADO no cliente: {recursos} recurso(s) devolvido(s) "
+            f"({len(lidos)} post(s) da timeline + {len(buscados)} "
+            f"referenciado(s) buscado(s) à parte + {len(buscados)} objeto(s) "
+            f"de autor que vêm junto) × US$ {x_api.PRECO_POR_POST_USD:.3f} "
+            f"— teto, não medição; o real só na fatura do X"),
     )
 
 
@@ -551,9 +626,11 @@ def main() -> None:
               f"max_results até {LIMITE_POR_HANDLE} por handle")
         for handle in handles:
             print(f"  @{handle}")
-        teto = x_api.custo_estimado_usd(LIMITE_POR_HANDLE * len(handles))
+        teto = x_api.custo_estimado_usd(
+            LIMITE_POR_HANDLE * FATOR_PIOR_CASO * len(handles))
         print(f"\n  teto de gasto: US$ {teto:.4f} "
-              f"(estimativa do cliente, não medição)")
+              f"(timeline + referenciados buscados à parte + autores deles, "
+              f"no pior caso; estimativa do cliente, não medição)")
         print("\nNada foi enviado. Remova --dry-run para rodar.")
         return
 

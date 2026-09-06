@@ -19,6 +19,7 @@ from src import radar
 from src.premissas import CONTEXTO_ALHEIO, CONTEXTO_PROPRIO, texto_ancoravel
 from src.radar import Captura, _handles_de, quando
 from src.x_api import Post
+from src.x_auth import PrecisaAutorizar
 
 
 # ------------------------------------------------------------- fixtures
@@ -67,11 +68,19 @@ def _post(ident, texto, tipo="post", quando="2026-09-03T17:50:11Z",
                 url=f"https://x.com/{autor}/status/{ident}" if ident else "")
 
 
-def _liga(monkeypatch, por_handle):
-    """Mocka `x_api.posts_de`. Devolve a lista de pedidos feitos.
+def _liga(monkeypatch, por_handle, referenciados=None):
+    """Mocka `x_api.posts_de`, `id_do_handle` e `posts_por_id`. Devolve a
+    lista de pedidos feitos à timeline; os pedidos de referenciados ficam
+    em `pedidos_ids` (atributo da lista).
 
-    `por_handle` mapeia handle -> lista de Post OU uma exceção a levantar."""
-    pedidos = []
+    `por_handle` mapeia handle -> lista de Post OU uma exceção a levantar.
+    `referenciados` é o que `posts_por_id` devolve (lista de Post) OU uma
+    exceção; por omissão, nada volta — o referenciado "não veio"."""
+    class _Pedidos(list):
+        pedidos_ids: list = []
+
+    pedidos = _Pedidos()
+    pedidos.pedidos_ids = []
 
     def falso(handle, desde, ate="", limite=100):
         pedidos.append({"handle": handle, "desde": desde, "ate": ate,
@@ -81,7 +90,15 @@ def _liga(monkeypatch, por_handle):
             raise achado
         return list(achado)
 
+    def falso_por_id(ids, autores=None, dormir=None):
+        pedidos.pedidos_ids.append({"ids": list(ids), "autores": dict(autores or {})})
+        if isinstance(referenciados, Exception):
+            raise referenciados
+        return list(referenciados or [])
+
     monkeypatch.setattr(radar.x_api, "posts_de", falso)
+    monkeypatch.setattr(radar.x_api, "id_do_handle", lambda h: f"id-{h}")
+    monkeypatch.setattr(radar.x_api, "posts_por_id", falso_por_id)
     return pedidos
 
 
@@ -422,7 +439,9 @@ class TestBusca:
         assert len(r.capturas) == 5
         notas = [n for n in r.notas if "FORA da janela" in n]
         assert len(notas) == 1 and notas[0].startswith("3 post(s)"), r.notas
-        assert "cobrança" in notas[0]
+        # Buscados à parte e não encontrados (o mock devolve nada): a nota
+        # diz isso, e não mais "expandir é outra cobrança".
+        assert "não encontrado" in notas[0]
         assert sum(1 for c in r.capturas if c.referenciado) == 1
 
     def test_citacao_sem_id_do_citado_some_com_aviso(self, monkeypatch):
@@ -636,3 +655,125 @@ class TestOrdemDeLeitura:
         c = Post(id="c", autor="x", criado_em="ontem", texto="c", tipo="post")
         assert [p.id for p in sorted([a, b, c], key=radar._ordem_de_leitura)] == [
             "b", "a", "c"]
+
+
+# ------------------------------------------ referenciado buscado à parte
+
+
+class TestReferenciadoBuscadoAParte:
+    """O post citado de outra conta e o pai de thread fora da janela são
+    buscados por id, só para as capturas que precisam (06/09/2026). Pago
+    como leitura; falha vira nota, não rodada perdida."""
+
+    def test_citacao_de_terceiro_ganha_contexto_alheio(self, monkeypatch):
+        citado = _post("555", "tese do analista", autor="sigel")
+        pedidos = _liga(monkeypatch, {"perfil_teste": (
+            _post("333", "comentário", tipo="citacao", pai_id="555"),)},
+            referenciados=[citado])
+        r = radar.busca(H, 2)
+        [c] = r.capturas
+        assert c.referenciado == citado and not c.contexto_proprio
+        assert CONTEXTO_ALHEIO in radar.para_separacao(c)
+        assert pedidos.pedidos_ids == [
+            {"ids": ["555"], "autores": {"id-perfil_teste": "perfil_teste"}}]
+        assert r.lidos == 2
+        # 2 posts + o objeto do autor do referenciado, contado como recurso.
+        assert r.custo_estimado_usd == pytest.approx(0.015)
+        assert any("buscado(s) à parte" in n for n in r.notas)
+        assert "1 referenciado(s)" in r.detalhe_custo
+        assert "1 objeto(s) de autor" in r.detalhe_custo
+
+    def test_pai_proprio_fora_da_janela_vira_contexto_proprio(self, monkeypatch):
+        pai = _post("111", "A Selic esta em 15%")
+        _liga(monkeypatch, {"perfil_teste": (
+            _post("222", "E vai ficar assim", tipo="thread", pai_id="111"),)},
+            referenciados=[pai])
+        [c] = radar.busca(H, 2).capturas
+        assert c.contexto_proprio
+        assert CONTEXTO_PROPRIO in radar.para_separacao(c)
+
+    def test_referenciado_ja_na_janela_nao_e_buscado(self, monkeypatch):
+        pedidos = _liga(monkeypatch, {"perfil_teste": (
+            _post("111", "raiz"),
+            _post("222", "filho", tipo="thread", pai_id="111"))})
+        r = radar.busca(H, 2)
+        assert pedidos.pedidos_ids == []
+        assert r.lidos == 2
+
+    def test_resposta_descartada_nao_puxa_o_pai(self, monkeypatch):
+        pedidos = _liga(monkeypatch, {"perfil_teste": (
+            _post("333", "discordo", tipo="resposta", pai_id="90"),)})
+        radar.busca(H, 2)
+        assert pedidos.pedidos_ids == []
+
+    def test_falha_na_busca_nao_derruba_a_rodada(self, monkeypatch):
+        _liga(monkeypatch, {"perfil_teste": (
+            _post("333", "comentário", tipo="citacao", pai_id="555"),)},
+            referenciados=radar.x_api.FalhaNaAPI("fora"))
+        r = radar.busca(H, 2)
+        assert len(r.capturas) == 1 and r.capturas[0].referenciado is None
+        assert any("busca dos 1 post(s) referenciado(s) falhou" in n
+                   for n in r.notas)
+        assert r.lidos == 1
+
+    def test_parte_encontrada_parte_nao(self, monkeypatch):
+        citado = _post("555", "tese", autor="sigel")
+        _liga(monkeypatch, {"perfil_teste": (
+            _post("333", "c1", tipo="citacao", pai_id="555"),
+            _post("444", "c2", tipo="citacao", pai_id="666"))},
+            referenciados=[citado])
+        r = radar.busca(H, 2)
+        nota = next(n for n in r.notas if "buscado(s) à parte" in n)
+        assert "1 não encontrado(s)" in nota
+        assert sum(1 for c in r.capturas if c.referenciado) == 1
+        # Paga-se pelo que VOLTOU (1), não pelo que se pediu (2).
+        assert r.lidos == 3
+        assert r.custo_estimado_usd == pytest.approx(0.020)
+
+    def test_post_repetido_na_resposta_nao_vira_contagem_negativa(
+            self, monkeypatch):
+        citado = _post("555", "tese", autor="sigel")
+        _liga(monkeypatch, {"perfil_teste": (
+            _post("333", "c1", tipo="citacao", pai_id="555"),)},
+            referenciados=[citado, citado])
+        r = radar.busca(H, 2)
+        nota = next(n for n in r.notas if "buscado(s) à parte" in n)
+        assert "não encontrado" not in nota and "-1" not in nota
+
+    def test_falha_parcial_usa_o_que_voltou_e_diz_o_que_faltou(
+            self, monkeypatch):
+        citado = _post("555", "tese", autor="sigel")
+        erro = radar.x_api.FalhaNaAPI("503 duas vezes")
+        erro.parciais = [citado]
+        _liga(monkeypatch, {"perfil_teste": (
+            _post("333", "c1", tipo="citacao", pai_id="555"),
+            _post("444", "c2", tipo="citacao", pai_id="666"))},
+            referenciados=erro)
+        r = radar.busca(H, 2)
+        assert [c.referenciado for c in r.capturas] == [citado, None]
+        nota = next(n for n in r.notas if "falhou" in n)
+        assert "depois de 1 voltar(em)" in nota
+        assert r.lidos == 3
+
+    def test_precisa_autorizar_na_busca_aborta_como_na_timeline(
+            self, monkeypatch):
+        _liga(monkeypatch, {"perfil_teste": (
+            _post("333", "c1", tipo="citacao", pai_id="555"),)},
+            referenciados=PrecisaAutorizar("401"))
+        with pytest.raises(radar.FalhaNoRadar) as erro:
+            radar.busca(H, 2)
+        assert "src.x_auth" in str(erro.value)
+
+    def test_thread_cujo_pai_buscado_e_resposta_a_terceiro_cai(
+            self, monkeypatch):
+        """A cadeia vale para o que a busca trouxe: o dono decidiu que a
+        thread dentro de uma resposta a terceiro não chega ao boletim."""
+        pai = _post("90", "discordo de você", tipo="resposta", pai_id="1")
+        _liga(monkeypatch, {"perfil_teste": (
+            _post("91", "e mais isso", tipo="thread", pai_id="90"),)},
+            referenciados=[pai])
+        r = radar.busca(H, 2)
+        assert r.capturas == ()
+        assert [(p.id, "cadeia" in m) for p, m in r.descartados] == [
+            ("91", True)]
+        assert r.lidos == 2
