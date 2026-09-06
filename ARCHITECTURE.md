@@ -172,6 +172,20 @@ citação de post de OUTRA conta nunca traz o texto citado, porque só a
 timeline do handle é lida e o referenciado não é expandido — a nota da
 rodada conta isso, e o separador vê só o comentário do autor.
 
+No mesmo dia o **boletim completo** rodou sobre essas 6 capturas com
+`--sem-envio`: separação dos 6 posts, zero premissas factuais (o conteúdo
+era comentário de mercado — opinião, relato, previsão), logo nenhum check
+nem demanda; US$ 0,21 na rodada (0,055 estimado no X + 0,15 medido na
+Anthropic). O que a rodada real mostrou e ainda está em aberto: quando o
+pai de uma thread está na mesma janela, ele é capturado como post próprio
+E entra como linha de contexto do filho — e a regra 9 manda tratar o
+contexto do próprio autor como texto dele, então o separador extrai as
+mesmas premissas duas vezes (no pai, e de novo no filho, pagando o texto
+inteiro do pai na segunda). Por construção, toda linha de contexto vem de
+um post que a própria rodada capturou. Decisão pendente do dono: contexto
+só para resolver referência, sem extrair premissa dele (muda a regra 9 e
+os casos C25/C26 do gabarito), ou manter a duplicata.
+
 #### Não existe "o que está em alta"
 
 O radar lê a timeline dos handles escolhidos, numa janela de data, e só
