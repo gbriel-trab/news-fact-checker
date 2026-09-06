@@ -1005,6 +1005,17 @@ coletar → extrair sem filtro → rotular à mão → treinar → inserir o fil
 É otimização introduzida depois de o pipeline funcionar, não componente do dia
 um. O gargalo dele não é volume de dados — é hora de rotulagem.
 
+**ADIADO em 05/09/2026, por decisão do dono.** Dois motivos. Para o post do
+radar, o classificador que importa já existe e não é clássico: o separador
+(`premissas.py`, Opus com saída estruturada) mais o roteador em código — e o
+que separa fato de opinião ali é referente, âncora e reescrita, que rótulo
+de sentença não faz. Para a matéria de imprensa, com o corte no lide e a
+seleção aos pares já cortando a maior parte do custo, o que sobra para um
+filtro de sentença economizar não paga as horas de rotulagem. Fica a porta:
+a tabela `separacoes` acumula, a cada boletim, o par post → separação, e em
+alguns meses é um dataset rotulado sem trabalho extra — se o volume crescer
+a ponto de o separador pesar, um modelo pequeno destilado dali é o caminho.
+
 ## LLM não é agente
 
 Distinção que governa a decisão sobre orquestração — e que, em 05/09/2026,
@@ -1070,7 +1081,7 @@ Se a cascata fixa vencer, ela fica — e a decisão vai documentada.
 | Vector DB | **ChromaDB** | Local, sem servidor, persiste em disco |
 | Embeddings | **sentence-transformers**, multilíngue | Notícia em português; local, custo zero |
 | Grafo | **NetworkX** | Em processo, sem infraestrutura |
-| Classificador | **scikit-learn** | Filtro barato antes da chamada cara |
+| Classificador | **adiado** (05/09/2026) | O separador (Opus + roteador) já classifica o post; filtro de sentença para imprensa não paga a rotulagem hoje |
 
 Embeddings rodam localmente de propósito: o orçamento de chamada paga fica para
 extração e verificação, onde o LLM é insubstituível.
@@ -1091,7 +1102,7 @@ consulta. Converte falha silenciosa em erro explícito.
 ### Custo
 
 O único item pago do projeto é a API de LLM. RSS, SQLite, embeddings locais,
-NetworkX, scikit-learn e GitHub custam zero.
+NetworkX e GitHub custam zero.
 
 Três reduções, todas previstas na arquitetura: processamento em lote (metade do
 preço, e extração não tem pressa), cache do prefixo do prompt (o trecho de

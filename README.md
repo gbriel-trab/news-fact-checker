@@ -166,9 +166,11 @@ gastar; o boletim tem `--sem-envio`, que monta e grava sem entregar.
 Medição de acurácia contra checadores profissionais (Lupa, Aos Fatos) —
 o número que separa isto de um agregador; contradição não-numérica
 ("aprovado" vs "rejeitado"), que espera relações com polaridade no
-vocabulário; classificador factual×opinião como filtro de custo; e a
-avaliação medida de orquestração com ciclo adaptativo contra a cascata
-fixa — que só entra se vencer em precisão, não só em recall.
+vocabulário; e a avaliação medida de orquestração com ciclo adaptativo
+contra a cascata fixa — que só entra se vencer em precisão, não só em
+recall. O classificador clássico factual×opinião ficou adiado: para o
+post, o separador já faz esse papel; para a imprensa, o corte no lide e a
+seleção aos pares já cortam a maior parte do custo.
 
 ---
 
