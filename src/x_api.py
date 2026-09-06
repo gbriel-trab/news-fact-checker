@@ -18,11 +18,14 @@ autenticado E dono do app. A cobrança é deduplicada dentro da janela de 24h
 UTC, o que torna toda estimativa deste módulo um TETO, nunca uma medição
 (ver `custo_estimado_usd`).
 
-Este módulo NÃO expande `referenced_*.id`. A doc avisa que a expansão traz o
-post referenciado como recurso adicional — outra cobrança —, e o que ela
-acrescentaria (texto e autor do referenciado) o radar resolve pelo índice da
-própria rodada quando o referenciado foi lido. Na resposta, que é o caso que
-importa para o filtro, `in_reply_to_user_id` já resolve de graça.
+Este módulo NÃO expande `referenced_*.id` na leitura da timeline. A
+expansão traria o referenciado de TODO post devolvido, inclusive das
+respostas a terceiros que o radar descarta antes de custar — e cada recurso
+devolvido é cobrado. O que existe (06/09/2026) é `posts_por_id`: o radar
+pede, numa segunda requisição, SÓ os referenciados que faltam às capturas
+(o post citado de outra conta, o pai de thread fora da janela), e paga só
+por esses. Medido no boletim refeito de 25/08 a 06/09: 16 das 19 citações
+chegavam sem o texto citado, e o separador trabalhava só com o comentário.
 
 SUPERFÍCIE DE EXCEÇÃO — o contrato com quem chamar. Da fachada pública
 (`posts_de`, `id_do_handle`) sai `FalhaNaAPI` ou `PrecisaAutorizar`, DUAS e
@@ -198,9 +201,10 @@ def classifica(post: dict) -> tuple[str, str]:
     contra `author_id`. Handle escrito muda, abrevia e chega truncado; o id
     de uma conta não muda.
 
-    O autor do referenciado NÃO sai daqui: sem expansão ele só é conhecido
-    quando o referenciado foi lido na mesma rodada, e é o radar que o resolve
-    pelo índice da rodada. O id do pai está em `pai_id` para isso.
+    O autor do referenciado NÃO sai daqui: ele só é conhecido quando o
+    referenciado foi lido — na mesma rodada, ou buscado à parte por
+    `posts_por_id` — e é o radar que o resolve pelo índice da rodada. O id
+    do pai está em `pai_id` para isso.
 
     Falha FECHADO: post sem `referenced` e sem `conversation_id` igual ao
     próprio id vira `resposta`. Sem metadado não dá para provar que é raiz, e
@@ -391,8 +395,11 @@ def _campos(nomes: _Nomes) -> dict:
         "in_reply_to_user_id", nomes.referencias, nomes.nota))}
 
 
-def _pagina(id_usuario: str, params: dict, dormir=time.sleep) -> dict:
-    """Uma página da timeline, resolvendo o conflito de nomenclatura."""
+def _com_dialeto(caminho: str, params: dict, dormir=time.sleep) -> dict:
+    """Um GET com os campos de post, resolvendo o conflito de nomenclatura.
+
+    Serve à timeline e à busca por id: os dois pedem os mesmos campos, e a
+    sonda é uma só — o vencedor descoberto num caminho vale para o outro."""
     global _vencedor
     # O vencedor guardado só reordena a fila, não a encurta: se a X mudar de
     # ideia sobre os nomes (o empate documental é o aviso de que ela ainda não
@@ -403,8 +410,7 @@ def _pagina(id_usuario: str, params: dict, dormir=time.sleep) -> dict:
     ultimo = ""
     for nomes in ordem:
         try:
-            dados = _pede(f"/users/{id_usuario}/tweets",
-                          {**params, **_campos(nomes)}, dormir)
+            dados = _pede(caminho, {**params, **_campos(nomes)}, dormir)
         except _Erro400 as erro:
             ultimo = str(erro)
             continue
@@ -416,8 +422,14 @@ def _pagina(id_usuario: str, params: dict, dormir=time.sleep) -> dict:
     # que se tentou.
     raise FalhaNaAPI(
         f"o X recusou os dois conjuntos de nomes ({NOVO.parametro} e "
-        f"{ANTIGO.parametro}). O 400 pode não ser de nomenclatura — "
-        f"start_time e max_results caem aqui igual. Último: {ultimo}")
+        f"{ANTIGO.parametro}) em {caminho}. O 400 pode não ser de "
+        f"nomenclatura — start_time, max_results e ids caem aqui igual. "
+        f"Último: {ultimo}")
+
+
+def _pagina(id_usuario: str, params: dict, dormir=time.sleep) -> dict:
+    """Uma página da timeline, resolvendo o conflito de nomenclatura."""
+    return _com_dialeto(f"/users/{id_usuario}/tweets", params, dormir)
 
 
 # --- Interface pública ----------------------------------------------------
@@ -530,11 +542,94 @@ def posts_de(handle: str, desde: str, ate: str = "",
     return colhidos[:limite]
 
 
+LOTE_IDS = 100
+"""Quantos ids por requisição em `posts_por_id`: é o teto da doc para o
+endpoint de lookup em lote."""
+
+
+def posts_por_id(ids, autores: dict | None = None,
+                 dormir=time.sleep) -> list[Post]:
+    """Os posts pedidos por id, com o tipo derivado e o autor resolvido.
+
+    É a busca À PARTE do referenciado (ver o cabeçalho do módulo): o radar
+    chama com os ids que faltam às capturas, e paga só por eles. Caminho
+    `/2/tweets` com `ids`, os mesmos campos da timeline (mesma sonda de
+    nomenclatura), mais `expansions=author_id` e `user.fields=username`
+    para o handle vir em `includes.users` — sem ele não há como dizer se o
+    citado é o próprio autor ou terceiro, que é a atribuição que o
+    separador precisa (`Captura.contexto_proprio`).
+
+    `autores` (id da conta → handle) é o que o chamador já sabe: o radar
+    conhece o id do handle que leu, sem custo. Quando nem `includes` nem
+    `autores` resolvem o autor, o handle sai como "id:<número>": honesto e
+    visível, em vez de um nome inventado — e sem URL, que seria link
+    fabricado. Id inexistente, apagado ou de conta protegida vem em
+    `errors` e simplesmente não volta — quem chama conta a diferença pelos
+    IDS que pediu, não pelo número de posts que voltou.
+
+    Ids chegam normalizados (espaço fora, duplicata fora, ordem mantida):
+    id com espaço faz o servidor responder 400, e a sonda leria isso como
+    conflito de nomenclatura. Cada lote traz também os objetos de USUÁRIO
+    em `includes.users`: recurso devolvido, logo cobrado pela regra que
+    este módulo assume — o radar os conta no teto.
+
+    LOTE QUE FALHA DEPOIS DE OUTRO TER VOLTADO: os posts já devolvidos
+    foram pagos e existem. A exceção sobe (é a superfície de duas classes),
+    mas leva o que veio em `erro.parciais`, para o chamador usar e contar
+    — descartá-los seria pagar duas vezes pelo mesmo post.
+
+    OBSERVADO em 06/09/2026, na primeira leitura real: o servidor aceitou
+    `post.fields` também neste caminho (sem 400) e devolveu `includes.users`
+    com `username` — três referenciados pedidos, três voltaram, dois de
+    outras contas e um do próprio autor.
+    """
+    pedidos: list[str] = []
+    for i in ids:
+        ident = str(i or "").strip()
+        if ident and ident not in pedidos:
+            pedidos.append(ident)
+    if not pedidos:
+        return []
+    conhecidos = {str(k): str(v) for k, v in (autores or {}).items()}
+    achados: list[Post] = []
+    for inicio in range(0, len(pedidos), LOTE_IDS):
+        lote = pedidos[inicio:inicio + LOTE_IDS]
+        try:
+            dados = _com_dialeto("/tweets", {
+                "ids": ",".join(lote),
+                "expansions": "author_id",
+                "user.fields": "username",
+            }, dormir)
+        except (FalhaNaAPI, PrecisaAutorizar) as erro:
+            erro.parciais = list(achados)
+            raise
+        # `_pede` só garante que o corpo é um objeto; as sub-formas são
+        # conferidas aqui, uma a uma — `includes` que vem como lista não
+        # pode virar AttributeError fora da superfície de exceção.
+        includes = dados.get("includes")
+        crus_usuarios = includes.get("users") if isinstance(includes, dict) else None
+        usuarios: dict[str, str] = {}
+        for u in (crus_usuarios if isinstance(crus_usuarios, list) else []):
+            if isinstance(u, dict) and u.get("id") and u.get("username"):
+                usuarios[str(u["id"])] = str(u["username"])
+        crus = dados.get("data")
+        for cru in (crus if isinstance(crus, list) else []):
+            if not isinstance(cru, dict):
+                continue
+            autor_id = str(cru.get("author_id") or "")
+            nome = (usuarios.get(autor_id) or conhecidos.get(autor_id)
+                    or (f"id:{autor_id}" if autor_id else ""))
+            achados.append(_monta(cru, nome))
+    return achados
+
+
 def _monta(cru: dict, nome: str) -> Post:
     tipo, pai_id = classifica(cru)
     ident = str(cru.get("id") or "")
     # O objeto Post da API não traz a URL do próprio post; ela se monta. Sem
-    # id não há link, e link inventado é pior que link ausente.
+    # id não há link, e link inventado é pior que link ausente — inclusive
+    # quando o autor não foi resolvido ("id:<número>" não é handle).
+    com_handle = bool(nome) and not nome.startswith("id:")
     return Post(
         id=ident,
         autor=nome,
@@ -542,5 +637,5 @@ def _monta(cru: dict, nome: str) -> Post:
         texto=texto_integral(cru),
         tipo=tipo,
         pai_id=pai_id,
-        url=f"https://x.com/{nome}/status/{ident}" if ident else "",
+        url=f"https://x.com/{nome}/status/{ident}" if ident and com_handle else "",
     )

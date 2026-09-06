@@ -850,3 +850,101 @@ class TestCredencial:
         assert copia.nomenclatura_em_uso() == ""
         assert copia._vencedor is None
         assert copia._ids == {}
+
+
+def lookup(*posts, users=()) -> Resposta:
+    """Uma resposta de GET /2/tweets?ids=…, com `includes.users` opcional."""
+    corpo = {"data": list(posts)}
+    if users:
+        corpo["includes"] = {"users": list(users)}
+    return Resposta(200, corpo)
+
+
+class TestPostsPorId:
+    """A busca à parte do referenciado (06/09/2026): só os ids que faltam,
+    mesma sonda de campos, autor resolvido por `includes.users`, pelo mapa
+    do chamador ou, por último, exposto como "id:<número>"."""
+
+    def test_resolve_autor_pelo_includes_e_deriva_tipo(self, monkeypatch):
+        servidor = liga(monkeypatch, lookup(
+            post_cru(id="50", author_id=TERCEIRO, conversation_id="50",
+                     text="tese do analista"),
+            users=[{"id": TERCEIRO, "username": "sigel"}]))
+        [p] = x_api.posts_por_id(["50"])
+        assert p.autor == "sigel" and p.tipo == "post"
+        assert p.texto == "tese do analista"
+        assert p.url == "https://x.com/sigel/status/50"
+        url, params, _ = servidor.chamadas[-1]
+        assert url.endswith("/2/tweets")
+        assert params["ids"] == "50"
+        assert params["expansions"] == "author_id"
+        assert params["user.fields"] == "username"
+        assert NOVO.parametro in params
+
+    def test_autor_conhecido_pelo_chamador_quando_o_includes_falta(
+            self, monkeypatch):
+        liga(monkeypatch, lookup(post_cru(id="7", author_id=AUTOR,
+                                          conversation_id="7")))
+        [p] = x_api.posts_por_id(["7"], autores={AUTOR: "perfil_teste"})
+        assert p.autor == "perfil_teste"
+
+    def test_autor_desconhecido_sai_como_id_e_nao_como_nome_inventado(
+            self, monkeypatch):
+        liga(monkeypatch, lookup(post_cru(id="7", author_id="42",
+                                          conversation_id="7")))
+        [p] = x_api.posts_por_id(["7"])
+        assert p.autor == "id:42"
+
+    def test_lotes_de_100_e_ids_vazios_ficam_de_fora(self, monkeypatch):
+        servidor = liga(monkeypatch, lookup(), lookup())
+        x_api.posts_por_id([str(i) for i in range(150)] + ["", None, "  "])
+        assert len(servidor.chamadas) == 2
+        assert servidor.chamadas[0][1]["ids"].split(",") == [
+            str(i) for i in range(100)]
+        assert servidor.chamadas[1][1]["ids"].split(",") == [
+            str(i) for i in range(100, 150)]
+        assert x_api.posts_por_id([]) == []
+        assert len(servidor.chamadas) == 2
+
+    def test_ids_com_espaco_e_duplicados_sao_normalizados(self, monkeypatch):
+        """Id com espaço faz o servidor responder 400 — e a sonda leria isso
+        como conflito de nomenclatura (revisão de 06/09)."""
+        servidor = liga(monkeypatch, lookup())
+        x_api.posts_por_id([" 50 ", "50", "7 ", 7])
+        assert servidor.params["ids"] == "50,7"
+
+    def test_lote_que_falha_depois_de_outro_leva_os_parciais(self, monkeypatch):
+        """Os 100 do primeiro lote foram devolvidos e pagos; a exceção sobe
+        (superfície de duas classes) mas carrega o que veio."""
+        cem = [post_cru(id=str(n), conversation_id=str(n)) for n in range(100)]
+        liga(monkeypatch, lookup(*cem), Resposta(503), Resposta(503))
+        with pytest.raises(FalhaNaAPI) as erro:
+            x_api.posts_por_id([str(i) for i in range(150)],
+                               dormir=lambda s: None)
+        assert len(erro.value.parciais) == 100
+
+    def test_includes_malformado_nao_derruba(self, monkeypatch):
+        """`_pede` só garante o corpo como objeto; as sub-formas são daqui."""
+        liga(monkeypatch, Resposta(200, {
+            "data": [post_cru(id="1", conversation_id="1", author_id="5")],
+            "includes": [{"users": []}]}))
+        [p] = x_api.posts_por_id(["1"])
+        assert p.autor == "id:5"
+
+    def test_autor_nao_resolvido_nao_ganha_link_fabricado(self, monkeypatch):
+        liga(monkeypatch, lookup(post_cru(id="7", author_id="42",
+                                          conversation_id="7")))
+        [p] = x_api.posts_por_id(["7"])
+        assert p.autor == "id:42" and p.url == ""
+
+    def test_a_sonda_de_campos_vale_para_o_lookup(self, monkeypatch):
+        servidor = liga(monkeypatch, Resposta(400, texto="Invalid field"),
+                        lookup(post_cru(id="1", conversation_id="1")))
+        assert len(x_api.posts_por_id(["1"])) == 1
+        assert x_api.nomenclatura_em_uso() == ANTIGO.parametro
+        assert ANTIGO.parametro in servidor.params
+
+    def test_id_que_nao_volta_nao_vira_post(self, monkeypatch):
+        liga(monkeypatch, Resposta(200, {"errors": [
+            {"value": "9", "title": "Not Found Error"}]}))
+        assert x_api.posts_por_id(["9"]) == []
