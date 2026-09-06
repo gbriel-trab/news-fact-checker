@@ -119,6 +119,10 @@ class Post:
 # Por isso a sonda: tenta o conjunto novo e, diante de um 400, repete UMA vez
 # com o antigo. Escolher um e torcer é apostar num empate documental.
 #
+# OBSERVADO em 05/09/2026, na primeira leitura real: o servidor aceitou o
+# conjunto NOVO (`post.fields`) na primeira tentativa, sem 400. A sonda fica
+# porque a doc segue contraditória e o custo dela no caminho feliz é zero.
+#
 # O CAMINHO não está em disputa: a doc confirma `/2/users/:id/tweets`, com
 # `tweets` mesmo na página que renomeia os campos.
 

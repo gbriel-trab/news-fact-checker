@@ -156,15 +156,21 @@ apenas handles PÚBLICOS, testados um a um antes de entrar na lista; conta
 protegida fica de fora até isso ser medido.
 
 **Estado (05/09/2026):** o app foi criado no console do X (Native App,
-escopo Read) e o consentimento OAuth foi feito uma vez, no navegador do
-dono: `data/x_token.json` existe, fora do Git, com os três escopos. Nenhuma
-LEITURA de timeline foi feita ainda. A camada inteira está coberta por
-teste sem rede (`tests/test_x_api.py`, `tests/test_x_auth.py`,
-`tests/test_radar.py`), e o que está escrito acima é o que a documentação
-diz e o que o código faz, não o que foi observado. A primeira leitura decide
-três coisas marcadas como não confirmadas no código: o dialeto dos campos
-que o servidor aceita, se post de conta protegida vem, e o custo real contra
-a estimativa.
+escopo Read), o consentimento OAuth foi feito uma vez no navegador do dono
+(`data/x_token.json`, fora do Git, com os três escopos), e a **primeira
+leitura real** rodou no mesmo dia: um handle público, janela de um dia, 11
+posts devolvidos. O servidor aceitou o dialeto NOVO (`post.fields`) na
+primeira tentativa — a sonda continua no código porque a doc segue
+contraditória. Os tipos vieram do metadado como desenhado: 6 capturas
+(post, thread e citação), 5 respostas a outra conta descartadas antes de
+custar, e a thread cujo pai estava na mesma janela saiu com a linha de
+contexto preenchida. Custo ESTIMADO US$ 0,055 (11 × US$ 0,005); o real só
+na fatura do X. Duas coisas seguem não confirmadas: se post de conta
+protegida que o dono segue vem pelo endpoint (o handle lido é público), e o
+custo real contra a estimativa. Observação de uso, não de defeito: a
+citação de post de OUTRA conta nunca traz o texto citado, porque só a
+timeline do handle é lida e o referenciado não é expandido — a nota da
+rodada conta isso, e o separador vê só o comentário do autor.
 
 #### Não existe "o que está em alta"
 
