@@ -199,7 +199,13 @@ com um único fato, 2/2. Ressalva honesta: o exemplo novo da regra 9 é o
 texto do C25 palavra por palavra, e o detector de exemplo literal do
 gabarito só marca `[repr]` a partir de 8 palavras seguidas — o post tem 6.
 C25 passa a medir reprodução, não regra, até o exemplo do prompt ou o caso
-mudar. O que ainda não muda: uma thread cujo pai está FORA da janela
+mudar. Em 06/09 o caso real entrou como C28: o filho da thread, com os
+2.220 caracteres do pai na linha de contexto, cobrando zero fato e — chave
+nova do comparador, `proibido`, que vale para qualquer tipo, porque o
+vazamento de 05/09 era opinião, relato e previsão do pai, não fato —
+nenhuma premissa com seis pedaços que só existem no pai. Passou 2/2, US$
+0,07: duas premissas próprias, contra as 20 do boletim de 05/09. O que
+ainda não muda: uma thread cujo pai está FORA da janela
 continua sem linha de contexto (o referenciado não é expandido), e aí a
 referência do filho fica sem resolver — a nota da rodada conta isso.
 

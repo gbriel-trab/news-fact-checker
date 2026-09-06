@@ -150,13 +150,19 @@ def captura_de(post: dict):
 _CHAVES_ASSINADAS = ("texto", "afirmacao", "fatos", "esperado",
                      "proibido_em_fato", "evidencias", "cita_minimo",
                      "fronteira")
+# Chaves que entram na assinatura SÓ quando o caso as tem. Incluir uma
+# chave nova na tupla fixa muda o material de TODOS os casos e derruba
+# todas as assinaturas de uma vez — `proibido` nasceu em 06/09/2026 com o
+# gabarito 50/50 assinado, e a tupla fixa não pode mais crescer.
+_CHAVES_OPCIONAIS = ("proibido",)
 
 
 def assinatura(caso: dict) -> str:
     """Resumo do que a revisão humana conferiu. Nota e origem ficam de
     fora de propósito: prosa muda sem mudar o que é cobrado do modelo."""
-    material = json.dumps({k: caso.get(k) for k in _CHAVES_ASSINADAS},
-                          sort_keys=True, ensure_ascii=False)
+    conteudo = {k: caso.get(k) for k in _CHAVES_ASSINADAS}
+    conteudo.update({k: caso[k] for k in _CHAVES_OPCIONAIS if k in caso})
+    material = json.dumps(conteudo, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:8]
 
 
@@ -381,6 +387,10 @@ def confere_premissas(caso: dict, premissas: list) -> list[str]:
     * `proibido_em_fato`: nenhum fato pode conter estes pedaços — a
       guarda contra completar o que o texto não diz ("André" → "André
       Esteves", IPCA sem mês → "de agosto").
+    * `proibido`: nenhuma premissa, de QUALQUER tipo, pode conter estes
+      pedaços — a guarda da regra 9 (06/09/2026): a linha de contexto não
+      rende premissa, e o vazamento típico não é fato, é a opinião e o
+      relato do post anterior saindo de novo. `fatos: 0` não enxerga isso.
     """
     falhas: list[str] = []
     fatos = [p for p in premissas if p.tipo == "fato"]
@@ -418,6 +428,11 @@ def confere_premissas(caso: dict, premissas: list) -> list[str]:
             if _contem(p.texto, pedaco):
                 falhas.append(f"fato contém \"{pedaco}\" (inventado): "
                               f"\"{p.texto[:80]}\"")
+    for pedaco in caso.get("proibido", []):
+        for p in premissas:
+            if _contem(p.texto, pedaco):
+                falhas.append(f"[{p.tipo}] contém \"{pedaco}\" (só existe na "
+                              f"linha de contexto?): \"{p.texto[:80]}\"")
     return falhas
 
 

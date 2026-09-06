@@ -137,6 +137,18 @@ class TestComparadorDePremissas:
         assert confere_premissas(
             caso, [P("fato", "x", "o IPCA de maio foi 0,3%")]) != []
 
+    def test_proibido_vale_para_qualquer_tipo(self):
+        """C28 (06/09/2026): o vazamento da linha de contexto é a opinião
+        e o relato do post anterior, não fato — `fatos: 0` não enxerga."""
+        caso = {"proibido": ["52k", "não confio"]}
+        assert confere_premissas(
+            caso, [P("opiniao", "muita coisa ficando interessante")]) == []
+        falhas = confere_premissas(
+            caso, [P("opiniao", "O ponto de atração é o mesmo 52k ainda")])
+        assert falhas and "52k" in falhas[0] and "[opiniao]" in falhas[0]
+        assert confere_premissas(
+            caso, [P("relato", "nao confio 100% na alta de BTC")]) != []
+
     def test_nao_fato_com_reescrita_e_falha(self):
         """O −38% da v2: opinião não pode voltar a vir parafraseada."""
         caso = {"esperado": []}
@@ -197,6 +209,20 @@ class TestRevisao:
         assert assinatura(caso) == a
         caso["fatos"] = 1
         assert assinatura(caso) != a
+
+    def test_chave_opcional_so_assina_quando_existe(self):
+        """`proibido` nasceu com o gabarito 50/50 assinado (06/09/2026):
+        entrar na tupla fixa derrubaria todas as assinaturas. Sem a chave,
+        o material é exatamente o de antes; com ela, a assinatura muda."""
+        import hashlib
+        import json
+        from src.gabarito import _CHAVES_ASSINADAS
+        caso = {"id": "X", "texto": "t", "esperado": []}
+        antigo = hashlib.sha256(json.dumps(
+            {k: caso.get(k) for k in _CHAVES_ASSINADAS},
+            sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:8]
+        assert assinatura(caso) == antigo
+        assert assinatura({**caso, "proibido": ["52k"]}) != antigo
 
     def test_revisado_so_vale_assinado_sobre_o_conteudo_atual(self):
         caso = {"id": "X", "texto": "t", "esperado": [],
@@ -288,6 +314,7 @@ class TestArquivosDeCasos:
                           "nao_verificavel") for t in tipos), c["id"]
                 assert item["contem"].strip(), c["id"]
             assert all(p.strip() for p in c.get("proibido_em_fato", [])), c["id"]
+            assert all(p.strip() for p in c.get("proibido", [])), c["id"]
             if fatos == 0:
                 # Lista com `fato` dentro também contaria como fato esperado.
                 assert not any("fato" in (i["tipo"] if isinstance(
