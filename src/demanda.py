@@ -74,7 +74,7 @@ comporta MAIS UMA extração; o custo real vem da fatura da chamada."""
 class Resultado:
     """O que uma volta do ciclo fez, e por quê."""
 
-    motivo: str  # "sem_candidata" | "teto" | "extraiu" | "sem_tripla"
+    motivo: str  # "sem_candidata" | "teto" | "teto_diario" | "extraiu" | "sem_tripla"
     materias: int
     triplas: int
     custo: float
@@ -250,7 +250,12 @@ def garante(conexao: sqlite3.Connection, texto: str,
         return Resultado("sem_candidata", 0, 0, 0.0)
     if orcamento < CUSTO_ESTIMADO:
         return Resultado("teto", 0, 0, 0.0)
-    triplas, custo, recusada = extract.extrai_grupo(conexao, grupo)
+    # O teto DIÁRIO de extração (extract.TETO_DIARIO_USD) vale também aqui:
+    # é o mesmo livro-caixa, e a demanda foi quem estourou em 01/09.
+    try:
+        triplas, custo, recusada = extract.extrai_grupo(conexao, grupo)
+    except extract.TetoDiario:
+        return Resultado("teto_diario", 0, 0, 0.0)
     if recusada and len(grupo) > 1 and orcamento - custo >= CUSTO_ESTIMADO:
         # O modelo recusou o grupo — e pode ter razão: aqui o grupo nasce
         # da proximidade com a premissa, não da coesão do lote. A melhor

@@ -16,6 +16,7 @@ import hashlib
 import json
 import sqlite3
 import sys
+from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import (BaseModel, ConfigDict, Field, field_validator,
@@ -863,6 +864,46 @@ def extrai(titulo: str, veiculo: str, data_pub: str | None,
 
 # ---------------------------------------------------------------- interface
 
+TETO_DIARIO_USD = 2.30
+"""Teto de gasto de EXTRAÇÃO por dia UTC, somando lote manual e demanda.
+
+Medido no livro-caixa em 06/09/2026: US$ 13,80 em 374 extrações de 26/08
+a 06/09, 12 dias corridos — US$ 1,15 por dia. O teto é o dobro da média,
+por decisão do dono ("faz a média de gasto e põe o teto como o dobro").
+Dia UTC porque é o carimbo do livro-caixa; em Brasília o dia vira às 21h.
+A extração era 70% do gasto operacional e o único caminho pago sem freio:
+a demanda tem teto por rodada (`demanda.TETO_USD`), o radar tem teto por
+handle. O teto é conferido ANTES de cada chamada paga, pelo que já está
+gravado: a chamada que cruza a linha ainda acontece — é teto de partida,
+não previsão de chegada, e o pior caso é o teto mais uma história."""
+
+
+class TetoDiario(Exception):
+    """A extração de hoje já chegou ao teto: nada mais é chamado hoje."""
+
+
+def gasto_hoje_usd(conexao: sqlite3.Connection) -> float:
+    """Soma do livro-caixa de extração desde a meia-noite UTC de hoje."""
+    inicio = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00")
+    return float(conexao.execute(
+        "SELECT COALESCE(SUM(custo_usd), 0) FROM extracoes "
+        "WHERE extraido_em >= ?", (inicio,)).fetchone()[0])
+
+
+def confere_teto_diario(conexao: sqlite3.Connection,
+                        teto: float = TETO_DIARIO_USD) -> float:
+    """Levanta `TetoDiario` se o gasto de hoje já alcançou o teto; devolve
+    o gasto. É a única porta: lote por matéria, lote por história e demanda
+    passam todos por aqui antes de pagar."""
+    gasto = gasto_hoje_usd(conexao)
+    if gasto >= teto:
+        raise TetoDiario(
+            f"extração de hoje (UTC) já em US$ {gasto:.2f}, teto diário "
+            f"US$ {teto:.2f} (extract.TETO_DIARIO_USD) — nada mais é "
+            f"extraído até a meia-noite UTC")
+    return gasto
+
+
 def _roda_historias(conexao: sqlite3.Connection, grupos, args,
                     limite_lide, prompt_versao: str) -> list[llm.Uso]:
     """Executa o modo história: uma chamada por grupo, gravação explodida
@@ -898,6 +939,11 @@ def _roda_historias(conexao: sqlite3.Connection, grupos, args,
                 print(f"\n--- user (variável) ---\n{conteudo[:1200]}\n[...]")
             continue
 
+        try:
+            confere_teto_diario(conexao)
+        except TetoDiario as erro:
+            print(f"  PAROU: {erro}")
+            break
         try:
             resultado = extrai_historia(blocos)
         except llm.FalhaNoModelo as erro:
@@ -961,6 +1007,7 @@ def extrai_grupo(conexao: sqlite3.Connection,
     `mesma_historia=false` grava os marcadores vazios e devolve 0 triplas
     — o grupo não volta a ser candidato, igual ao comportamento do lote.
     """
+    confere_teto_diario(conexao)
     repetidas: dict[str, set[str]] = {}
     blocos: list[tuple[sqlite3.Row, list[str]]] = []
     for linha in linhas[:MAX_FONTES]:
@@ -1275,6 +1322,8 @@ def main() -> None:
                      else versao_prompt(limite_lide))
 
     conexao = conecta(config.BANCO)
+    print(f"Extração hoje (UTC): US$ {gasto_hoje_usd(conexao):.2f} de "
+          f"US$ {TETO_DIARIO_USD:.2f} de teto diário")
     if args.historias:
         # Modo história (v3): a unidade é o grupo, não a matéria. Fluxo
         # próprio, gravação explodida por fonte, e o resto do main não roda.
@@ -1366,6 +1415,11 @@ def main() -> None:
                                  ensure_ascii=False)[:1400])
             continue
 
+        try:
+            confere_teto_diario(conexao)
+        except TetoDiario as erro:
+            print(f"  PAROU: {erro}")
+            break
         # Falha numa matéria não derruba o lote. As anteriores já estão
         # gravadas, e abortar deixaria as seguintes por extrair sem motivo.
         try:

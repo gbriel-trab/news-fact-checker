@@ -115,8 +115,10 @@ Decisões que fazem diferença, todas documentadas com medição no
   das confirmações por 35% do custo — o fato principal mora no primeiro
   parágrafo, e é ele que dois veículos publicam igual.
 * **Custo é projetado, não sofrido**: filtro de pares antes da chamada cara,
-  cache de prompt, extração a ~US$ 0,05/matéria. Cada centavo gravado no
-  banco, por chamada.
+  cache de prompt, extração a ~US$ 0,04/matéria, e três tetos em código:
+  por handle no radar, por rodada na demanda, e diário na extração (o
+  dobro da média medida, US$ 2,30). Cada centavo gravado no banco, por
+  chamada.
 
 ## Números atuais (medidos, não estimados)
 

@@ -292,6 +292,10 @@ def _confere_post(c: "radar.Captura", conexao,
             elif r is not None and r.motivo == "teto":
                 partes.append("  [DEMANDA] teto da rodada atingido — "
                               "fica o veredito só com o acervo")
+            elif r is not None and r.motivo == "teto_diario":
+                partes.append("  [DEMANDA] teto DIÁRIO de extração atingido "
+                              "(extract.TETO_DIARIO_USD) — fica o veredito "
+                              "só com o acervo")
         partes.append(f'  premissa: "{p.texto}"')
         evidencias = _RE_EVIDENCIA.findall(saida.getvalue())
         # Raspar o stdout só funciona quando o check RODOU. No reuso ele

@@ -225,6 +225,19 @@ nenhuma premissa com seis pedaços que só existem no pai. Passou 2/2, US$
 à noite, uma thread cujo pai está FORA da janela também ganha a linha de
 contexto, pela busca à parte do referenciado (ver "Custo").
 
+**Teto diário de extração (06/09/2026).** A extração era 70% do gasto
+operacional medido (US$ 13,80 de 19,24 entre 26/08 e 06/09) e o único
+caminho pago sem freio: o radar tem teto por handle e a demanda tem teto
+por rodada, mas `extract --historias N` e a soma das demandas de um dia
+não tinham limite. Decisão do dono: "faz a média de gasto e põe o teto
+como o dobro". Média por dia corrido no livro-caixa, 12 dias: US$ 1,15;
+`extract.TETO_DIARIO_USD = 2,30`, por dia UTC (o carimbo do livro-caixa;
+em Brasília o dia vira às 21h). Uma porta só, `confere_teto_diario`, antes
+de cada chamada paga nos três caminhos — lote por história, lote por
+matéria e demanda, que devolve `teto_diario` e o boletim imprime. É teto
+de partida: a chamada que cruza a linha ainda acontece, e o pior caso é o
+teto mais uma história.
+
 **Refazer dias passados (06/09/2026).** `radar.busca` e `boletim.monta`
 aceitam `desde`/`ate` (só por nome; a assinatura antiga segue valendo), e
 o boletim ganhou `--desde`/`--ate`: janela explícita em UTC, fim
