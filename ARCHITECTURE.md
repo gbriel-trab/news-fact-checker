@@ -227,6 +227,22 @@ do cache: a versão do prompt tinha mudado na véspera (regra 9) e o
 veredito só é reusado por 24h. Medição que fica: neste handle, o boletim
 diário custa na casa de US$ 4 por mês.
 
+**Aberto (06/09/2026), visto na leitura manual do boletim refeito — dois
+defeitos, um em cada ponta, ainda sem caso no gabarito.** (1) O separador
+emitiu FATO para referente genérico do próprio autor: "Na enquete do autor
+sobre cripto, 55% votaram…" (a prova é o post dele — relato, regra 7) e
+"As altcoins que o autor postou andaram entre 40% e 50%" (não diz quais —
+não verificável, regra 8). O roteador deixou passar porque "a enquete" e
+"as altcoins" contam como referente ancorado. (2) A demanda escolheu as
+candidatas por proximidade semântica sem exigir o referente da premissa:
+para esses dois fatos extraiu 7 matérias de pesquisa eleitoral (Ciro,
+Elmano, Datafolha, escala 6x1) e 7 triplas sobre eleição — casou por
+porcentagem e pela palavra "pesquisa". Custo dos dois juntos: US$ 0,18 por
+dois fatos que não existiam, o mesmo padrão do C3 (US$ 0,36 em 01/09).
+Ordem combinada em 03/09: caso positivo no gabarito primeiro (os dois
+posts reais de 25/08 servem), regra depois; na demanda, uma guarda de
+referente em código.
+
 #### Não existe "o que está em alta"
 
 O radar lê a timeline dos handles escolhidos, numa janela de data, e só
