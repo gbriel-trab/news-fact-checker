@@ -1007,7 +1007,10 @@ um. O gargalo dele não é volume de dados — é hora de rotulagem.
 
 ## LLM não é agente
 
-Distinção que governa a decisão sobre o LangGraph.
+Distinção que governa a decisão sobre orquestração — e que, em 05/09/2026,
+tirou o LangGraph do projeto: o único ciclo que existe é regra fixa em
+código (ver "O ciclo"), e um framework de agentes embrulhando uma cascata
+fixa seria dependência sem função.
 
 * **Chamada de LLM** — uma requisição, uma resposta. Sem ciclo, sem decisão.
 * **Agente** — um ciclo que decide, em tempo de execução, qual o próximo passo
@@ -1063,7 +1066,7 @@ Se a cascata fixa vencer, ela fica — e a decisão vai documentada.
 
 | Camada | Escolha | Motivo |
 |-|-|-|
-| Orquestração | **LangGraph**, condicionado à medição acima | Ciclo com aresta condicional |
+| Orquestração | **Código**, sem framework | O único ciclo (extração sob demanda) tem regra fixa, uma volta e teto; LangGraph descartado em 05/09/2026 |
 | Vector DB | **ChromaDB** | Local, sem servidor, persiste em disco |
 | Embeddings | **sentence-transformers**, multilíngue | Notícia em português; local, custo zero |
 | Grafo | **NetworkX** | Em processo, sem infraestrutura |

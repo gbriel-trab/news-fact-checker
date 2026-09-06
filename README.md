@@ -167,7 +167,7 @@ Medição de acurácia contra checadores profissionais (Lupa, Aos Fatos) —
 o número que separa isto de um agregador; contradição não-numérica
 ("aprovado" vs "rejeitado"), que espera relações com polaridade no
 vocabulário; classificador factual×opinião como filtro de custo; e a
-avaliação medida de orquestração com ciclo (LangGraph) contra a cascata
+avaliação medida de orquestração com ciclo adaptativo contra a cascata
 fixa — que só entra se vencer em precisão, não só em recall.
 
 ---
