@@ -1,5 +1,7 @@
 # Verificador de notícias por corroboração
 
+[![testes](https://github.com/gbriel-trab/news-fact-checker/actions/workflows/testes.yml/badge.svg)](https://github.com/gbriel-trab/news-fact-checker/actions/workflows/testes.yml)
+
 Motor de verificação de fatos que responde a uma pergunta difícil sem fingir
 onisciência: **uma afirmação que circula é sustentada por fontes
 independentes?**
