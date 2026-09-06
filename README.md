@@ -124,12 +124,13 @@ Medidos no banco em 05/09/2026:
 * 3.056 afirmações extraídas de 326 matérias
 * **301 fatos confirmados por 2+ veículos independentes**, de 1.395
   fatos distintos
-* 625 testes, todos sem rede; a camada de verificação — onde erro é
+* 628 testes, todos sem rede; a camada de verificação — onde erro é
   silencioso — é a mais coberta
 * Gabarito de regressão dos prompts: 27 casos do separador (ficam fora do
   repositório, porque reproduzem texto de post) e 23 do juiz. Última
-  rodada completa do separador em 05/09/2026, 2 passadas, US$ 0,53: uma
-  regressão, que era da expectativa do gabarito e não do prompt (C13)
+  rodada completa do separador em 05/09/2026, 2 passadas, US$ 0,57: zero
+  regressões, depois de a regra do contexto de thread mudar (a premissa
+  do post anterior não sai duas vezes)
 
 ## Rodando
 

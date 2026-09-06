@@ -84,7 +84,8 @@ class Captura:
     def contexto_proprio(self) -> bool:
         """O referenciado é palavra do PRÓPRIO autor — a thread, ou o autor
         citando a si mesmo? Decide a atribuição no texto do separador:
-        palavra do autor pode virar premissa; palavra de terceiro, não. É
+        palavra do autor resolve referência e ancora referente; palavra de
+        terceiro, não. A premissa sai só do texto do post (regra 9). É
         comparação de autor, nunca de texto."""
         return (self.referenciado is not None
                 and self.referenciado.autor.lower() == self.post.autor.lower())

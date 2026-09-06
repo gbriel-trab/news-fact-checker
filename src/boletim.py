@@ -168,8 +168,10 @@ def _confere_post(c: "radar.Captura", conexao,
     marco = conexao.execute(
         "SELECT COALESCE(MAX(id), 0) FROM consultas").fetchone()[0]
 
-    # O contexto entra ATRIBUÍDO: palavra do próprio autor (a thread dele)
-    # pode virar premissa; palavra de quem ele cita, não.
+    # O contexto entra ATRIBUÍDO: a linha do próprio autor (a thread dele)
+    # resolve referência e ancora referente; a de quem ele cita, não. A
+    # premissa sai só do texto do post — o pai da thread, quando está na
+    # rodada, é conferido por conta própria (regra 9 do separador).
     analise, uso = premissas.separa(radar.para_separacao(c),
                                     conexao=conexao)
     partes: list[str] = []

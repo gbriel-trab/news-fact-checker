@@ -115,10 +115,11 @@ defeito.
 O texto do separador é contrato com o prompt (regra 9) e com
 `premissas.texto_ancoravel`, e os dois prefixos de contexto moram em
 `premissas`: `contexto — post anterior do próprio autor` (a thread, ou o
-autor citando a si mesmo — texto dele, pode virar premissa) e `contexto —
-post citado pelo autor; as afirmações são de quem ele cita` (texto de
-terceiro, nunca ancora). A atribuição é comparação de autor entre o post e
-o referenciado, não de texto. O cabeçalho é `POST (@handle, data):`, sem
+autor citando a si mesmo — texto dele: resolve o que o post referencia e
+ancora referente, mas a premissa dele sai no post dele, não aqui) e
+`contexto — post citado pelo autor; as afirmações são de quem ele cita`
+(texto de terceiro, nunca resolve nem ancora). A atribuição é comparação de
+autor entre o post e o referenciado, não de texto. O cabeçalho é `POST (@handle, data):`, sem
 número de rodada — o número entrava no hash da separação em cache e o mesmo
 post pagava separação de novo noutra rodada — e sem URL, que é ruído de
 tokens.
@@ -176,15 +177,31 @@ No mesmo dia o **boletim completo** rodou sobre essas 6 capturas com
 `--sem-envio`: separação dos 6 posts, zero premissas factuais (o conteúdo
 era comentário de mercado — opinião, relato, previsão), logo nenhum check
 nem demanda; US$ 0,21 na rodada (0,055 estimado no X + 0,15 medido na
-Anthropic). O que a rodada real mostrou e ainda está em aberto: quando o
-pai de uma thread está na mesma janela, ele é capturado como post próprio
-E entra como linha de contexto do filho — e a regra 9 manda tratar o
-contexto do próprio autor como texto dele, então o separador extrai as
-mesmas premissas duas vezes (no pai, e de novo no filho, pagando o texto
-inteiro do pai na segunda). Por construção, toda linha de contexto vem de
-um post que a própria rodada capturou. Decisão pendente do dono: contexto
-só para resolver referência, sem extrair premissa dele (muda a regra 9 e
-os casos C25/C26 do gabarito), ou manter a duplicata.
+Anthropic). O que a rodada real mostrou: quando o pai de uma thread está
+na mesma janela, ele é capturado como post próprio E entra como linha de
+contexto do filho — e a regra 9 de então mandava tratar o contexto do
+próprio autor como texto dele, então o separador extraía as mesmas
+premissas duas vezes (no pai, e de novo no filho, pagando o texto inteiro
+do pai na segunda). Por construção, toda linha de contexto vem de um post
+que a própria rodada capturou e confere por conta própria. Decisão do dono,
+no mesmo dia: a linha de contexto serve para RESOLVER o que o post
+referencia (pronome, "isso", "o encontro", nome que só está lá) e para
+ancorar referente quando é do próprio autor; premissa sai só do texto do
+post. A regra 9 mudou nesse sentido, com exemplo, e os dois casos do
+gabarito que mediam o contrário viraram: C25 (Selic) passa a exigir ZERO
+fato — a previsão fica, "a Selic está em 15%" é do pai; C26 passa a medir
+resolução via contexto sem duplicata — "o encontro durou três horas" com
+o nome de Esteves ancorado na linha do próprio autor, e EXATAMENTE um
+fato. Bateria paga no mesmo dia, 27 casos × 2 passadas, US$ 0,57 real:
+zero regressões, zero fronteiras falhando; C25 saiu só com a previsão 2/2
+e C26 resolveu "o encontro" para "o encontro entre André Esteves e Trump"
+com um único fato, 2/2. Ressalva honesta: o exemplo novo da regra 9 é o
+texto do C25 palavra por palavra, e o detector de exemplo literal do
+gabarito só marca `[repr]` a partir de 8 palavras seguidas — o post tem 6.
+C25 passa a medir reprodução, não regra, até o exemplo do prompt ou o caso
+mudar. O que ainda não muda: uma thread cujo pai está FORA da janela
+continua sem linha de contexto (o referenciado não é expandido), e aí a
+referência do filho fica sem resolver — a nota da rodada conta isso.
 
 #### Não existe "o que está em alta"
 

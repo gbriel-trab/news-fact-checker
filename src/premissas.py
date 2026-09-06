@@ -532,12 +532,23 @@ Regras que importam mais que as outras:
 
 9. O CABEÇALHO E A LINHA DE CONTEXTO. O texto começa por "POST (@handle,
    data):" — o handle é o AUTOR (regra 7) e a data é a do post, NUNCA
-   data de ocorrência. Depois dela pode haver uma linha "(contexto — ...)":
+   data de ocorrência. Depois dela pode haver uma linha "(contexto — ...)".
+   As premissas saem SÓ do texto do post, nunca da linha de contexto: o
    "post anterior do próprio autor" (a thread dele, ou um post dele mesmo
-   que ele cita) É texto do autor, mesmas regras; "post citado pelo autor"
-   são palavras de quem ele cita — o que o autor diz sobre elas é
-   premissa, o citado em si não. Nunca copie `trecho` nem ancore
-   referente na linha do post citado; da linha do próprio autor, pode.
+   que ele cita) é conferido por conta própria, e extrair dele aqui é a
+   mesma premissa duas vezes. O contexto serve para RESOLVER o que o post
+   referencia — pronome, "isso", "esse ponto", "o encontro", nome que só
+   está lá — e nisso a linha do próprio autor vale como texto dele:
+   `valor` resolvido por ela e `quem`/`o_que` ancorados nela, pode.
+
+   Texto:   "(contexto — post anterior do próprio autor: A Selic está em
+             15%.)\nE vai ficar assim até 2027."
+   previsao: E vai ficar assim até 2027   (e NENHUM fato "a Selic está em
+             15%": ele é do post anterior)
+
+   A linha do "post citado pelo autor" (outra conta) não resolve nem
+   ancora nada: são palavras de quem ele cita — o que o autor diz sobre
+   elas é premissa, o citado em si não. Nunca copie `trecho` dela.
 """
 
 
