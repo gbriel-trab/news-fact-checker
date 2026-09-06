@@ -169,9 +169,12 @@ dos campos (`tweet.fields`/`referenced_tweets` contra
 `post.fields`/`referenced_posts`); o cliente sonda os dois dialetos e guarda
 o que o servidor aceitou. E a doc nunca afirma que o endpoint devolve post de
 conta protegida — a única evidência é a descrição do escopo, que fala do que
-a conta enxerga, não do que o endpoint entrega. Consequência: o radar cobre
-apenas handles PÚBLICOS, testados um a um antes de entrar na lista; conta
-protegida fica de fora até isso ser medido.
+a conta enxerga, não do que o endpoint entrega. MEDIDO em 06/09/2026, na
+abertura da versão 0.2: o segundo handle do dono é conta protegida
+(`protected: true` no lookup de usuário) que ele segue, e a timeline veio
+inteira pelo endpoint — 6 posts num dia, 2 respostas descartadas, 2
+referenciados buscados à parte, US$ 0,05 estimado. Conta protegida que o
+dono NÃO segue continua sem medição, e continua fora da lista.
 
 **Estado (05/09/2026):** o app foi criado no console do X (Native App,
 escopo Read), o consentimento OAuth foi feito uma vez no navegador do dono
@@ -183,9 +186,9 @@ contraditória. Os tipos vieram do metadado como desenhado: 6 capturas
 (post, thread e citação), 5 respostas a outra conta descartadas antes de
 custar, e a thread cujo pai estava na mesma janela saiu com a linha de
 contexto preenchida. Custo ESTIMADO US$ 0,055 (11 × US$ 0,005); o real só
-na fatura do X. Duas coisas seguem não confirmadas: se post de conta
-protegida que o dono segue vem pelo endpoint (o handle lido é público), e o
-custo real contra a estimativa. Observação de uso na época, fechada em 06/09: a
+na fatura do X. Uma coisa segue não confirmada: o custo real contra a
+estimativa (a de conta protegida foi medida em 06/09, ver "Duas
+indefinições"). Observação de uso na época, fechada em 06/09: a
 citação de post de OUTRA conta não trazia o texto citado, porque só a
 timeline do handle era lida — hoje o referenciado que falta é buscado à
 parte (ver "Custo").

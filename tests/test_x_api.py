@@ -282,6 +282,30 @@ class TestPontaAPonta:
         assert tipos == ["post", "thread", "resposta", "citacao", "retweet"]
 
 
+class TestRetweetTextual:
+    """Primeira leitura do segundo handle (06/09/2026): "RT @bitcoinbrhub:
+    TREZOR IDENTIFICA…" chegou sem `referenced_*` e com conversation_id
+    igual ao id — seria `post`, e o texto é de terceiro."""
+
+    def test_rt_textual_sem_metadado_e_retweet(self):
+        assert classifica(post_cru(
+            id="5", conversation_id="5",
+            text="RT @bitcoinbrhub: TREZOR IDENTIFICA MAIS 67 MIL CLIENTES"
+        )) == ("retweet", "")
+
+    def test_rt_no_meio_do_texto_nao_conta(self):
+        assert classifica(post_cru(
+            id="6", conversation_id="6",
+            text="Vejam o RT @alguem fez ontem")) == ("post", "")
+
+    def test_metadado_de_resposta_ganha_do_texto(self):
+        assert classifica(post_cru(
+            id="7", conversation_id="1", text="RT @x: ...",
+            in_reply_to_user_id=TERCEIRO,
+            referenced_posts=[{"type": "replied_to", "id": "1"}]
+        )) == ("resposta", "1")
+
+
 class TestTextoIntegral:
     def test_prefere_a_nota_quando_existe(self):
         cru = post_cru(text="começo truncado",

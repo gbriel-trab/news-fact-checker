@@ -191,6 +191,8 @@ def classifica(post: dict) -> tuple[str, str]:
     * `referenced` do tipo `replied_to` + autor diferente -> `resposta`
     * `referenced` do tipo `retweeted` -> `retweet`
     * `referenced` do tipo `quoted` -> `citacao`
+    * sem `referenced` e texto começando por "RT @" -> `retweet` (a forma
+      antiga, copiando o texto; medida em 06/09/2026)
     * sem `referenced` e `conversation_id == id` -> `post` (raiz de conversa)
 
     `replied_to` é examinado ANTES de `quoted` porque os dois coexistem quando
@@ -226,6 +228,15 @@ def classifica(post: dict) -> tuple[str, str]:
     for item in referencias:
         if isinstance(item, dict) and item.get("type"):
             por_tipo.setdefault(str(item["type"]), str(item.get("id") or ""))
+
+    # OBSERVADO em 06/09/2026, na primeira leitura do segundo handle: post
+    # cujo texto começa por "RT @alguém:" e chega SEM `referenced_*` e com
+    # `conversation_id` igual ao próprio id — a forma antiga de retuitar,
+    # copiando o texto. Pelo metadado seria `post`, e o separador leria a
+    # palavra de terceiro como premissa do autor. É retweet pelo mesmo
+    # motivo do retweet de metadado: não traz palavra do autor.
+    if not por_tipo and str(post.get("text") or "").startswith("RT @"):
+        return "retweet", ""
 
     if "replied_to" in por_tipo:
         pai_id = por_tipo["replied_to"]
