@@ -302,6 +302,66 @@ def _classe_mensuravel(p: "Premissa") -> bool:
     return any(t in _QUANTIDADE for t in texto.split())
 
 
+_POSSESSIVO_PROPRIO = re.compile(
+    r"(?<!\w)(minha|minhas|meu|meus|nossa|nossas|nosso|nossos)\s+"
+    r"(?=[a-z])")
+"""Possessivo de primeira pessoa seguido de palavra MINÚSCULA, conferido
+sobre o texto sem casefold: "minha enquete" é do autor; "Minha Casa Minha
+Vida" e "Meu INSS" são nomes próprios (a revisão de 06/09/2026 pegou os
+dois virando relato). Sem o casefold, o próprio texto do post decide."""
+_VERBO_PROPRIO = re.compile(
+    r"(?<!\w)(que )?(postei|publiquei|lancei|rodei|fiz|escrevi|criei|"
+    r"divulguei)(?!\w)")
+"""Verbo em primeira pessoa no referente: "as alts que postei", "a enquete
+que rodei". "eu" solto saiu da lista: "acordo EU-Mercosul" casava."""
+_AUTOR_NA_REESCRITA = re.compile(
+    r"(?<!\w)d[oa] autora?(?!\w)"
+    r"(?!\s+(d[eoa]s?|intelectual|material)(?!\w))"
+    r"|(?<!\w)que [oa] autora? "
+    r"(postou|fez|publicou|rodou|lancou|escreveu|criou|divulgou)(?!\w)")
+"""Só as formas em que a reescrita atribui a coisa ao DONO do post: "a
+enquete do autor", "que o autor postou". Não pega "o autor de Torto
+Arado", "a autora de Harry Potter", "autor intelectual", "pelo autor",
+"o autor dos ataques" — gente do mundo, achados da revisão de
+06/09/2026. Residual conhecido: "a obra do autor vendeu 1 milhão" ainda
+casa; é post sobre livro, raro neste radar, e registrado."""
+_RE_HANDLE = re.compile(r"\APOST \(@(\w+)")
+
+
+def _do_autor(p: "Premissa", handle: str = "") -> bool:
+    """O referente é coisa do próprio autor — regra 7 em código
+    (06/09/2026). Três sinais, qualquer um basta: possessivo ou verbo de
+    primeira pessoa no sujeito ancorado ("as alts que postei", "minha
+    enquete", "nosso post"); a reescrita atribuindo a coisa ao autor ("Na
+    enquete do autor…", "que o autor postou"); ou a reescrita resolvendo o
+    autor para o handle do cabeçalho ("na enquete de @handle") — a regra 3
+    manda resolver referência, e o handle é a resolução mais provável.
+
+    Caso que motivou: boletim de 25/08/2026 (refeito em 06/09) emitiu dois
+    fatos assim, os dois ancorados e com número, e pagou US$ 0,18 em check
+    e demanda sobre pesquisa eleitoral. Os limites das regexes vêm da
+    revisão adversária do mesmo dia — ver as docstrings de cada uma."""
+    pedacos = [p.quem.valor, p.quem.trecho] if p.quem else []
+    for x in pedacos:
+        sem_acento = "".join(
+            ch for ch in unicodedata.normalize("NFKD", x)
+            if not unicodedata.combining(ch))
+        if _POSSESSIVO_PROPRIO.search(sem_acento):
+            return True
+        if _VERBO_PROPRIO.search(_normaliza(x)):
+            return True
+    if not p.afirmacao:
+        return False
+    reescrita = _normaliza(p.afirmacao)
+    if _AUTOR_NA_REESCRITA.search(reescrita):
+        return True
+    if handle and re.search(
+            rf"(?<!\w)d[eoa] @?{re.escape(handle.casefold())}(?!\w)",
+            reescrita):
+        return True
+    return False
+
+
 def _vazio(ref: Referente) -> bool:
     """O valor não identifica nada: só pronome/advérbio, ou aberto por
     determinante indefinido ("um empresário", "algum lugar")."""
@@ -340,16 +400,23 @@ def roteia(analise: Analise, texto: str) -> Analise:
        passar "o encontro" + "o Brasil". Exigir entidade no sujeito sempre
        mataria "o desemprego está em 5,3%"; por isso o número no predicado
        é a segunda porta, e só ele.
+    5. O sujeito não é coisa do próprio autor (`_do_autor`): "as alts que
+       postei" e "a enquete [do autor]" ancoram e trazem número, e ainda
+       assim a prova é o post — vira RELATO, não nao_verificavel, porque
+       é a regra 7 que se aplica (06/09/2026).
 
     O que passa é o que tem QUEM e O QUÊ nomeados no texto do autor. O
-    resto vira nao_verificavel com o motivo na trilha, e o referente
-    rejeitado vai para `hipotese`: rebaixamento errado tem de ser
-    distinguível do certo por quem lê o boletim.
+    resto vira nao_verificavel (ou relato, na condição 5) com o motivo na
+    trilha, e o referente rejeitado vai para `hipotese`: rebaixamento
+    errado tem de ser distinguível do certo por quem lê o boletim.
     """
     norm = _normaliza(texto_ancoravel(texto))
+    cabecalho = _RE_HANDLE.match(texto)
+    handle = cabecalho.group(1) if cabecalho else ""
     for p in analise.premissas:
         if p.tipo != "fato":
             continue
+        novo_tipo = "nao_verificavel"
         if not _ancorado(p.quem, norm):
             motivo = "sujeito sem âncora literal no texto do autor"
             rejeitado = p.quem
@@ -359,6 +426,11 @@ def roteia(analise: Analise, texto: str) -> Analise:
         elif _vazio(p.o_que):
             motivo = "o QUÊ é pronome, advérbio ou indefinido"
             rejeitado = p.o_que
+        elif _do_autor(p, handle):
+            motivo = ("referente é coisa do próprio autor (enquete dele, o "
+                      "que ele postou): relato, a prova é o post")
+            rejeitado = p.quem
+            novo_tipo = "relato"
         elif not (_tem_entidade_ou_numero(p.quem) or _tem_numero(p.o_que)
                   or _classe_mensuravel(p)):
             # A heurística é POR SLOT, e o slot que importa é o sujeito:
@@ -373,10 +445,11 @@ def roteia(analise: Analise, texto: str) -> Analise:
             rejeitado = p.quem
         else:
             continue
-        p.tipo = "nao_verificavel"
+        p.tipo = novo_tipo
         p.afirmacao = None
         p.roteado = motivo
-        if not p.hipotese and rejeitado is not None:
+        if (novo_tipo == "nao_verificavel" and not p.hipotese
+                and rejeitado is not None):
             p.hipotese = f"{rejeitado.valor} (referente rejeitado)"
     return analise
 
@@ -391,8 +464,13 @@ def versao_roteador() -> str:
 
     fonte = "".join(inspect.getsource(f) for f in
                     (roteia, _ancorado, _tem_entidade_ou_numero, _vazio,
-                     _normaliza, texto_ancoravel))
-    material = fonte + repr(sorted(_ARTIGOS | _FECHADAS | _INDEFINIDOS))
+                     _normaliza, texto_ancoravel, _do_autor))
+    # As regexes da condição 5 são dado, não código: mudar uma sem mudar
+    # `_do_autor` tem de virar versão nova do mesmo jeito (revisão de
+    # 06/09/2026).
+    material = (fonte + repr(sorted(_ARTIGOS | _FECHADAS | _INDEFINIDOS))
+                + _POSSESSIVO_PROPRIO.pattern + _VERBO_PROPRIO.pattern
+                + _AUTOR_NA_REESCRITA.pattern + _RE_HANDLE.pattern)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:8]
 
 
@@ -463,6 +541,19 @@ Regras que importam mais que as outras:
 
    Texto:   "Eu disse ontem: o IPCA de julho veio em 5,2%."
    fato:    o IPCA de julho de 2026 foi de 5,2%
+
+   E COISA DO PRÓPRIO AUTOR NÃO É REFERENTE DO MUNDO. "Minha enquete", "as
+   alts que postei", "o post que fiz", "meu operacional": o referente só
+   existe em relação ao autor, e a prova de qualquer número sobre ele é o
+   próprio post — relato, nunca fato, mesmo com porcentagem. Se além disso
+   não diz QUAIS ("as alts que postei"), nao_verificavel também serve;
+   fato, nunca. Sinal seguro: se a reescrita precisaria dizer "do autor"
+   para fazer sentido, não é fato.
+
+   Texto:   "Minha enquete fechou: 62% acham que o Copom corta em
+             setembro."
+   relato:  Minha enquete fechou: 62% acham que o Copom corta   (nada de
+            fato "62% acham…": a enquete é dele, a prova é o post)
 
 8. FATO EXIGE REFERENTE DETERMINADO — e ancorado no texto. Todo fato traz
    `quem` (o sujeito) e, quando o texto dá, `o_que` (a outra entidade, o

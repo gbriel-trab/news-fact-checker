@@ -25,8 +25,12 @@ fato — que é literalmente a regra 2 do julgamento do check.
 Freios, na ordem em que seguram:
 
 1. Só entra matéria com título+lead a >= LIMIAR_CANDIDATA da premissa,
-   dentro da janela de dias, uma por veículo, no máximo MAX_MATERIAS,
-   e coerente com a melhor candidata.
+   dentro da janela de dias, que MENCIONE o referente (o QUEM) da
+   premissa, uma por veículo, no máximo MAX_MATERIAS, e coerente com a
+   melhor candidata. A guarda de referente é de 06/09/2026: proximidade
+   casa vocabulário, e "as alts que postei andaram entre 40 e 50%" puxou
+   três pesquisas eleitorais (Ciro 50%, Quaest 66%, AtlasIntel 48%) —
+   sete matérias e US$ 0,13 sobre eleição para dois fatos de cripto.
 2. Matéria já extraída pelas versões ATIVAS de prompt fica fora: ela já
    teve a vez, e re-extração seria moto-perpétuo de gasto. Extração de
    versão antiga não conta — a órfã volta a ser elegível, exatamente
@@ -35,10 +39,12 @@ Freios, na ordem em que seguram:
    CUSTO_ESTIMADO a demanda recusa ANTES de chamar a API.
 """
 
+import re
 import sqlite3
 from dataclasses import dataclass
 
 from . import extract, indice
+from .premissas import _ARTIGOS, _FECHADAS, _normaliza
 
 LIMIAR_CANDIDATA = 0.60
 """Piso premissa↔título+lead para uma matéria virar candidata.
@@ -74,11 +80,67 @@ class Resultado:
     custo: float
 
 
-def candidatas(conexao: sqlite3.Connection, texto: str) -> list[sqlite3.Row]:
+_TAMANHO_MINIMO = 3
+"""Token do referente com menos de três letras não decide nada ("BC" é
+sigla legítima, mas "de", "os" não): sem token útil, a guarda não filtra."""
+
+_CABECAS_GENERICAS = frozenset(
+    "taxa taxas governo banco bancos bolsa mercado mercados empresa "
+    "empresas programa projeto lei presidente ministro ministra setor "
+    "numero numeros dados pesquisa relatorio indice valor preco precos "
+    "acordo reuniao encontro".split())
+"""Cabeça de sintagma que sozinha não identifica assunto: "a taxa de juros"
+casaria "Taxa de desocupação" pelo "taxa" (revisão de 06/09/2026). Fica
+fora dos termos; se só sobrar cabeça genérica, a guarda não filtra."""
+
+
+def _termos(referente: str) -> list[str]:
+    """Os tokens do referente que valem como assunto: só letras e dígitos
+    (a pontuação colada cai — "Ibovespa, Nasdaq" era "ibovespa," e nunca
+    casava), fora artigo, preposição, pronome, palavra curta e cabeça
+    genérica. "as alts que postei" → ["alts", "postei"]; "a taxa de juros"
+    → ["juros"]; "o BC" → [] (sem filtro)."""
+    return [t for t in re.findall(r"\w+", _normaliza(referente))
+            if len(t) >= _TAMANHO_MINIMO
+            and t not in _ARTIGOS and t not in _FECHADAS
+            and t not in _CABECAS_GENERICAS]
+
+
+def _menciona(linha, referente: str) -> bool:
+    """A matéria menciona o referente da premissa?
+
+    Conferido sobre o MESMO texto que o ranking vetorial viu — título +
+    começo do corpo (`agrupa.texto_de_agrupamento`), não título + resumo:
+    Estadão e UOL chegam com resumo vazio e o lead está no corpo (revisão
+    de 06/09/2026). Basta UM termo útil do referente, em fronteira de
+    palavra: é a mesma exigência que `check.aplica_alinhamento` faz no
+    veredito (o QUEM da evidência tem de conter o QUEM da afirmação),
+    trazida para ANTES de pagar a extração. Referente sem termo útil não
+    filtra — o erro caro aqui é o falso negativo de cobertura, e o roteador
+    já barrou os pronomes antes de chegar aqui. Flexão não é tolerada
+    ("marcas icônicas" não casa "marca icônica"): é limite conhecido, e o
+    lado errado dele é o barato."""
+    from . import agrupa
+
+    termos = _termos(referente)
+    if not termos:
+        return True
+    texto = _normaliza(agrupa.texto_de_agrupamento(linha))
+    return any(re.search(rf"(?<!\w){re.escape(t)}(?!\w)", texto)
+               for t in termos)
+
+
+def candidatas(conexao: sqlite3.Connection, texto: str,
+               referente: str = "") -> list[sqlite3.Row]:
     """Matérias coletadas, ainda sem extração ATUAL, próximas da premissa.
 
-    Quatro peneiras, na ordem (as três últimas vieram da revisão de
-    01/09/2026):
+    Cinco peneiras, na ordem (três vieram da revisão de 01/09/2026; a
+    do referente, de 06/09/2026):
+
+    * Menção ao REFERENTE da premissa no título+lead (`_menciona`), quando
+      o chamador o informa: proximidade vetorial casa porcentagem com
+      porcentagem e "pesquisa" com "enquete", e pagou extração de pesquisa
+      eleitoral para premissa sobre altcoins.
 
     * Uma por veículo — duas editorias do mesmo veículo não são fontes
       independentes (regra do agrupamento) — na ordem do ranking.
@@ -117,6 +179,8 @@ def candidatas(conexao: sqlite3.Connection, texto: str) -> list[sqlite3.Row]:
         if linha is None:
             continue
         if ja_extraida(conexao, i):
+            continue
+        if referente and not _menciona(linha, referente):
             continue
         por_veiculo.setdefault(linha["veiculo"], linha)
     grupo = list(por_veiculo.values())[:MAX_MATERIAS]
@@ -169,8 +233,11 @@ def ja_extraida(conexao: sqlite3.Connection, artigo_id: int) -> bool:
 
 
 def garante(conexao: sqlite3.Connection, texto: str,
-            orcamento: float = TETO_USD) -> Resultado:
+            orcamento: float = TETO_USD, *, referente: str = "") -> Resultado:
     """Uma volta do ciclo: cobre a premissa se der, dentro do orçamento.
+
+    `referente` é o QUEM ancorado da premissa (o `quem.valor` do
+    separador); com ele, só candidata que o mencione paga extração.
 
     Pressupõe que o chamador JÁ verificou e recebeu "sem evidência" — a
     demanda não re-pergunta se o acervo cobre (ver o docstring do módulo).
@@ -178,7 +245,7 @@ def garante(conexao: sqlite3.Connection, texto: str,
     o check com o acervo que houver. Falha de API sobe como exceção — quem
     chama decide se ela derruba a rodada (o boletim não deixa).
     """
-    grupo = candidatas(conexao, texto)
+    grupo = candidatas(conexao, texto, referente)
     if not grupo:
         return Resultado("sem_candidata", 0, 0, 0.0)
     if orcamento < CUSTO_ESTIMADO:

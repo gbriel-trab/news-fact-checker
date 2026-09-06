@@ -227,21 +227,62 @@ do cache: a versão do prompt tinha mudado na véspera (regra 9) e o
 veredito só é reusado por 24h. Medição que fica: neste handle, o boletim
 diário custa na casa de US$ 4 por mês.
 
-**Aberto (06/09/2026), visto na leitura manual do boletim refeito — dois
-defeitos, um em cada ponta, ainda sem caso no gabarito.** (1) O separador
-emitiu FATO para referente genérico do próprio autor: "Na enquete do autor
-sobre cripto, 55% votaram…" (a prova é o post dele — relato, regra 7) e
-"As altcoins que o autor postou andaram entre 40% e 50%" (não diz quais —
-não verificável, regra 8). O roteador deixou passar porque "a enquete" e
-"as altcoins" contam como referente ancorado. (2) A demanda escolheu as
-candidatas por proximidade semântica sem exigir o referente da premissa:
-para esses dois fatos extraiu 7 matérias de pesquisa eleitoral (Ciro,
-Elmano, Datafolha, escala 6x1) e 7 triplas sobre eleição — casou por
-porcentagem e pela palavra "pesquisa". Custo dos dois juntos: US$ 0,18 por
-dois fatos que não existiam, o mesmo padrão do C3 (US$ 0,36 em 01/09).
-Ordem combinada em 03/09: caso positivo no gabarito primeiro (os dois
-posts reais de 25/08 servem), regra depois; na demanda, uma guarda de
-referente em código.
+**Fechado em 06/09/2026, visto na leitura manual do boletim refeito —
+dois defeitos, um em cada ponta.** (1) O separador emitiu FATO para
+referente genérico do próprio autor: "Na enquete do autor sobre cripto,
+55% votaram…" (a prova é o post dele — relato, regra 7) e "As altcoins que
+o autor postou andaram entre 40% e 50%" (não diz quais). O roteador deixou
+passar porque "a enquete" e "as altcoins" ancoram e trazem número. (2) A
+demanda escolheu as candidatas por proximidade semântica sem exigir o
+referente da premissa: para esses dois fatos extraiu 7 matérias de
+pesquisa eleitoral (Ciro, Elmano, Datafolha, escala 6x1) e 7 triplas sobre
+eleição — casou por porcentagem e pela palavra "pesquisa". Custo dos dois
+juntos: US$ 0,18 por dois fatos que não existiam, o padrão do C3 (US$ 0,36
+em 01/09).
+
+O que mudou, na ordem de 03/09 (caso positivo primeiro, regra depois):
+
+* **Gabarito**: C29 é o post real de 25/08 (56 premissas); C30 é a forma
+  curta, sintética. Baseline grátis, pela separação em cache da rodada
+  real: o C29 falhava em 3 pontos. C29 cobra os dois relatos e PROÍBE fato
+  com "enquete", "alts", "altcoins" ou "votaram" — o número de fatos ficou
+  livre depois de a primeira bateria tirar do post um fato legítimo ("a
+  queda do BTC foi uma correção de 50% a 61%"): caso de post longo mede a
+  regra, não o post inteiro.
+* **Regra 7 do separador** ganhou a cláusula "coisa do próprio autor não é
+  referente do mundo" (minha enquete, as alts que postei, o post que fiz),
+  com exemplo diferente dos casos.
+* **Roteador, condição 5** (`_do_autor`): rebaixa a RELATO, não a
+  não_verificável, o fato cujo sujeito é coisa do autor — possessivo de
+  primeira pessoa seguido de palavra minúscula (sem casefold: "Minha Casa
+  Minha Vida" e "Meu INSS" são nomes próprios), verbo em primeira pessoa
+  ("que postei", "que rodei"), reescrita atribuindo ao dono ("do autor",
+  "que o autor postou"; não "autor de Torto Arado", "autor intelectual",
+  "pelo autor", "autor dos ataques") ou ao handle do cabeçalho ("na enquete
+  de @handle", que é a resolução que a regra 3 induz). Residual conhecido:
+  "a obra do autor vendeu 1 milhão" ainda casa. As regexes entram na versão
+  do roteador; mudá-las é bump de prompt.
+* **Demanda, guarda de referente** (`_menciona`): candidata só paga
+  extração se título + começo do corpo — o MESMO texto que o ranking
+  vetorial viu; Estadão e UOL chegam com resumo vazio — mencionar, em
+  fronteira de palavra, um termo útil do QUEM da premissa: sem pontuação
+  colada ("Ibovespa, Nasdaq" era "ibovespa," e nunca casava), sem artigo,
+  pronome ou cabeça genérica ("taxa", "governo", "banco", "pesquisa": "a
+  taxa de juros" só casa por "juros"). Sem termo útil, não filtra — o erro
+  caro é o falso negativo de cobertura. Flexão não é tolerada ("marcas
+  icônicas" não casa "marca icônica"): limite registrado.
+* **Exibição**: quando o post referenciado está na mesma rodada, a linha
+  de contexto aponta ("é o post 1 desta rodada", no arquivo, no console e
+  no Telegram — no [CITANDO] com o handle) em vez de repetir o texto; o
+  separador continua recebendo o texto. E as capturas saem do mais velho
+  para o mais novo, por instante de publicação: a API devolve o inverso, e
+  o filho da thread saía antes do pai (31/08, apontado pelo dono).
+
+Os limites das regexes vieram de uma revisão adversária do diff por 18
+agentes sem contexto (15 achados, 9 confirmados por reprodução offline),
+antes de pagar a bateria. Bateria de 06/09: 30 casos × 2 passadas, zero
+regressões, US$ 0,87 — contando uma rerrodada de C29/C30 porque a API
+devolveu 529 no meio da primeira. C29 e C30 aguardam assinatura.
 
 #### Não existe "o que está em alta"
 

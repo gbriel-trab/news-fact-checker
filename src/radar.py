@@ -307,9 +307,17 @@ def para_separacao(c: Captura) -> str:
     return "\n".join(linhas)
 
 
-def como_texto(c: Captura, numero: int) -> str:
+def como_texto(c: Captura, numero: int,
+               numeros: dict[str, int] | None = None) -> str:
     """Para console e arquivo do boletim. Ninguém lê isto de volta, então
-    leva o que o humano quer ver: número, tipo, URL e o contexto."""
+    leva o que o humano quer ver: número, tipo, URL e o contexto.
+
+    `numeros` (id do post → número nesta rodada): quando o referenciado é
+    ele mesmo um post da rodada, a linha de contexto APONTA para o número
+    em vez de repetir o texto inteiro — o leitor tem o pai logo abaixo, e
+    repetir 2.000 caracteres para dizer isso era ruído (06/09/2026). O
+    texto do SEPARADOR (`para_separacao`) não muda: é ele que resolve
+    referência, e precisa do texto."""
     p = c.post
     linhas = [f"POST {numero} (@{p.autor}, {quando(p.criado_em)}) · {p.tipo}"]
     if p.url:
@@ -318,12 +326,28 @@ def como_texto(c: Captura, numero: int) -> str:
     if ref is not None and _uma_linha(ref.texto):
         quem = ("post anterior do próprio autor" if c.contexto_proprio
                 else f"post citado, de @{ref.autor}")
-        linhas.append(f"contexto ({quem}): {_uma_linha(ref.texto)}")
+        n = (numeros or {}).get(ref.id) if ref.id else None
+        corpo = (f"é o post {n} desta rodada" if n
+                 else _uma_linha(ref.texto))
+        linhas.append(f"contexto ({quem}): {corpo}")
     linhas.append(p.texto)
     return "\n".join(linhas)
 
 
 # --- a rodada ----------------------------------------------------------------
+
+def _ordem_de_leitura(p: Post):
+    """Chave de ordenação cronológica de um post: o instante de publicação
+    (UTC), e sem instante legível vai para o fim."""
+    texto = str(p.criado_em or "").strip()
+    try:
+        instante = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+    except ValueError:
+        return (1, datetime.max.replace(tzinfo=timezone.utc))
+    if instante.tzinfo is None:
+        instante = instante.replace(tzinfo=timezone.utc)
+    return (0, instante)
+
 
 def busca(handles: tuple[str, ...], dias: int = 2, *,
           desde: str = "", ate: str = "") -> Rodada:
@@ -340,6 +364,10 @@ def busca(handles: tuple[str, ...], dias: int = 2, *,
     é como o boletim refaz um dia passado, um por vez (06/09/2026). O fim
     é EXCLUSIVO no endpoint: `desde=2026-08-25, ate=2026-08-26` é o dia 25
     inteiro, em UTC.
+
+    ORDEM. As capturas saem do mais velho para o mais novo, por instante
+    de publicação: o pai de uma thread vem antes do filho, e o ponteiro de
+    contexto aponta para trás. A API devolve o inverso.
 
     FALHA POR HANDLE. `PrecisaAutorizar` aborta a rodada inteira na hora:
     sem consentimento humano nada vai destravar, e continuar tentando os
@@ -387,6 +415,12 @@ def busca(handles: tuple[str, ...], dias: int = 2, *,
 
     ficam, descartados, notas_barreiras = barreiras(lidos)
     notas.extend(notas_barreiras)
+    # ORDEM DE LEITURA, não a da API. O endpoint devolve do mais novo para
+    # o mais velho, e assim o filho de uma thread saía ANTES do pai — o
+    # leitor via a resposta, depois a pergunta (31/08, apontado pelo dono
+    # em 06/09/2026). Do mais velho para o mais novo, estável: post sem
+    # data legível fica no fim, na ordem em que veio.
+    ficam = sorted(ficam, key=_ordem_de_leitura)
     # O índice é sobre TUDO que foi lido, descartado ou não: o pai de uma
     # thread própria pode ter caído na cadeia sem que a thread caísse — e
     # aí não há nada a mostrar — mas o citado de uma citação pode ser um
@@ -537,8 +571,10 @@ def main() -> None:
 
     if not rodada.capturas:
         print("Nenhum post na janela.")
+    numeros = {c.post.id: i for i, c in enumerate(rodada.capturas, 1)
+               if c.post.id}
     for i, c in enumerate(rodada.capturas, 1):
-        print(f"{como_texto(c, i)}\n")
+        print(f"{como_texto(c, i, numeros)}\n")
     for p, motivo in rodada.descartados:
         print(f"  descartado: @{p.autor} {p.url or p.id or '(sem id)'} "
               f"— {motivo}")

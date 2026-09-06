@@ -15,12 +15,12 @@ from src import demanda
 
 class TestGarante:
     def test_sem_candidata_nao_gasta(self, monkeypatch):
-        monkeypatch.setattr(demanda, "candidatas", lambda c, t: [])
+        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="": [])
         r = demanda.garante(None, "x")
         assert r.motivo == "sem_candidata" and r.custo == 0
 
     def test_teto_recusa_antes_da_api(self, monkeypatch):
-        monkeypatch.setattr(demanda, "candidatas", lambda c, t: ["m"])
+        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="": ["m"])
         monkeypatch.setattr(demanda.extract, "extrai_grupo",
                             lambda *a: pytest.fail("o teto não segurou"))
         r = demanda.garante(None, "x",
@@ -29,7 +29,7 @@ class TestGarante:
 
     def test_extraiu_reindexa_so_o_grupo_e_fatura_o_real(self, monkeypatch):
         m1, m2 = {"id": 11}, {"id": 22}
-        monkeypatch.setattr(demanda, "candidatas", lambda c, t: [m1, m2])
+        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="": [m1, m2])
         monkeypatch.setattr(demanda.extract, "extrai_grupo",
                             lambda c, g: (7, 0.08, False))
         reindexados = []
@@ -46,7 +46,7 @@ class TestGarante:
         # mesma_historia=false num grupo montado por proximidade com a
         # premissa não pode queimar a matéria certa junto com o carona.
         m1, m2 = {"id": 11}, {"id": 22}
-        monkeypatch.setattr(demanda, "candidatas", lambda c, t: [m1, m2])
+        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="": [m1, m2])
         chamadas = []
 
         def falso_extrai(c, grupo, *a):
@@ -65,7 +65,7 @@ class TestGarante:
 
     def test_recusa_sem_orcamento_nao_retenta(self, monkeypatch):
         monkeypatch.setattr(demanda, "candidatas",
-                            lambda c, t: [{"id": 1}, {"id": 2}])
+                            lambda c, t, r="": [{"id": 1}, {"id": 2}])
         chamadas = []
         monkeypatch.setattr(
             demanda.extract, "extrai_grupo",
@@ -84,7 +84,7 @@ class TestGarante:
     def test_falha_de_indice_nao_vira_falha_de_demanda(self, monkeypatch):
         # Extração PAGA precisa contar como extração mesmo se o Chroma
         # cair — a rota por chave do check segue enxergando o grafo.
-        monkeypatch.setattr(demanda, "candidatas", lambda c, t: [{"id": 1}])
+        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="": [{"id": 1}])
         monkeypatch.setattr(demanda.extract, "extrai_grupo",
                             lambda c, g, *a: (5, 0.06, False))
 
@@ -130,7 +130,8 @@ class TestConferePostEstado:
                             lambda texto, conexao=None: (analise, uso))
         monkeypatch.setattr(
             demanda, "garante",
-            lambda c, t, o: demanda.Resultado("extraiu", 1, 3, 0.20))
+            lambda c, t, o, referente="": demanda.Resultado(
+                "extraiu", 1, 3, 0.20))
         monkeypatch.setattr("src.grafo.carrega", lambda c: ["novo"])
 
         def check_fake(*a, forcar=False, **k):
@@ -261,3 +262,69 @@ class TestJaExtraida:
             ).fetchone()[0]
             assert n == esperado, f"travou em {n}, esperado {esperado}"
         assert demanda.ja_extraida(con, 9)
+
+
+class TestGuardaDeReferente:
+    """06/09/2026: "as alts que postei andaram entre 40 e 50%" puxou três
+    pesquisas eleitorais por proximidade de porcentagem. Candidata tem de
+    MENCIONAR o referente da premissa; referente sem termo útil não filtra."""
+
+    def _linha(self, titulo, resumo="", conteudo=""):
+        return {"titulo": titulo, "resumo": resumo, "conteudo": conteudo}
+
+    def test_termos_uteis_do_referente(self):
+        assert demanda._termos("as alts que postei") == ["alts", "postei"]
+        assert demanda._termos("o desemprego") == ["desemprego"]
+        assert demanda._termos("o BC") == []
+
+    def test_pontuacao_colada_nao_entra_no_termo(self):
+        """Revisão de 06/09: 'Ibovespa, Nasdaq, Russell, SPX' é referente
+        real do cache e virava 'ibovespa,' — nunca casava."""
+        assert demanda._termos("Ibovespa, Nasdaq, Russell, SPX") == [
+            "ibovespa", "nasdaq", "russell", "spx"]
+        assert demanda._menciona(self._linha("Ibovespa sobe 2%"),
+                                 "Ibovespa, Nasdaq, Russell, SPX")
+
+    def test_cabeca_generica_sozinha_nao_casa(self):
+        """'a taxa de juros' não pode ser satisfeita por 'Taxa de
+        desocupação'; sobra 'juros', e é ele que tem de aparecer."""
+        assert demanda._termos("a taxa de juros") == ["juros"]
+        assert not demanda._menciona(
+            self._linha("Taxa de desocupação cai a 5,6%"), "a taxa de juros")
+        assert demanda._menciona(self._linha("Juros sobem no Brasil"),
+                                 "a taxa de juros")
+        assert demanda._menciona(self._linha("qualquer"), "o governo")
+
+    def test_confere_o_mesmo_texto_que_o_ranking_viu(self):
+        """Estadão chega com resumo vazio e o lead no corpo; a guarda lê
+        título + começo do corpo, como o embedding."""
+        linha = self._linha("Mercado reage à decisão", resumo="",
+                            conteudo="A Selic foi mantida em 15% pelo Copom.")
+        assert demanda._menciona(linha, "a Selic")
+
+    def test_pesquisa_eleitoral_nao_menciona_as_alts(self):
+        eleicao = self._linha("Ciro tem 50% contra 46,1% de Elmano no 2º "
+                              "turno do CE, diz pesquisa")
+        assert not demanda._menciona(eleicao, "as alts que postei")
+        assert demanda._menciona(self._linha("Selic sobe para 15%"),
+                                 "a Selic")
+        assert demanda._menciona(
+            self._linha("Taxa de desemprego cai", "no trimestre"),
+            "o desemprego")
+        assert not demanda._menciona(
+            self._linha("Trump quer se reunir com Putin"), "Esteves")
+
+    def test_referente_sem_termo_util_nao_filtra(self):
+        assert demanda._menciona(self._linha("qualquer coisa"), "o BC")
+        assert demanda._menciona(self._linha("qualquer coisa"), "")
+
+    def test_garante_repassa_o_referente(self, monkeypatch):
+        visto = {}
+
+        def falso(c, t, r=""):
+            visto["referente"] = r
+            return []
+
+        monkeypatch.setattr(demanda, "candidatas", falso)
+        demanda.garante(None, "x", referente="a Selic")
+        assert visto["referente"] == "a Selic"

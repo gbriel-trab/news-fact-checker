@@ -252,9 +252,15 @@ def _confere_post(c: "radar.Captura", conexao,
         # seria retido de novo (achado da revisão de 03/09/2026).
         if (nova is not None and nova["veredito"] == "sem_evidencia"
                 and not _retida(nova)):
+            # O QUEM ancorado vai junto: a demanda só paga extração de
+            # candidata que o mencione. Calculado FORA do try: erro de
+            # atributo aqui não é falha de API, e não pode ser engolido.
+            quem = getattr(p, "quem", None)
+            referente = quem.valor if quem else ""
             try:
                 r = demanda.garante(conexao, p.texto,
-                                    estado["orcamento"])
+                                    estado["orcamento"],
+                                    referente=referente)
             except Exception as erro:  # noqa: BLE001 — não derruba o check
                 r = None
                 # Débito pessimista: a falha pode ter vindo DEPOIS de a
@@ -422,8 +428,13 @@ def monta(dias: int, reenviar: bool = False, *,
         # o acervo recarregado (revisão de 01/09/2026).
         estado = {"acervo": acervo, "orcamento": demanda.TETO_USD}
         falhas = 0
+        # id → número nesta rodada: o contexto de uma thread cujo pai está
+        # aqui vira ponteiro ("é o post 2 desta rodada"), no arquivo e no
+        # Telegram — o separador continua recebendo o texto.
+        numeros = {c.post.id: i for i, (c, _) in enumerate(ineditos, 1)
+                   if c.post.id}
         for i, (c, chaves) in enumerate(ineditos, 1):
-            linhas.append(radar.como_texto(c, i))
+            linhas.append(radar.como_texto(c, i, numeros))
             # Falha num post não derruba o lote — padrão do extract.main.
             # Mas é CONTADA: separação estourando em todos os posts virava
             # arquivo cheio de "CONFERÊNCIA FALHOU", Telegram sem nada e
@@ -533,6 +544,7 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
                     f"<i>{_esc(ENQUADRAMENTO)}</i>", ""]
     if not estruturados:
         p.append("Nenhum post novo na janela.")
+    numeros = {c.post.id: i for i, c, _ in estruturados if c.post.id}
     for i, c, dados in estruturados:
         # Cabeçalho: número, (handle, data) e a âncora do próprio status.
         # O CORPO vai na íntegra, sem truncar: post é conteúdo, não resumo.
@@ -548,8 +560,12 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
         ref = c.referenciado
         if ref is not None and ref.texto.strip():
             rotulo = "CONTEXTO" if c.contexto_proprio else "CITANDO"
-            p.append(f"{tag(rotulo)} <i>@{_esc(ref.autor)}: "
-                     f"{_esc(' '.join(ref.texto.split()))}</i>")
+            # Pai na mesma mensagem: ponteiro, não o texto de novo.
+            n = numeros.get(ref.id) if ref.id else None
+            de = "" if c.contexto_proprio else f", de @{_esc(ref.autor)}"
+            corpo = (f"é o post [{n}] desta rodada{de}" if n else
+                     f"@{_esc(ref.autor)}: {_esc(' '.join(ref.texto.split()))}")
+            p.append(f"{tag(rotulo)} <i>{corpo}</i>")
         p.append(f"<i>{_esc(post.texto)}</i>")
 
         # [ACERVO], e não [CONTEXTO]: esse rótulo já significa "EM

@@ -435,3 +435,99 @@ class TestRoteador:
         assert CONTEXTO_ALHEIO.startswith("contexto — ")
         assert "ancorado no texto" in INSTRUCOES
         assert "nao_verificavel" in INSTRUCOES
+
+
+class TestCoisaDoProprioAutor:
+    """Condição 5 do roteador (06/09/2026): referente que só existe em
+    relação ao autor vira RELATO, não fato — os dois casos reais de 25/08,
+    que ancoravam, traziam número e pagaram demanda sobre eleição."""
+
+    def _fato(self, texto, afirmacao, quem, o_que):
+        from src.premissas import Referente, roteia
+        analise = Analise(premissas=[Premissa(
+            tipo="fato", afirmacao=afirmacao, trecho=texto.split("\n")[-1],
+            quem=Referente(valor=quem[0], trecho=quem[1]),
+            o_que=Referente(valor=o_que[0], trecho=o_que[1]))])
+        return roteia(analise, texto).premissas[0]
+
+    def test_primeira_pessoa_no_sujeito_vira_relato(self):
+        texto = ("POST (@x, 25 Aug 2026):\n"
+                 "as alts que postei, que andaram entre 40 e 50%")
+        p_ = self._fato(texto, "As altcoins andaram entre 40% e 50%.",
+                        ("as alts que postei", "as alts que postei"),
+                        ("andaram entre 40 e 50%",
+                         "que andaram entre 40 e 50%"))
+        assert p_.tipo == "relato", p_.roteado
+        assert "próprio autor" in p_.roteado
+        assert p_.afirmacao is None and p_.hipotese is None
+
+    def test_do_autor_na_reescrita_vira_relato(self):
+        texto = ("POST (@x, 25 Aug 2026):\n"
+                 "[Fim da Enquete] 55% votaram busca de liquidez. "
+                 "45% votaram impulso.")
+        p_ = self._fato(texto, "Na enquete do autor sobre cripto, 55% "
+                        "votaram busca de liquidez.",
+                        ("a enquete", "[Fim da Enquete]"),
+                        ("55% busca de liquidez",
+                         "55% votaram busca de liquidez"))
+        assert p_.tipo == "relato", p_.roteado
+
+    def test_autor_do_projeto_e_gente_do_mundo(self):
+        from src.premissas import Referente, _do_autor
+        p_ = Premissa(tipo="fato",
+                      afirmacao="O autor do projeto de lei recebeu 12 emendas.",
+                      trecho="o autor do projeto recebeu 12 emendas",
+                      quem=Referente(valor="o autor do projeto",
+                                     trecho="o autor do projeto"),
+                      o_que=Referente(valor="12 emendas", trecho="12 emendas"))
+        assert not _do_autor(p_)
+
+    def _premissa(self, afirmacao, quem):
+        from src.premissas import Referente
+        return Premissa(tipo="fato", afirmacao=afirmacao, trecho=quem,
+                        quem=Referente(valor=quem, trecho=quem),
+                        o_que=Referente(valor="1 milhão", trecho="1 milhão"))
+
+    def test_nome_proprio_com_possessivo_nao_e_do_autor(self):
+        """Revisão de 06/09: 'Minha Casa Minha Vida', 'Meu INSS' e
+        'EU-Mercosul' viravam relato. Possessivo só conta seguido de
+        palavra minúscula; 'eu' solto saiu."""
+        from src.premissas import _do_autor
+        for quem in ("o Minha Casa Minha Vida", "o Meu INSS",
+                     "acordo EU-Mercosul", "Nossa Senhora Aparecida"):
+            assert not _do_autor(self._premissa(f"{quem} teve 1 milhão.",
+                                                quem)), quem
+        for quem in ("minha enquete", "nossa enquete", "meu post",
+                     "a enquete que rodei", "as alts que postei"):
+            assert _do_autor(self._premissa("x", quem)), quem
+
+    def test_autor_do_mundo_na_reescrita_nao_conta(self):
+        """Só 'do autor' como dono e 'que o autor postou' contam."""
+        from src.premissas import _do_autor
+        mundo = ("O autor de 'Torto Arado' vendeu 1 milhão de cópias.",
+                 "A autora de Harry Potter doou US$ 1 milhão.",
+                 "A PF prendeu o autor intelectual do atentado.",
+                 "O autor, João Silva, morreu em 2020.",
+                 "O livro foi escrito pelo autor em 1990.",
+                 "A PF prendeu o autor dos ataques em Brasília.")
+        for afirmacao in mundo:
+            assert not _do_autor(self._premissa(afirmacao, "a PF")), afirmacao
+        assert _do_autor(self._premissa(
+            "Na enquete do autor sobre cripto, 55% votaram.", "a enquete"))
+        assert _do_autor(self._premissa(
+            "As altcoins que o autor postou subiram 40%.", "as altcoins"))
+
+    def test_handle_do_cabecalho_resolve_o_autor(self):
+        """Regra 3 manda resolver referência; se a reescrita resolver o
+        autor para o handle do cabeçalho, ainda é coisa dele."""
+        from src.premissas import Referente, roteia
+        texto = ("POST (@perfil_teste, 25 Aug 2026):\n"
+                 "[Fim da Enquete] 55% votaram busca de liquidez.")
+        analise = Analise(premissas=[Premissa(
+            tipo="fato", trecho="[Fim da Enquete] 55% votaram busca de liquidez.",
+            afirmacao="Na enquete de @perfil_teste, 55% votaram busca de liquidez.",
+            quem=Referente(valor="a enquete", trecho="[Fim da Enquete]"),
+            o_que=Referente(valor="55% busca de liquidez",
+                            trecho="55% votaram busca de liquidez"))])
+        p_ = roteia(analise, texto).premissas[0]
+        assert p_.tipo == "relato", p_.roteado

@@ -554,3 +554,85 @@ class TestJanelaExplicita:
         radar.busca(("perfil_teste",), 2)
         assert pedidos[0]["ate"] == ""
         assert pedidos[0]["desde"].endswith("Z")
+
+
+# ------------------------------------------- contexto aponta para a rodada
+
+
+class TestContextoApontaParaARodada:
+    """Quando o pai está na mesma rodada, a linha de contexto vira ponteiro
+    para o número dele — no arquivo e no Telegram (06/09/2026). O texto do
+    separador não muda: é ele que resolve referência."""
+
+    def test_como_texto_aponta_quando_o_pai_esta_na_rodada(self):
+        raiz = _post("111", "A Selic esta em 15%")
+        c = Captura(_post("222", "E vai ficar assim", tipo="thread",
+                          pai_id="111"), referenciado=raiz)
+        com = radar.como_texto(c, 2, {"111": 1, "222": 2})
+        assert ("contexto (post anterior do próprio autor): é o post 1 "
+                "desta rodada") in com
+        assert "A Selic esta em 15%" not in com
+        sem = radar.como_texto(c, 2, {"999": 1})
+        assert "A Selic esta em 15%" in sem
+        assert "A Selic esta em 15%" in radar.para_separacao(c)
+
+    def test_telegram_aponta_para_o_numero_do_pai(self):
+        from src.boletim import _formata_telegram
+        raiz = _post("111", "A Selic esta em 15%")
+        pai = Captura(raiz)
+        filho = Captura(_post("222", "E vai ficar assim", tipo="thread",
+                              pai_id="111"), referenciado=raiz)
+        vazio = {"nao_verificaveis": [], "checks": [], "contextos": [],
+                 "sem_premissas": False}
+        html = _formata_telegram("@perfil_teste", "06/09",
+                                 [(1, filho, dict(vazio)),
+                                  (2, pai, dict(vazio))],
+                                 [], 0.10, 0.03)
+        assert ("<code>[CONTEXTO]</code> <i>é o post [2] desta rodada</i>"
+                in html)
+        assert html.count("A Selic esta em 15%") == 1
+
+    def test_citando_aponta_e_mantem_o_handle(self):
+        """Dois handles no radar citando um ao outro: o ponteiro diz de
+        quem é o post apontado (revisão de 06/09)."""
+        from src.boletim import _formata_telegram
+        citado = _post("555", "tese do analista", autor="sigel")
+        citacao = Captura(_post("333", "comentário", tipo="citacao",
+                                pai_id="555"), referenciado=citado)
+        vazio = {"nao_verificaveis": [], "checks": [], "contextos": [],
+                 "sem_premissas": False}
+        html = _formata_telegram("@perfil_teste, @sigel", "06/09",
+                                 [(1, citacao, dict(vazio)),
+                                  (2, Captura(citado), dict(vazio))],
+                                 [], 0.10, 0.03)
+        assert ("<code>[CITANDO]</code> <i>é o post [2] desta rodada, "
+                "de @sigel</i>") in html
+
+
+class TestOrdemDeLeitura:
+    """A API devolve do mais novo para o mais velho; a rodada inverte, para
+    o pai de uma thread vir antes do filho (31/08, apontado em 06/09)."""
+
+    def test_capturas_saem_do_mais_velho_para_o_mais_novo(self, monkeypatch):
+        from src.x_api import Post
+        novo = Post(id="3", autor="perfil_teste",
+                    criado_em="2026-08-31T23:01:00Z", texto="Completando",
+                    tipo="thread", pai_id="1")
+        meio = Post(id="2", autor="perfil_teste",
+                    criado_em="2026-08-31T21:15:00Z", texto="Update", tipo="post")
+        velho = Post(id="1", autor="perfil_teste",
+                     criado_em="2026-08-31T21:13:00Z", texto="Absorção?",
+                     tipo="post")
+        _liga(monkeypatch, {"perfil_teste": [novo, meio, velho]})
+        r = radar.busca(("perfil_teste",), 1)
+        assert [c.post.id for c in r.capturas] == ["1", "2", "3"]
+        assert r.capturas[2].referenciado is r.capturas[0].post
+
+    def test_sem_data_legivel_vai_para_o_fim_na_ordem_em_que_veio(self):
+        from src.x_api import Post
+        a = Post(id="a", autor="x", criado_em="", texto="a", tipo="post")
+        b = Post(id="b", autor="x", criado_em="2026-09-01T00:00:00Z",
+                 texto="b", tipo="post")
+        c = Post(id="c", autor="x", criado_em="ontem", texto="c", tipo="post")
+        assert [p.id for p in sorted([a, b, c], key=radar._ordem_de_leitura)] == [
+            "b", "a", "c"]
