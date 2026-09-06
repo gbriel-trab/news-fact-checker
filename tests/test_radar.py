@@ -531,3 +531,26 @@ class TestConsumidoresDoBoletim:
                 "em 15%</i>") in html
         assert "<code>[CITANDO]</code> <i>@sigel: tese do analista</i>" in html
         assert "URL:" not in html
+
+
+# ------------------------------------------------------- janela explícita
+
+
+class TestJanelaExplicita:
+    """`busca(handles, desde=..., ate=...)` é como o boletim refaz um dia
+    passado (06/09/2026): a janela vai ao cliente como veio, `dias` é
+    ignorado, e sem `desde` a janela continua sendo "os últimos dias"."""
+
+    def test_desde_e_ate_vao_ao_cliente_e_dias_e_ignorado(self, monkeypatch):
+        pedidos = _liga(monkeypatch, {"perfil_teste": []})
+        radar.busca(("perfil_teste",), 9,
+                    desde="2026-08-25", ate="2026-08-26")
+        assert pedidos == [{"handle": "perfil_teste", "desde": "2026-08-25",
+                            "ate": "2026-08-26",
+                            "limite": radar.LIMITE_POR_HANDLE}]
+
+    def test_sem_desde_a_janela_e_os_ultimos_dias_ate_agora(self, monkeypatch):
+        pedidos = _liga(monkeypatch, {"perfil_teste": []})
+        radar.busca(("perfil_teste",), 2)
+        assert pedidos[0]["ate"] == ""
+        assert pedidos[0]["desde"].endswith("Z")

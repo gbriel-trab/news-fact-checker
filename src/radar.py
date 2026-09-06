@@ -325,15 +325,21 @@ def como_texto(c: Captura, numero: int) -> str:
 
 # --- a rodada ----------------------------------------------------------------
 
-def busca(handles: tuple[str, ...], dias: int = 2) -> Rodada:
+def busca(handles: tuple[str, ...], dias: int = 2, *,
+          desde: str = "", ate: str = "") -> Rodada:
     """Uma rodada do radar: a API oficial do X, um handle por vez.
 
     ASSINATURA CONGELADA — `boletim.monta` e `painel.rodar_radar` chamam
     `busca(handles, dias)` e esperam uma `Rodada`. É o que mantém a fonte
-    fora dos chamadores.
+    fora dos chamadores. `desde`/`ate` são opcionais e só por nome.
 
     JANELA. `desde` é um instante, não uma data: `start_time` é ISO8601 com
     hora e o fim é "agora" por omissão, então a rodada vê o próprio dia.
+    Com `desde` (e opcionalmente `ate`) explícitos — ISO8601, ou data solta
+    que `x_api._iso` completa —, a janela é a pedida, e `dias` é ignorado:
+    é como o boletim refaz um dia passado, um por vez (06/09/2026). O fim
+    é EXCLUSIVO no endpoint: `desde=2026-08-25, ate=2026-08-26` é o dia 25
+    inteiro, em UTC.
 
     FALHA POR HANDLE. `PrecisaAutorizar` aborta a rodada inteira na hora:
     sem consentimento humano nada vai destravar, e continuar tentando os
@@ -343,15 +349,15 @@ def busca(handles: tuple[str, ...], dias: int = 2) -> Rodada:
     por um dia inteiro sem boletim. Se TODOS falharem, sobe erro: rodada
     vazia entregue como sucesso esconderia uma queda total.
     """
-    desde = (datetime.now(timezone.utc)
-             - timedelta(days=dias)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    desde = desde or (datetime.now(timezone.utc)
+                      - timedelta(days=dias)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     lidos: list[Post] = []
     notas: list[str] = []
     falhas: list[str] = []
     for handle in handles:
         try:
-            achados = x_api.posts_de(handle, desde=desde,
+            achados = x_api.posts_de(handle, desde=desde, ate=ate,
                                      limite=LIMITE_POR_HANDLE)
         except PrecisaAutorizar as erro:
             # A fronteira. `boletim.monta` captura `radar.FalhaNoRadar` e

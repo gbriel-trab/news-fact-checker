@@ -209,6 +209,24 @@ ainda não muda: uma thread cujo pai está FORA da janela
 continua sem linha de contexto (o referenciado não é expandido), e aí a
 referência do filho fica sem resolver — a nota da rodada conta isso.
 
+**Refazer dias passados (06/09/2026).** `radar.busca` e `boletim.monta`
+aceitam `desde`/`ate` (só por nome; a assinatura antiga segue valendo), e
+o boletim ganhou `--desde`/`--ate`: janela explícita em UTC, fim
+EXCLUSIVO no endpoint, `--dias` ignorado quando `--desde` existe. O
+cabeçalho mostra a janela em vez de hoje; o arquivo continua sendo o do
+dia em que rodou, em append. Com `--reenviar`, o já entregue volta. Foi
+assim que o boletim foi refeito de 25/08 a 06/09, um dia por rodada, de
+baixo para cima: 13 rodadas, 103 posts lidos, 71 descartados antes de
+custar (69%: resposta a outra conta, no metadado) e 32 no boletim; 9
+checks, 2 confirmados (2 e 4 veículos) e 7 sem evidência; US$ 1,63 no
+total (X US$ 0,52 estimado + Anthropic US$ 1,11 medido), ou US$ 0,125 por
+dia — a estimativa feita antes, de US$ 6 a 10, usava os posts que a
+fonte antiga entregava como se fossem capturas, e a fonte antiga
+transcrevia as respostas a terceiros como posts. Nada foi reaproveitado
+do cache: a versão do prompt tinha mudado na véspera (regra 9) e o
+veredito só é reusado por 24h. Medição que fica: neste handle, o boletim
+diário custa na casa de US$ 4 por mês.
+
 #### Não existe "o que está em alta"
 
 O radar lê a timeline dos handles escolhidos, numa janela de data, e só

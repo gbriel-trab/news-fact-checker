@@ -328,12 +328,18 @@ def _confere_post(c: "radar.Captura", conexao,
             dados)
 
 
-def monta(dias: int, reenviar: bool = False,
+def monta(dias: int, reenviar: bool = False, *,
+          desde: str = "", ate: str = "",
           ) -> tuple[str, float, list[tuple[set[str], str]], str]:
     """Roda a cadeia e devolve (texto, custo total, [(chaves, resumo)] dos
     posts contidos, HTML do Telegram, quantos posts inéditos falharam).
     Quem marca entrega é o chamador, DEPOIS de gravar — e marca TODAS as
     chaves de cada post.
+
+    Com `desde`/`ate` (datas ou ISO8601), a janela é a pedida em vez de
+    "os últimos `dias`", e o cabeçalho mostra a janela em vez de hoje: é
+    o refazer de um dia passado, um por rodada (06/09/2026). O arquivo
+    continua sendo o de hoje, em append — o registro é de quando rodou.
 
     Com `reenviar`, o estado 'já entregue' é ignorado e a janela inteira
     volta — para auditar formato novo sem apagar histórico. O dedup
@@ -359,7 +365,8 @@ def monta(dias: int, reenviar: bool = False,
                              "índice antes do boletim.")
 
         try:
-            rodada = radar.busca(config.HANDLES_RADAR, dias)
+            rodada = radar.busca(config.HANDLES_RADAR, dias,
+                                 desde=desde, ate=ate)
         except radar.FalhaNoRadar as erro:
             raise SystemExit(f"Busca do radar falhou: {erro}") from erro
 
@@ -380,6 +387,8 @@ def monta(dias: int, reenviar: bool = False,
         # para os carimbos internos (estado, banco), onde comparação
         # importa mais que leitura.
         hoje = datetime.now().astimezone().strftime("%d/%m/%Y")
+        if desde:
+            hoje = f"janela {desde} → {ate or 'agora'} (UTC)"
         handles = ", ".join("@" + h for h in config.HANDLES_RADAR)
         linhas = [f"RADAR · {handles} · {hoje}",
                   "texto literal do post, lido pela API oficial do X — o "
@@ -390,7 +399,8 @@ def monta(dias: int, reenviar: bool = False,
         estruturados: list[tuple[int, radar.Captura, dict]] = []
 
         if not ineditos:
-            linhas.append(f"Nenhum post novo na janela de {dias} dia(s)."
+            linhas.append((f"Nenhum post novo na {hoje}." if desde else
+                           f"Nenhum post novo na janela de {dias} dia(s).")
                           if not rodada.capturas else
                           f"{len(rodada.capturas)} post(s) na janela, todos "
                           f"já entregues em boletins anteriores.")
@@ -737,6 +747,12 @@ def main() -> None:
         description="Boletim do radar: posts com premissas conferidas.")
     parser.add_argument("--dias", type=int, default=1,
                         help="janela da busca (padrão: 1)")
+    parser.add_argument("--desde", default="",
+                        help="início da janela (AAAA-MM-DD ou ISO8601, UTC); "
+                             "com ele, --dias é ignorado")
+    parser.add_argument("--ate", default="",
+                        help="fim EXCLUSIVO da janela (AAAA-MM-DD ou "
+                             "ISO8601, UTC); padrão: agora")
     parser.add_argument("--sem-envio", action="store_true",
                         help="monta e grava o arquivo, não envia")
     parser.add_argument("--reenviar", action="store_true",
@@ -745,8 +761,9 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        texto, custo, contidos, html, falhas = monta(args.dias,
-                                                     reenviar=args.reenviar)
+        texto, custo, contidos, html, falhas = monta(
+            args.dias, reenviar=args.reenviar,
+            desde=args.desde, ate=args.ate)
     except (SystemExit, Exception) as erro:
         # --sem-envio nao avisa: e' o modo de pre-visualizar, e quem
         # o roda esta olhando a tela.

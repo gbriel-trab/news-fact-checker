@@ -131,6 +131,9 @@ Medidos no banco em 05/09/2026:
   rodada completa do separador em 05/09/2026, 2 passadas, US$ 0,57: zero
   regressões, depois de a regra do contexto de thread mudar (a premissa
   do post anterior não sai duas vezes)
+* Boletim refeito dia a dia de 25/08 a 06/09/2026: 13 rodadas, 103 posts
+  lidos, 32 no boletim (o resto era resposta a outra conta, descartada
+  antes de custar), US$ 1,63 no total — US$ 0,125 por dia
 
 ## Rodando
 
@@ -148,6 +151,8 @@ python -m src.x_auth                   # consentimento no navegador, uma vez (gr
                                        # data/x_token.json; feche o painel antes:
                                        # o callback usa a mesma porta 8765)
 python -m src.boletim                  # posts do dia → premissas → vereditos (paga)
+python -m src.boletim --desde 2026-08-25 --ate 2026-08-26   # refaz um dia passado
+                                       # (janela em UTC, fim exclusivo)
 ```
 
 A extração tem `--dry-run` para inspecionar o que seria enviado antes de

@@ -405,7 +405,8 @@ class TestRodadaDoBoletim:
         monkeypatch.setattr(config, "BANCO", tmp_path / "t.db")
         monkeypatch.setattr(grafo, "carrega", lambda con: ["acervo"])
         monkeypatch.setattr(indice, "indexa_artigos", lambda con: None)
-        monkeypatch.setattr(radar, "busca", lambda handles, dias: rodada)
+        monkeypatch.setattr(radar, "busca",
+                            lambda handles, dias, **janela: rodada)
         monkeypatch.setattr(boletim, "_confere_post", conferir)
         return boletim
 
@@ -475,7 +476,7 @@ class TestRodadaDoBoletim:
         contidos = [({"url:1"}, "resumo")]
         monkeypatch.setattr(
             boletim, "monta",
-            lambda dias, reenviar=False: ("texto", 0.0, contidos, "<b>h</b>",
+            lambda dias, reenviar=False, **janela: ("texto", 0.0, contidos, "<b>h</b>",
                                           0))
 
         def roda(argv, resposta):
