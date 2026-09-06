@@ -140,11 +140,28 @@ A cobrança é deduplicada numa janela de 24h UTC, então a estimativa feita no
 cliente é um TETO, não uma medição — a API não devolve preço, e o rodapé do
 boletim rotula essa metade como "estimado" e a da Anthropic como "medido". O
 teto por handle e por rodada é de 100 posts (`radar.LIMITE_POR_HANDLE`,
-US$ 0,50 no pior caso). O post referenciado não é expandido, porque a
-expansão é outro recurso cobrado: a linha de contexto (o pai da thread, o
-post citado) só sai quando o referenciado foi lido na mesma rodada; quando
-não foi, a rodada conta a falta nas notas em vez de inventar a linha. Retweet é lido, pago, descartado — não traz palavra do autor — e
-contado.
+US$ 0,50 no pior caso só de timeline; até US$ 1,50 com a busca à parte
+descrita a seguir e os objetos de autor que ela traz). O post referenciado
+NÃO é expandido na leitura da
+timeline: a expansão traria o referenciado de todo post devolvido,
+inclusive das respostas a terceiros que o radar descarta antes de custar.
+Desde 06/09/2026 ele é BUSCADO À PARTE (`x_api.posts_por_id`, caminho
+`/2/tweets?ids=`, lotes de 100), só para as capturas que precisam — o
+post citado de outra conta, o pai de thread fora da janela — e pago como
+leitura, contado em `lidos` e no estimado. Antes disso, 16 das 19 citações
+do boletim refeito de 25/08 a 06/09 chegavam sem o texto citado. Primeira
+leitura real com a busca, em 06/09: 14 posts da timeline, 3 referenciados
+buscados (dois de outras contas, um do próprio autor fora da janela), o
+servidor aceitou `post.fields` também nesse caminho e `includes.users`
+trouxe o username; US$ 0,10 estimado (14 + 3 + os 3 objetos de autor,
+contados como recurso para o estimado seguir sendo teto — se o X cobra o
+usuário, e quanto, só a fatura diz). Referenciado apagado, protegido ou
+inexistente não volta, e a nota conta a diferença pelos ids pedidos. Lote
+que falha depois de outro ter voltado entrega o que veio (`erro.parciais`)
+e a nota diz o que faltou; thread cujo pai buscado é resposta a terceiro
+cai pela mesma cadeia que vale para a timeline. Os limites vieram de uma
+revisão adversária do diff (22 agentes, 19 achados, 16 confirmados). Retweet é lido, pago,
+descartado — não traz palavra do autor — e contado.
 
 **Duas indefinições da própria documentação, tratadas em código.** As
 páginas de fundamentos e a referência do endpoint discordam sobre os nomes
@@ -168,10 +185,10 @@ custar, e a thread cujo pai estava na mesma janela saiu com a linha de
 contexto preenchida. Custo ESTIMADO US$ 0,055 (11 × US$ 0,005); o real só
 na fatura do X. Duas coisas seguem não confirmadas: se post de conta
 protegida que o dono segue vem pelo endpoint (o handle lido é público), e o
-custo real contra a estimativa. Observação de uso, não de defeito: a
-citação de post de OUTRA conta nunca traz o texto citado, porque só a
-timeline do handle é lida e o referenciado não é expandido — a nota da
-rodada conta isso, e o separador vê só o comentário do autor.
+custo real contra a estimativa. Observação de uso na época, fechada em 06/09: a
+citação de post de OUTRA conta não trazia o texto citado, porque só a
+timeline do handle era lida — hoje o referenciado que falta é buscado à
+parte (ver "Custo").
 
 No mesmo dia o **boletim completo** rodou sobre essas 6 capturas com
 `--sem-envio`: separação dos 6 posts, zero premissas factuais (o conteúdo
@@ -204,10 +221,9 @@ mudar. Em 06/09 o caso real entrou como C28: o filho da thread, com os
 nova do comparador, `proibido`, que vale para qualquer tipo, porque o
 vazamento de 05/09 era opinião, relato e previsão do pai, não fato —
 nenhuma premissa com seis pedaços que só existem no pai. Passou 2/2, US$
-0,07: duas premissas próprias, contra as 20 do boletim de 05/09. O que
-ainda não muda: uma thread cujo pai está FORA da janela
-continua sem linha de contexto (o referenciado não é expandido), e aí a
-referência do filho fica sem resolver — a nota da rodada conta isso.
+0,07: duas premissas próprias, contra as 20 do boletim de 05/09. Desde 06/09
+à noite, uma thread cujo pai está FORA da janela também ganha a linha de
+contexto, pela busca à parte do referenciado (ver "Custo").
 
 **Refazer dias passados (06/09/2026).** `radar.busca` e `boletim.monta`
 aceitam `desde`/`ate` (só por nome; a assinatura antiga segue valendo), e
