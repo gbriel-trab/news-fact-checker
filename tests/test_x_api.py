@@ -144,9 +144,8 @@ class TestClassifica:
     """A derivação do tipo. Função pura — nenhum destes precisa de rede."""
 
     def test_raiz_de_conversa_e_post(self):
-        tipo, pai, autor = classifica(post_cru(id="7", conversation_id="7"),
-                                      "handle", {})
-        assert (tipo, pai, autor) == ("post", "", "")
+        cru = post_cru(id="7", conversation_id="7")
+        assert classifica(cru) == ("post", "")
 
     def test_resposta_a_si_mesmo_e_thread(self):
         """O caso C25 do gabarito: o autor continuando a própria conversa.
@@ -156,8 +155,7 @@ class TestClassifica:
         `in_reply_to_user_id == author_id`, comparação de IDS."""
         cru = post_cru(id="8", conversation_id="7", in_reply_to_user_id=AUTOR,
                        referenced_posts=[{"type": "replied_to", "id": "7"}])
-        assert classifica(cru, "handle", {AUTOR: "handle"}) == (
-            "thread", "7", "handle")
+        assert classifica(cru) == ("thread", "7")
 
     def test_resposta_a_terceiro(self):
         """Resposta a outra conta: o id do autor do pai vem do servidor, e a
@@ -166,25 +164,17 @@ class TestClassifica:
         cru = post_cru(id="8", conversation_id="7",
                        in_reply_to_user_id=TERCEIRO,
                        referenced_posts=[{"type": "replied_to", "id": "7"}])
-        tipo, pai, autor = classifica(cru, "handle", {AUTOR: "handle"})
-        assert (tipo, pai) == ("resposta", "7")
-        assert autor == ""
-
-    def test_nomeia_o_terceiro_quando_o_username_e_conhecido(self):
-        cru = post_cru(id="8", in_reply_to_user_id=TERCEIRO, conversation_id="7",
-                       referenced_posts=[{"type": "replied_to", "id": "7"}])
-        assert classifica(cru, "handle",
-                          {AUTOR: "handle", TERCEIRO: "outro"})[2] == "outro"
+        assert classifica(cru) == ("resposta", "7")
 
     def test_citacao(self):
         cru = post_cru(id="9", conversation_id="9",
                        referenced_posts=[{"type": "quoted", "id": "5"}])
-        assert classifica(cru, "handle", {}) == ("citacao", "5", "")
+        assert classifica(cru) == ("citacao", "5")
 
     def test_retweet(self):
         cru = post_cru(id="9", conversation_id="9",
                        referenced_posts=[{"type": "retweeted", "id": "5"}])
-        assert classifica(cru, "handle", {}) == ("retweet", "5", "")
+        assert classifica(cru) == ("retweet", "5")
 
     def test_le_os_dois_dialetos_do_campo(self):
         """`referenced_tweets` e `referenced_posts` são o mesmo dado.
@@ -193,7 +183,7 @@ class TestClassifica:
         post não é."""
         antigo = post_cru(id="9", conversation_id="9",
                           referenced_tweets=[{"type": "quoted", "id": "5"}])
-        assert classifica(antigo, "handle", {})[0] == "citacao"
+        assert classifica(antigo)[0] == "citacao"
 
     def test_resposta_que_tambem_cita_e_resposta(self):
         """Os dois tipos coexistem, e o mais restritivo ganha.
@@ -205,7 +195,7 @@ class TestClassifica:
                        in_reply_to_user_id=TERCEIRO,
                        referenced_posts=[{"type": "quoted", "id": "3"},
                                          {"type": "replied_to", "id": "7"}])
-        assert classifica(cru, "handle", {})[0] == "resposta"
+        assert classifica(cru)[0] == "resposta"
 
     def test_sem_metadado_falha_fechado(self):
         """Sem `referenced` e sem `conversation_id == id`, vira `resposta`.
@@ -213,8 +203,7 @@ class TestClassifica:
         Não dá para provar que é raiz, e o projeto já decidiu, em
         `radar.separa_por_tipo`, que prefere perder post legítimo a
         deixar entrar resposta a terceiro."""
-        assert classifica({"id": "8", "author_id": AUTOR}, "handle", {})[0] == (
-            "resposta")
+        assert classifica({"id": "8", "author_id": AUTOR})[0] == "resposta"
 
     def test_replied_to_sem_autor_do_pai_nao_vira_thread(self):
         """Sem `in_reply_to_user_id` não se afirma que o pai é o próprio autor.
@@ -223,12 +212,13 @@ class TestClassifica:
         post próprio."""
         cru = post_cru(id="8", conversation_id="7",
                        referenced_posts=[{"type": "replied_to", "id": "7"}])
-        assert classifica(cru, "handle", {AUTOR: "handle"})[0] == "resposta"
+        assert classifica(cru)[0] == "resposta"
 
-    def test_nao_toca_no_dicionario_de_autores(self):
-        autores = {AUTOR: "handle"}
-        classifica(post_cru(id="7", conversation_id="7"), "handle", autores)
-        assert autores == {AUTOR: "handle"}
+    def test_nao_toca_no_post(self):
+        cru = post_cru(id="7", conversation_id="7")
+        antes = dict(cru)
+        classifica(cru)
+        assert cru == antes
 
 
 class TestPontaAPonta:
@@ -254,10 +244,6 @@ class TestPontaAPonta:
         assert post.tipo != "post"
         assert post.tipo == "resposta"
         assert post.pai_id == "7"
-        # O id do terceiro é conhecido, o username não — e vazio aqui é "não
-        # sei", não "é o dono da timeline". Foi essa substituição silenciosa
-        # que o modelo fez.
-        assert post.pai_autor == ""
 
     def test_thread_do_proprio_autor_sobrevive(self, monkeypatch):
         """O outro lado do mesmo filtro, e o que torna a regra útil.
@@ -272,7 +258,7 @@ class TestPontaAPonta:
                                                   "id": "7"}])))
         (post,) = posts_de("handle", "2026-09-01")
         assert post.tipo == "thread"
-        assert post.pai_autor == "handle"
+        assert post.pai_id == "7"
 
     def test_os_cinco_tipos_saem_de_uma_pagina_so(self, monkeypatch):
         """A tabela inteira atravessando `_monta`, na ordem em que chegou.

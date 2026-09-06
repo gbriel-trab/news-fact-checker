@@ -1,4 +1,4 @@
-"""A quarta saída: contexto quando não há premissa para conferir.
+"""A terceira saída: contexto quando não há premissa para conferir.
 
 Todo teste INJETA a busca. `indice.DIR_INDICE` é global e aponta para a
 coleção de produção — teste que não injeta lê o acervo do dia e muda de

@@ -19,11 +19,10 @@ UTC, o que torna toda estimativa deste módulo um TETO, nunca uma medição
 (ver `custo_estimado_usd`).
 
 Este módulo NÃO expande `referenced_*.id`. A doc avisa que a expansão traz o
-post referenciado como recurso adicional — outra cobrança —, e o único dado
-que ela acrescentaria aqui é o username do autor de um quote ou retweet.
-Consequência assumida: `pai_autor` fica vazio nesses dois casos. Na resposta,
-que é o caso que importa para o filtro, `in_reply_to_user_id` já resolve de
-graça.
+post referenciado como recurso adicional — outra cobrança —, e o que ela
+acrescentaria (texto e autor do referenciado) o radar resolve pelo índice da
+própria rodada quando o referenciado foi lido. Na resposta, que é o caso que
+importa para o filtro, `in_reply_to_user_id` já resolve de graça.
 
 SUPERFÍCIE DE EXCEÇÃO — o contrato com quem chamar. Da fachada pública
 (`posts_de`, `id_do_handle`) sai `FalhaNaAPI` ou `PrecisaAutorizar`, DUAS e
@@ -106,7 +105,6 @@ class Post:
     texto: str
     tipo: str
     pai_id: str = ""
-    pai_autor: str = ""
     url: str = ""
 
 
@@ -175,9 +173,8 @@ def custo_estimado_usd(posts_lidos: int) -> float:
 
 # --- Derivação do tipo (o coração do módulo) ------------------------------
 
-def classifica(post: dict, autor_do_handle: str,
-               autores: dict) -> tuple[str, str, str]:
-    """(tipo, pai_id, pai_autor) a partir do metadado do servidor.
+def classifica(post: dict) -> tuple[str, str]:
+    """(tipo, pai_id) a partir do metadado do servidor.
 
     Função pura: não toca em rede, e é o coração do módulo. As regras, na
     ordem em que são aplicadas:
@@ -197,12 +194,9 @@ def classifica(post: dict, autor_do_handle: str,
     contra `author_id`. Handle escrito muda, abrevia e chega truncado; o id
     de uma conta não muda.
 
-    `autor_do_handle` é o username (sem @) do dono da timeline, que assina
-    todos os posts desta página, inclusive os retweets. `autores` mapeia id de
-    usuário -> username para o que se souber; sem expansão, costuma ter só o
-    dono, e nesse caso `pai_autor` de quote e retweet sai vazio. Vazio aqui é
-    "não sei", e é honesto: o id do pai está em `pai_id` para quem quiser
-    resolver depois.
+    O autor do referenciado NÃO sai daqui: sem expansão ele só é conhecido
+    quando o referenciado foi lido na mesma rodada, e é o radar que o resolve
+    pelo índice da rodada. O id do pai está em `pai_id` para isso.
 
     Falha FECHADO: post sem `referenced` e sem `conversation_id` igual ao
     próprio id vira `resposta`. Sem metadado não dá para provar que é raiz, e
@@ -214,9 +208,6 @@ def classifica(post: dict, autor_do_handle: str,
     silencioso.
     """
     autor_id = str(post.get("author_id") or "")
-    nomes = dict(autores or {})
-    if autor_id:
-        nomes.setdefault(autor_id, autor_do_handle)
 
     # Os dois nomes são lidos SEMPRE, independentemente do que a sonda tenha
     # escolhido na requisição: ler é grátis e o empate documental não deve
@@ -231,24 +222,20 @@ def classifica(post: dict, autor_do_handle: str,
     if "replied_to" in por_tipo:
         pai_id = por_tipo["replied_to"]
         pai_uid = str(post.get("in_reply_to_user_id") or "")
-        pai_autor = nomes.get(pai_uid, "")
         if pai_uid and autor_id and pai_uid == autor_id:
-            return "thread", pai_id, pai_autor or autor_do_handle
+            return "thread", pai_id
         # Sem `in_reply_to_user_id` não há como afirmar que o pai é o próprio
-        # autor, e presumir que é seria o mesmo falhar aberto de antes.
-        return "resposta", pai_id, pai_autor
-    # Retweet e citação saem com `pai_autor` vazio: o autor do post
-    # referenciado só viria expandindo `referenced_*.id`, que é outra cobrança
-    # (ver o cabeçalho do módulo). O id fica em `pai_id` para quem quiser.
+        # autor, e presumir que é seria falhar aberto.
+        return "resposta", pai_id
     if "retweeted" in por_tipo:
-        return "retweet", por_tipo["retweeted"], ""
+        return "retweet", por_tipo["retweeted"]
     if "quoted" in por_tipo:
-        return "citacao", por_tipo["quoted"], ""
+        return "citacao", por_tipo["quoted"]
 
     ident = str(post.get("id") or "")
     if ident and str(post.get("conversation_id") or "") == ident:
-        return "post", "", ""
-    return "resposta", "", ""
+        return "post", ""
+    return "resposta", ""
 
 
 def texto_integral(post: dict) -> str:
@@ -505,9 +492,6 @@ def posts_de(handle: str, desde: str, ate: str = "",
     base: dict = {"start_time": _iso(desde)}
     if ate:
         base["end_time"] = _iso(ate)
-    # O dono da timeline é o único autor conhecido sem pagar expansão, e é o
-    # que basta para separar thread própria de resposta a terceiro.
-    autores = {id_usuario: nome}
 
     colhidos: list[Post] = []
     pagina = ""
@@ -525,7 +509,7 @@ def posts_de(handle: str, desde: str, ate: str = "",
         rendeu = 0
         for cru in (dados.get("data") or []):
             if isinstance(cru, dict):
-                colhidos.append(_monta(cru, nome, autores))
+                colhidos.append(_monta(cru, nome))
                 rendeu += 1
         seguinte = str((dados.get("meta") or {}).get("next_token") or "")
         # Quatro paradas, e é preciso ter as quatro. Sem token, ou com o token
@@ -542,8 +526,8 @@ def posts_de(handle: str, desde: str, ate: str = "",
     return colhidos[:limite]
 
 
-def _monta(cru: dict, nome: str, autores: dict) -> Post:
-    tipo, pai_id, pai_autor = classifica(cru, nome, autores)
+def _monta(cru: dict, nome: str) -> Post:
+    tipo, pai_id = classifica(cru)
     ident = str(cru.get("id") or "")
     # O objeto Post da API não traz a URL do próprio post; ela se monta. Sem
     # id não há link, e link inventado é pior que link ausente.
@@ -554,6 +538,5 @@ def _monta(cru: dict, nome: str, autores: dict) -> Post:
         texto=texto_integral(cru),
         tipo=tipo,
         pai_id=pai_id,
-        pai_autor=pai_autor,
         url=f"https://x.com/{nome}/status/{ident}" if ident else "",
     )

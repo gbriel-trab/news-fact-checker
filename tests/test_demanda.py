@@ -128,7 +128,6 @@ class TestConferePostEstado:
         uso = SimpleNamespace(custo=0.0)
         monkeypatch.setattr("src.premissas.separa",
                             lambda texto, conexao=None: (analise, uso))
-        monkeypatch.setattr("src.radar.para_separacao", lambda p: p)
         monkeypatch.setattr(
             demanda, "garante",
             lambda c, t, o: demanda.Resultado("extraiu", 1, 3, 0.20))
@@ -140,9 +139,13 @@ class TestConferePostEstado:
 
         monkeypatch.setattr("src.check.verifica", check_fake)
 
+        from src.radar import Captura
+        from src.x_api import Post
+        captura = Captura(Post(id="1", autor="x", criado_em="",
+                               texto="post", tipo="post"))
         estado = {"acervo": ["velho"], "orcamento": demanda.TETO_USD}
         with pytest.raises(RuntimeError):
-            boletim._confere_post("post", _ConexaoFalsa(), estado)
+            boletim._confere_post(captura, _ConexaoFalsa(), estado)
         assert estado["orcamento"] == pytest.approx(demanda.TETO_USD - 0.20)
         assert estado["acervo"] == ["novo"]
 

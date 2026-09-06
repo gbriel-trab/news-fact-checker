@@ -1,4 +1,4 @@
-"""A quarta saída: o que o acervo tem sobre o assunto, quando não há
+"""A terceira saída: o que o acervo tem sobre o assunto, quando não há
 premissa para conferir.
 
 Nasce do post das recuperações judiciais (03/09/2026). O separador acerta
@@ -41,8 +41,8 @@ indexadas), com controle negativo, não escolhidos por gosto:
                   cobrindo assunto, é coincidência de vocabulário.
 
                   Subiu de 3/2 para 5/3 em 03/09/2026, com dois pontos
-                  medidos. O caso ruim é o post de uma frase do status
-                  1000000000000000006 (boletim de 03/09/2026, item [3]):
+                  medidos. O caso ruim é um post de uma frase (boletim de
+                  03/09/2026, item [3]):
                   gerou a hipótese "uma ferramenta de IA não conseguiu
                   resolver algo... o texto não identifica a tarefa", e o
                   contexto saiu com 3 matérias em 2 veículos sobre
@@ -88,7 +88,7 @@ AMOSTRA = 5
 das recuperações judiciais não exibia marca nenhuma."""
 
 LIGADO = False
-"""A quarta saída está DESLIGADA desde 03/09/2026, e o motivo é uma
+"""A terceira saída está DESLIGADA desde 03/09/2026, e o motivo é uma
 medição, não desânimo.
 
 Ela saiu em 4 dos 5 posts de um boletim entregue e errou em 3:

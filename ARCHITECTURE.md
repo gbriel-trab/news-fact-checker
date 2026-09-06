@@ -39,7 +39,7 @@ O sistema não é um pipeline só. São dois, com gatilhos diferentes.
 ```
 ┌── INGESTÃO ─────────────────── gatilho: relógio, a cada 15 min ───┐
 │                                                                   │
-│   Coleta RSS → Segmentação → Classificação → Extração de triplas  │
+│   Coleta RSS → Segmentação → Seleção aos pares → Extração        │
 │                                                    ↓              │
 │                                   índice vetorial + grafo         │
 └───────────────────────────────────────────────────────────────────┘
@@ -104,7 +104,10 @@ post descartado cai junto (cadeia, até estabilizar) — leem campos do
 `Post`, nunca o texto: o texto é do autor, e o autor escreve o que quiser.
 Texto só nasce nas duas saídas, o que o separador recebe
 (`radar.para_separacao`) e o que console e arquivo mostram
-(`radar.como_texto`), e nenhuma das duas é lida de volta por ninguém. O que
+(`radar.como_texto`). A segunda ninguém lê de volta; a primeira é lida pelo
+modelo e, em código, por `premissas.texto_ancoravel` — que tira o cabeçalho
+e a linha do post citado antes de ancorar referentes — e esse é o único
+reparse que resta, contratado nas duas constantes de `premissas`. O que
 foi lido e não virou captura sai com o motivo, no arquivo do boletim e no
 painel, e contado nas notas do Telegram: descarte silencioso é o que esconde
 defeito.
@@ -152,11 +155,16 @@ a conta enxerga, não do que o endpoint entrega. Consequência: o radar cobre
 apenas handles PÚBLICOS, testados um a um antes de entrar na lista; conta
 protegida fica de fora até isso ser medido.
 
-**Estado:** nada foi rodado ao vivo contra a API do X ainda — as credenciais
-não foram criadas. A camada inteira está coberta por teste sem rede
-(`tests/test_x_api.py`, `tests/test_x_auth.py`, `tests/test_radar.py`), e o
-que está escrito acima é o que a documentação diz e o que o código faz, não
-o que foi observado.
+**Estado (05/09/2026):** o app foi criado no console do X (Native App,
+escopo Read) e o consentimento OAuth foi feito uma vez, no navegador do
+dono: `data/x_token.json` existe, fora do Git, com os três escopos. Nenhuma
+LEITURA de timeline foi feita ainda. A camada inteira está coberta por
+teste sem rede (`tests/test_x_api.py`, `tests/test_x_auth.py`,
+`tests/test_radar.py`), e o que está escrito acima é o que a documentação
+diz e o que o código faz, não o que foi observado. A primeira leitura decide
+três coisas marcadas como não confirmadas no código: o dialeto dos campos
+que o servidor aceita, se post de conta protegida vem, e o custo real contra
+a estimativa.
 
 #### Não existe "o que está em alta"
 
@@ -308,7 +316,7 @@ E recusa de grupo na extração (`mesma_historia=false`) contava como "matéria
 já extraída" para a demanda, deixando invisível uma matéria que entrou num
 grupo errado; agora leva a marca `recusada` e volta a ser elegível.
 
-### A quarta saída: contexto, quando não há premissa para conferir
+### A terceira saída: contexto, quando não há premissa para conferir
 
 **DESLIGADA em 03/09/2026, no mesmo dia em que entrou** (`contexto.LIGADO = False`). O código, os testes e os limiares medidos ficam; o que falta é o gate.
 
@@ -627,22 +635,21 @@ existência e da data do comunicado, não do texto dele.
 
 ### Rede social é radar, nunca evidência
 
-O caso que motiva: um assunto ganha tração antes de a imprensa brasileira
-cobrir, ou sem que ela vá cobrir.
+O post de um handle acompanhado é a AFIRMAÇÃO a conferir, nunca a
+evidência:
 
 ```
-rede social  →  assunto em alta
-                    ↓
-        busca a fonte primária sobre ele
-                    ↓
-   registro existe   →  confirmado, citando a instituição
-   registro ausente  →  "circulando, sem registro na fonte oficial"
+post do handle  →  separador tira as premissas factuais
+                          ↓
+              cada premissa é buscada no acervo
+                          ↓
+   acervo cobre      →  confirmado ou contradito, citando os veículos
+   acervo não cobre  →  "sem evidência" — não "o autor errou"
 ```
 
-O post nunca entra como evidência. Ele indica **onde olhar**; a evidência vem
-sempre da instituição ou da imprensa. Isso preserva o princípio de que todo
-veredito carrega fonte rastreável — resumo de modelo sobre o que está
-circulando não seria citável.
+O post nunca entra no acervo nem conta como veículo. Ele indica **onde
+olhar**; a evidência vem sempre da imprensa ou da instituição. Isso preserva
+o princípio de que todo veredito carrega fonte rastreável.
 
 Implementado em `radar.py` sobre a API oficial do X — ver "Rede social pela
 API oficial do X", em "De onde vem a afirmação".
@@ -1130,8 +1137,8 @@ leitor tem de rolar até a entrada); a mesma URL é recoletada sem parar e vira
 N "matérias" (o Ibovespa ao vivo do InfoMoney está 31 vezes no acervo); e a
 `data_publicacao` é a de ABERTURA da cobertura, não a do fato.
 
-`normalize.e_live` detecta pelo caminho da URL. A fonte sai marcada **live
-search** no boletim. A CONTAGEM de veículos não muda — decisão explícita: o
+`normalize.e_live` detecta pelo caminho da URL. A fonte sai marcada
+**liveblog** no boletim. A CONTAGEM de veículos não muda — decisão explícita: o
 fato é real e o veículo realmente o publicou. Mas quando são EXATAMENTE dois
 veículos e um é liveblog, o critério do AC1 passa a se apoiar num link que
 não sustenta o fato sozinho, e aí `check.apoio_fragil` avisa. Com três ou
@@ -1341,7 +1348,7 @@ incidentes de 31/08 a 02/09. Ressalva de método: nenhum dos 48 esperados foi
 revisado pelo dono do projeto ainda; até lá a bateria cobra do modelo a
 leitura de quem a escreveu.
 
-**RODADA EM 04/09/2026**, depois de o texto do separador mudar de contrato
+**RODADA EM 05/09/2026**, depois de o texto do separador mudar de contrato
 (cabeçalho sem número de rodada, contexto sem handle nem link — ver "Rede
 social pela API oficial do X"): 27 casos × 2 vezes, US$ 0,53. Uma
 regressão, e ela era do gabarito, não do prompt: o C13 ("André foi lá e

@@ -13,9 +13,11 @@ A unidade que atravessa o módulo é o `x_api.Post`: texto literal do autor
 (registro do servidor) e tipo CALCULADO de metadado em `x_api.classifica`.
 As barreiras operam nos CAMPOS do post — id, tipo, pai_id —, nunca no
 texto: o texto é do autor, e o autor escreve o que quiser. Texto só nasce
-nas duas fronteiras de saída, `para_separacao` (o que o separador de
-premissas recebe) e `como_texto` (o que console e arquivo mostram), e
-nenhuma das duas é lida de volta por ninguém.
+nas duas fronteiras de saída: `como_texto` (o que console e arquivo
+mostram), que ninguém lê de volta, e `para_separacao` (o que o separador
+de premissas recebe), que o modelo lê e que `premissas.texto_ancoravel`
+lê em código, por dois prefixos contratados lá — é o único reparse que
+resta, e está dito onde acontece.
 
 Honestidade que a saída carrega sempre: conferir premissas de um post é
 CONFERÊNCIA, nunca placar do autor. Premissa sem evidência = o acervo não
@@ -226,11 +228,13 @@ def barreiras(posts) -> tuple[list[Post], list[tuple[Post, str]], list[str]]:
     ficam, fora = cadeia(ficam, fora)
 
     conta: dict[str, int] = {}
-    estranhos: set[str] = set()
     for _, motivo in fora:
-        if motivo.startswith(_ESTRANHO):
-            estranhos.add(motivo[len(_ESTRANHO):])
         conta[motivo] = conta.get(motivo, 0) + 1
+    # O nome do tipo desconhecido vem do CAMPO do post, não de fatiar a
+    # string do motivo.
+    estranhos = {p.tipo for p, _ in fora
+                 if p.tipo not in TIPOS_QUE_FICAM
+                 and p.tipo not in ("resposta", "retweet")}
 
     notas: list[str] = []
     if conta.get(_REPETIDO):
@@ -416,8 +420,9 @@ def busca(handles: tuple[str, ...], dias: int = 2) -> Rodada:
         # A regra do dono é informar o custo ESTIMADO antes e o REAL depois.
         # Por esta via o real não existe: o X não devolve preço nenhum. O
         # que fica é uma multiplicação nossa, e ainda por cima um TETO
-        # (cobrança deduplicada em 24h UTC), e por isso a palavra
-        # "estimado" está no texto que chega ao rodapé do boletim.
+        # (cobrança deduplicada em 24h UTC). Este detalhe vai só para o
+        # console do radar; o rodapé do boletim rotula a metade da busca
+        # como estimada por conta própria.
         detalhe_custo=(
             f"custo ESTIMADO no cliente: {len(lidos)} post(s) devolvido(s) "
             f"× US$ {x_api.PRECO_POR_POST_USD:.3f} — teto, não medição; o "

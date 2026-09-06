@@ -60,10 +60,10 @@ H = ("perfil_teste",)
 
 
 def _post(ident, texto, tipo="post", quando="2026-09-03T17:50:11Z",
-          pai_id="", pai_autor="", autor="perfil_teste"):
+          pai_id="", autor="perfil_teste"):
     """Um `x_api.Post` sintético, como o cliente da API o entregaria."""
     return Post(id=ident, autor=autor, criado_em=quando, texto=texto,
-                tipo=tipo, pai_id=pai_id, pai_autor=pai_autor,
+                tipo=tipo, pai_id=pai_id,
                 url=f"https://x.com/{autor}/status/{ident}" if ident else "")
 
 
@@ -159,8 +159,7 @@ class TestSeparaPorTipo:
         servidor: `x_api.classifica` só chama de `resposta` o que responde
         a outra conta, e o motivo diz isso — ele vai para o arquivo."""
         ficam, fora = radar.separa_por_tipo(
-            [_post("9", "explica ai", tipo="resposta", pai_id="7",
-                   pai_autor="terceiro")])
+            [_post("9", "explica ai", tipo="resposta", pai_id="7")])
         assert ficam == []
         assert "in_reply_to_user_id" in fora[0][1]
 
@@ -183,17 +182,16 @@ class TestCadeia:
 
     def test_thread_pendurada_em_resposta_cai(self):
         resposta = _post("9001", "resposta a terceiro", tipo="resposta",
-                         pai_id="777", pai_autor="terceiro")
+                         pai_id="777")
         filha = _post("9002", "auto-resposta na cadeia", tipo="thread",
-                      pai_id="9001", pai_autor="perfil_teste")
+                      pai_id="9001")
         ficam, fora = radar.separa_por_tipo([resposta, filha])
         ficam, fora = radar.cadeia(ficam, fora)
         assert ficam == []
         assert dict((p.id, m) for p, m in fora)["9002"] == radar._CADEIA
 
     def test_neto_cai_tambem(self):
-        resposta = _post("1", "r", tipo="resposta", pai_id="0",
-                         pai_autor="terceiro")
+        resposta = _post("1", "r", tipo="resposta", pai_id="0")
         filha = _post("2", "f", tipo="thread", pai_id="1")
         neta = _post("3", "n", tipo="thread", pai_id="2")
         ficam, fora = radar.separa_por_tipo([resposta, filha, neta])
@@ -335,8 +333,9 @@ class TestParaSeparacao:
         assert "TOKEN-2" not in texto_ancoravel(texto)
 
     def test_texto_do_autor_sai_inteiro_e_literal(self):
-        """O texto é literal do autor: traço, "POST 9", o que for. Nada
-        aqui reparseia o que sai, então nada pode cortar."""
+        """O texto é literal do autor: traço, "POST 9", o que for. O radar
+        não reparseia o que produz; o único leitor em código é
+        `premissas.texto_ancoravel`, que tira só a PRIMEIRA linha."""
         armadilha = ("primeira metade TOKEN-D\n---\n"
                      "POST 9 (@fake, x):\nsegunda metade TOKEN-E")
         texto = radar.para_separacao(Captura(_post("111", armadilha)))
@@ -391,7 +390,7 @@ class TestBusca:
         _liga(monkeypatch, {"perfil_teste": (
             _post("111", "A Selic esta em 15% TOKEN-P"),
             _post("900", "explica ai TOKEN-R", tipo="resposta",
-                  pai_id="777", pai_autor="terceiro"))})
+                  pai_id="777"))})
         r = radar.busca(H, 2)
         assert [c.post.id for c in r.capturas] == ["111"]
         assert any("resposta a terceiro" in n and "in_reply_to_user_id" in n
@@ -505,11 +504,10 @@ class TestBusca:
 
 
 class TestConsumidoresDoBoletim:
-    def test_chaves_de_dedup_saem_do_id_e_do_texto(self):
+    def test_chave_de_dedup_e_o_id_e_so_sem_id_cai_no_texto(self):
         from src.boletim import _chaves_do_post, _hash_post
         c = Captura(_post("111", "A Selic esta em 15%"))
-        assert _chaves_do_post(c) == {"url:111",
-                                      _hash_post("A Selic esta em 15%")}
+        assert _chaves_do_post(c) == {"url:111"}
         assert _chaves_do_post(Captura(_post("", "sem id"))) == {
             _hash_post("sem id")}
 

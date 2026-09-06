@@ -63,40 +63,29 @@ def _modelo():
     dependencia de rede que o resto do `check.py` nao tem, e um aviso de token
     impresso no meio da resposta, que parece defeito do sistema.
 
+    O offline e pedido por PARAMETRO (`local_files_only=True`), nao por
+    variavel de ambiente: o huggingface_hub 1.x ignora HF_HUB_OFFLINE na
+    consulta de metadados que precede todo carregamento (file_download.py
+    so olha `local_files_only`), e a suite inteira ficou dependente de
+    internet sem ninguem notar -- 18 testes faziam um HEAD em
+    huggingface.co a cada rodada (auditoria de 05/09/2026). Com o
+    parametro, nenhuma requisicao sai: provado com socket, requests e
+    httpx bloqueados (tests/conftest.py).
+
     Cai para online quando o cache ainda nao existe, que e a primeira execucao
     de quem clonou o repositorio.
     """
     import os
 
-    # A variavel PRECISA ser definida antes do import: huggingface_hub le
-    # HF_HUB_OFFLINE uma vez, no proprio import, e guarda numa constante.
-    # Definir depois nao tem efeito nenhum e nao da erro -- so continua online.
-    anterior = os.environ.get("HF_HUB_OFFLINE")
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    # Mesma regra da linha acima: antes do import, ou nao vale.
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
     os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
-    try:
-        from sentence_transformers import SentenceTransformer
+    from sentence_transformers import SentenceTransformer
 
-        return SentenceTransformer(MODELO_EMBEDDING)
+    try:
+        return SentenceTransformer(MODELO_EMBEDDING, local_files_only=True)
     except Exception:
         # Sem cache ainda: precisa baixar mesmo. A barra de progresso aqui e
         # bem-vinda -- sao ~450 MB e o silencio pareceria travamento.
-        if anterior is None:
-            os.environ.pop("HF_HUB_OFFLINE", None)
-        else:
-            os.environ["HF_HUB_OFFLINE"] = anterior
-        # Reimporta: o modulo ja carregado guardou a constante antiga, e so um
-        # processo novo a releria. Aqui basta porque a primeira execucao ainda
-        # nao tinha o modulo carregado quando entrou no try.
-        import importlib
-
-        import huggingface_hub.constants
-
-        importlib.reload(huggingface_hub.constants)
-        from sentence_transformers import SentenceTransformer
-
         return SentenceTransformer(MODELO_EMBEDDING)
 
 

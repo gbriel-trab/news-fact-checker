@@ -2,7 +2,7 @@
 │                                                                    │
 │   coleta_agendada.pyw → collect.py → RSS de N veículos             │
 │                                          ↓                         │
-│                                    tabela `artigos`   (12.282)     │
+│                                    tabela `artigos`   (12.464)     │
 └──────────────────────────────────────────────────────────────────┘
 
 ┌─ 2. EXTRAÇÃO ──────────────────────── manual: python -m src.extract ───┐
@@ -16,16 +16,16 @@
                     ↓
 ┌─ 3. BOLETIM ── diário, agendador ─────────────────────────────────┐
 │  radar → API oficial do X (posts do handle)                        │
-│    ↓  filtros em código                                            │
+│    ↓  barreiras por campo: id, tipo, cadeia                        │
 │  premissas (Opus) separa                                           │
 │    ↓  só `fato` segue                                              │
+│  check (juiz, Opus) → veredito com as fontes                       │
+│    ↓  "sem evidência"?                                             │
 │  ┌─────────────────────────────┐                                   │
 │  │ demanda: acervo não cobre?  │                                   │
-│  │   extrai 2-4 matérias AGORA │◄──── só depois de "sem evidência" │
-│  │   (teto por rodada)         │                                   │
+│  │   extrai 2-4 matérias AGORA │──► check de novo, sobre o acervo  │
+│  │   (teto por rodada)         │    recém-extraído                 │
 │  └─────────────────────────────┘                                   │
-│    ↓                                                               │
-│  check (juiz, Opus) → veredito com as fontes                       │
 │    ↓                                                               │
 │  Telegram                                                          │
 └──────────────────────────────────────────────────────────────────┘

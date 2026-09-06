@@ -98,7 +98,7 @@ class TestComparadorDePremissas:
         assert falhas and "faltou [relato]" in falhas[0]
 
     def test_tipo_pode_ser_lista_e_qualquer_um_serve(self):
-        """O C13 (04/09/2026): "nada mudou" saiu nao_verificavel 2/2 com o
+        """O C13 (05/09/2026): "nada mudou" saiu nao_verificavel 2/2 com o
         esperado exigindo opinião, e a taxonomia ali não decide — o que o
         caso cobra é zero fatos. Uma lista aceita os dois; fora dela,
         continua falhando, com os dois nomes na mensagem."""

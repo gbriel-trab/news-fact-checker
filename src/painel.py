@@ -1,4 +1,4 @@
-"""Painel local para inspecionar e testar o sistema à mão.
+"""Painel local para inspecionar o sistema e disparar o radar.
 
     python -m src.painel            # sobe em http://127.0.0.1:8765
 

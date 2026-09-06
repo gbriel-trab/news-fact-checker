@@ -190,7 +190,11 @@ def reproduz_exemplo(caso: dict, prompt: str,
                      minimo: int = PALAVRAS_EXEMPLO) -> bool:
     """O corpo do caso compartilha `minimo` palavras seguidas com o
     prompt: é exemplo literal, e passar nele prova reprodução."""
-    corpo = (caso.get("texto") or caso.get("afirmacao", "")).split("\n", 1)[-1]
+    # O corpo vem do registro do post quando existe; o corte por linha fica
+    # só para caso de check (sem `post`) e cortaria a linha de contexto
+    # junto com o cabeçalho.
+    corpo = (caso.get("post") or {}).get("texto") or (
+        caso.get("texto") or caso.get("afirmacao", "")).split("\n", 1)[-1]
     alvo = _normaliza(prompt)
     palavras = _normaliza(corpo).split()
     return any(" ".join(palavras[i:i + minimo]) in alvo

@@ -11,8 +11,10 @@ evidência vem de um acervo próprio de notícias, e todo veredito cita quem
 afirmou o quê, com link.
 
 Como o boletim diário apresenta um post: o separador tira dele a premissa
-factual e o veredito sai do acervo. O formato é o real; o caso abaixo é uma
-reconstrução de uma verificação de agosto/2026, com o perfil omitido.
+factual e o veredito sai do acervo. O caso abaixo é uma reconstrução
+abreviada de uma verificação de agosto/2026, com o perfil omitido e sem o
+bloco EVIDÊNCIA (veículo, manchete e link de cada fonte) que o boletim
+imprime antes do POR QUE.
 
 ```
 $ python -m src.boletim
@@ -116,29 +118,34 @@ Decisões que fazem diferença, todas documentadas com medição no
 
 ## Números atuais (medidos, não estimados)
 
-* Acervo: 11.022 matérias de 20 veículos, coleta a cada 15 min
-* 3.056 afirmações extraídas de 298 matérias
-* **71 fatos confirmados por 2+ veículos independentes**
-* 625 testes; a camada de verificação — onde erro é silencioso — é a mais
-  coberta
-* Gabarito de regressão dos prompts: 25 casos do separador (× 2 rodadas —
-  ficam fora do repositório, porque reproduzem texto de post) e
-  23 do juiz, 0 regressões na primeira rodada completa (03/09/2026),
-  US$ 0,79 no total — e aplicado de graça às separações antigas gravadas,
-  acusa todos os incidentes que motivaram cada regra
+Medidos no banco em 05/09/2026:
+
+* Acervo: 12.464 matérias de 20 veículos, coleta a cada 15 min
+* 3.056 afirmações extraídas de 326 matérias
+* **301 fatos confirmados por 2+ veículos independentes**, de 1.395
+  fatos distintos
+* 625 testes, todos sem rede; a camada de verificação — onde erro é
+  silencioso — é a mais coberta
+* Gabarito de regressão dos prompts: 27 casos do separador (ficam fora do
+  repositório, porque reproduzem texto de post) e 23 do juiz. Última
+  rodada completa do separador em 05/09/2026, 2 passadas, US$ 0,53: uma
+  regressão, que era da expectativa do gabarito e não do prompt (C13)
 
 ## Rodando
 
 ```bash
 python -m venv venv && venv\Scripts\pip install -r requirements.txt
 copy .env.example .env   # ANTHROPIC_API_KEY sempre; o boletim pede também
-                         # X_CLIENT_ID, HANDLES_RADAR e as duas do Telegram
+                         # X_CLIENT_ID e HANDLES_RADAR. As duas do Telegram
+                         # são opcionais: sem elas o boletim só grava o arquivo
 
 python -m src.collect                  # coleta (grátis, agende a cada 15min)
 python -m src.extract --historias 10   # extração aos pares (paga, ~US$0,05/matéria)
 python -m src.indice                   # reindexa a busca semântica (grátis)
 python -m src.digest --horas 24        # o que se sustenta hoje (grátis)
-python -m src.x_auth                   # consentimento no navegador, uma vez (grava data/x_token.json)
+python -m src.x_auth                   # consentimento no navegador, uma vez (grava
+                                       # data/x_token.json; feche o painel antes:
+                                       # o callback usa a mesma porta 8765)
 python -m src.boletim                  # posts do dia → premissas → vereditos (paga)
 ```
 

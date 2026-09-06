@@ -4,7 +4,7 @@
     python -m src.boletim --dias 3      # janela maior
     python -m src.boletim --sem-envio   # monta e grava, não envia
 
-A terceira saída do sistema, e a que reconcilia o AC1 com o ARCHITECTURE:
+A segunda saída do sistema, e a que reconcilia o AC1 com o ARCHITECTURE:
 é proativa (agente, não chatbot) e verifica população DISTINTA do acervo
 (o que os handles alegaram, nunca a imprensa contra ela mesma). O post
 indica onde olhar; a evidência vem do acervo — post não entra nele.
@@ -74,15 +74,17 @@ def _hash_post(texto: str) -> str:
 
 
 def _chaves_do_post(c: "radar.Captura") -> set[str]:
-    """As identidades de um post para dedup: hash do texto sempre, e
-    'url:<id do status>' quando o servidor deu o id. O id é a identidade
-    forte; o hash cobre post sem id. Post editado no X ganha status novo,
-    então a versão pré-edição continua contando como inédita, como
-    decidido."""
-    chaves = {_hash_post(c.post.texto)}
+    """A identidade de um post para dedup: 'url:<id do status>' quando o
+    servidor deu o id; o hash do texto só quando não deu.
+
+    Uma só, e não as duas: com o hash junto, dois posts diferentes com o
+    mesmo texto ("Bom dia." em dias distintos) colidiam, e o segundo era
+    tratado como já entregue para sempre, sem rastro. Post editado no X
+    ganha status novo, então a versão pré-edição continua contando como
+    inédita, como decidido."""
     if c.post.id:
-        chaves.add("url:" + c.post.id)
-    return chaves
+        return {"url:" + c.post.id}
+    return {_hash_post(c.post.texto)}
 
 
 def _ja_entregues(conexao) -> set[str]:
@@ -188,7 +190,7 @@ def _confere_post(c: "radar.Captura", conexao,
                       f"{premissas.anotacao(p)}")
         dados["nao_verificaveis"].append((p.tipo, p.texto))
 
-        # A QUARTA SAÍDA. Só para `nao_verificavel`, e buscando pela
+        # A TERCEIRA SAÍDA. Só para `nao_verificavel`, e buscando pela
         # HIPOTESE — o assunto que o separador já nomeou —, nunca pelo
         # texto do post: medido em 03/09/2026, buscar pelo post trazia 200
         # matérias e 13 veículos para o C3, sobre assunto nenhum. Ver
@@ -327,8 +329,9 @@ def _confere_post(c: "radar.Captura", conexao,
 def monta(dias: int, reenviar: bool = False,
           ) -> tuple[str, float, list[tuple[set[str], str]], str]:
     """Roda a cadeia e devolve (texto, custo total, [(chaves, resumo)] dos
-    posts contidos, HTML do Telegram). Quem marca entrega é o chamador,
-    DEPOIS de gravar — e marca TODAS as chaves de cada post.
+    posts contidos, HTML do Telegram, quantos posts inéditos falharam).
+    Quem marca entrega é o chamador, DEPOIS de gravar — e marca TODAS as
+    chaves de cada post.
 
     Com `reenviar`, o estado 'já entregue' é ignorado e a janela inteira
     volta — para auditar formato novo sem apagar histórico. O dedup
@@ -390,7 +393,7 @@ def monta(dias: int, reenviar: bool = False,
                           f"{len(rodada.capturas)} post(s) na janela, todos "
                           f"já entregues em boletins anteriores.")
         from . import demanda, indice
-        # O índice do COLETADO é o que a quarta saída lê, e até
+        # O índice do COLETADO é o que a terceira saída lê, e até
         # 03/09/2026 só a demanda o atualizava — quando nenhum post
         # gerava demanda, o contexto reportava o período do índice
         # VELHO como se fosse o do acervo. É incremental (embeda só o
@@ -398,7 +401,7 @@ def monta(dias: int, reenviar: bool = False,
         try:
             indice.indexa_artigos(conexao)
         except Exception:  # noqa: BLE001
-            # Índice indisponível não derruba o boletim: a quarta saída
+            # Índice indisponível não derruba o boletim: a terceira saída
             # some, o resto continua. Contexto é acréscimo, não o
             # produto.
             pass
@@ -406,12 +409,19 @@ def monta(dias: int, reenviar: bool = False,
         # não pode restaurar orçamento de demanda já gasto nem descartar
         # o acervo recarregado (revisão de 01/09/2026).
         estado = {"acervo": acervo, "orcamento": demanda.TETO_USD}
+        falhas = 0
         for i, (c, chaves) in enumerate(ineditos, 1):
             linhas.append(radar.como_texto(c, i))
             # Falha num post não derruba o lote — padrão do extract.main.
+            # Mas é CONTADA: separação estourando em todos os posts virava
+            # arquivo cheio de "CONFERÊNCIA FALHOU", Telegram sem nada e
+            # código de saída 0 — o silêncio que `_avisa_falha` existe
+            # para não deixar acontecer. A contagem vai para as notas
+            # (Telegram) e para `main`, que decide se avisa e sai com erro.
             try:
                 bloco, gasto, dados = _confere_post(c, conexao, estado)
             except Exception as erro:  # noqa: BLE001 — vira linha do boletim
+                falhas += 1
                 linhas.append(f"  CONFERÊNCIA FALHOU ({type(erro).__name__}: "
                               f"{erro}) — o post volta na próxima rodada")
                 linhas.append("")
@@ -422,7 +432,12 @@ def monta(dias: int, reenviar: bool = False,
             contidos.append((chaves, c.post.texto))
             estruturados.append((i, c, dados))
 
-        for nota in rodada.notas:
+        notas = list(rodada.notas)
+        if falhas:
+            notas.append(f"{falhas} post(s) inédito(s) com CONFERÊNCIA "
+                         f"FALHOU — voltam na próxima rodada; a trilha está "
+                         f"no arquivo")
+        for nota in notas:
             linhas.append(f"aviso da busca: {nota}")
         # O que foi lido e não virou post, com o motivo: é a trilha de
         # auditoria do descarte, e mora no arquivo, não no bolso.
@@ -439,9 +454,9 @@ def monta(dias: int, reenviar: bool = False,
         linhas.append(f"custo da rodada: US$ {custo:.4f} "
                       f"(busca no X US$ {busca:.4f} estimado + "
                       f"Anthropic US$ {custo - busca:.4f} medido)")
-        html = _formata_telegram(handles, hoje, estruturados, rodada.notas,
+        html = _formata_telegram(handles, hoje, estruturados, notas,
                                  custo, busca)
-        return "\n".join(linhas), custo, contidos, html
+        return "\n".join(linhas), custo, contidos, html, falhas
     finally:
         conexao.close()
 
@@ -562,7 +577,7 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
                     if data:
                         linha += f' <i>· {_esc(str(data)[:10])}</i>'
                     if normalize.e_live(url):
-                        linha += ' <i>· live search</i>'
+                        linha += ' <i>· liveblog</i>'
                     return linha
 
                 fontes = chr(10).join(
@@ -728,8 +743,8 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        texto, custo, contidos, html = monta(args.dias,
-                                             reenviar=args.reenviar)
+        texto, custo, contidos, html, falhas = monta(args.dias,
+                                                     reenviar=args.reenviar)
     except (SystemExit, Exception) as erro:
         # --sem-envio nao avisa: e' o modo de pre-visualizar, e quem
         # o roda esta olhando a tela.
@@ -739,6 +754,18 @@ def main() -> None:
     print(texto)
     caminho = _grava(texto)
     print(f"\ngravado em {caminho}")
+
+    if falhas and not contidos:
+        # Todos os inéditos falharam: o arquivo tem a trilha, mas o leitor
+        # não receberia nada e o agendador veria sucesso. É a mesma classe
+        # de silêncio de quando o boletim morre antes de existir, e leva o
+        # mesmo tratamento — aviso no Telegram e código de saída ≠ 0.
+        aviso = (f"{falhas} post(s) inédito(s) e nenhum conferido — a "
+                 f"trilha está em {caminho}")
+        if not args.sem_envio:
+            _avisa_falha(aviso)
+        print(f"FALHOU: {aviso}")
+        sys.exit(1)
 
     # Marca DEPOIS de gravar: o arquivo é o registro de entrega. Se o
     # processo morrer antes desta linha, nada foi marcado e a próxima

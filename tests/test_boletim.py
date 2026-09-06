@@ -43,10 +43,14 @@ class TestEstadoDoBoletim:
         # autor identifica o post entre rodadas.
         assert _hash_post("texto do post") == _hash_post(" texto  do\npost ")
 
-    def test_chave_de_url_vem_do_id_do_servidor(self):
+    def test_chave_e_o_id_do_servidor_e_so_sem_id_cai_no_texto(self):
         from src.boletim import _chaves_do_post
         com_id = _captura("texto", ident="123")
-        assert _chaves_do_post(com_id) == {"url:123", _hash_post("texto")}
+        assert _chaves_do_post(com_id) == {"url:123"}
+        # Dois posts diferentes com o mesmo texto ("Bom dia." em dias
+        # distintos) não podem colidir: com o hash junto, o segundo era
+        # "já entregue" para sempre.
+        assert _chaves_do_post(_captura("texto", ident="456")) == {"url:456"}
         # Sem id não há identidade forte; o hash cobre.
         assert _chaves_do_post(_captura("texto")) == {_hash_post("texto")}
 
@@ -138,8 +142,8 @@ class TestRendicaoTelegram:
         inteiro. Os tipos saem nomeados e contados, sem o texto; a trilha
         completa fica no arquivo."""
         from src.boletim import _conta_tipos, _formata_telegram
-        # O caso que motivou o pedido é o status 1000000000000000001; o
-        # corpo aqui é sintético — só precisa ser de UMA frase.
+        # O caso que motivou o pedido é o C1 do gabarito local; o corpo
+        # aqui é sintético — só precisa ser de UMA frase.
         post = _captura("Frase única de corpo sintético para este teste.")
         html = _formata_telegram("@x", "02/09", [(1, post, {
             "nao_verificaveis": [
@@ -267,7 +271,7 @@ class TestSoFatoCustaDinheiro:
 
     def test_contexto_so_para_nao_verificavel_e_com_teto(self, monkeypatch,
                                                          tmp_path):
-        """A quarta saída não pode virar a porta dos fundos: só
+        """A terceira saída não pode virar a porta dos fundos: só
         `nao_verificavel` COM hipótese busca contexto, hipótese repetida
         busca uma vez só, e nada disso vira linha de veredito. A busca é
         INJETADA — sem isso o teste leria a coleção de PRODUÇÃO e mudaria
@@ -351,7 +355,7 @@ class TestSoFatoCustaDinheiro:
 
     def test_teto_de_buscas_de_contexto_por_rodada(self, monkeypatch,
                                                    tmp_path):
-        """O ARCHITECTURE pede teto próprio para a quarta saída."""
+        """O ARCHITECTURE pede teto próprio para a terceira saída."""
         from src import boletim, contexto, premissas
         monkeypatch.setattr(contexto, "LIGADO", True)
         from src.storage import conecta
@@ -377,6 +381,118 @@ def _uso_zero():
     from src import llm
     return llm.Uso(modelo=llm.VERIFICACAO, entrada=0, saida=0,
                    cache_leitura=0, cache_escrita=0)
+
+
+class TestRodadaDoBoletim:
+    """`monta` e `main` nos pontos que corrigem os incidentes de 03/09/2026
+    e que nenhum teste cobria: dedup dentro da rodada e contra o já
+    entregue, marca só DEPOIS de entregar, `--sem-envio` não marca, e
+    falha por post que não pode ficar muda."""
+
+    VAZIO = {"nao_verificaveis": [], "checks": [], "contextos": [],
+             "sem_premissas": True}
+
+    def _rodada(self, *capturas):
+        from src.radar import Rodada
+        return Rodada(capturas=tuple(capturas), descartados=(), notas=(),
+                      lidos=len(capturas), custo_estimado_usd=0.01)
+
+    def _prepara(self, monkeypatch, tmp_path, rodada, conferir):
+        """Tudo que `monta` toca fora do próprio boletim, sem rede e sem
+        modelo: handles, banco, acervo, índice, radar e a conferência."""
+        from src import boletim, config, grafo, indice, radar
+        monkeypatch.setattr(config, "HANDLES_RADAR", ("x",))
+        monkeypatch.setattr(config, "BANCO", tmp_path / "t.db")
+        monkeypatch.setattr(grafo, "carrega", lambda con: ["acervo"])
+        monkeypatch.setattr(indice, "indexa_artigos", lambda con: None)
+        monkeypatch.setattr(radar, "busca", lambda handles, dias: rodada)
+        monkeypatch.setattr(boletim, "_confere_post", conferir)
+        return boletim
+
+    def test_dedup_dentro_da_rodada_e_contra_o_ja_entregue(
+            self, monkeypatch, tmp_path):
+        boletim = self._prepara(
+            monkeypatch, tmp_path,
+            self._rodada(_captura("a", ident="111"),
+                         _captura("a", ident="111"),
+                         _captura("b", ident="222")),
+            lambda c, con, estado: ("bloco", 0.0, dict(self.VAZIO)))
+        con = conecta(tmp_path / "t.db")
+        _marca_entregue(con, "url:222", "b")
+        con.close()
+
+        _, _, contidos, _, falhas = boletim.monta(1)
+        assert [chaves for chaves, _ in contidos] == [{"url:111"}]
+        assert falhas == 0
+        # `--reenviar` ignora o já entregue, mas não o repetido na rodada.
+        _, _, contidos, _, _ = boletim.monta(1, reenviar=True)
+        assert [chaves for chaves, _ in contidos] == [{"url:111"},
+                                                      {"url:222"}]
+
+    def test_falha_parcial_vira_aviso_no_telegram(self, monkeypatch,
+                                                  tmp_path):
+        def um_falha(c, con, estado):
+            if c.post.id == "222":
+                raise RuntimeError("separador fora")
+            return ("bloco", 0.0, dict(self.VAZIO))
+        boletim = self._prepara(
+            monkeypatch, tmp_path,
+            self._rodada(_captura("a", ident="111"),
+                         _captura("b", ident="222")),
+            um_falha)
+        texto, _, contidos, html, falhas = boletim.monta(1)
+        assert falhas == 1
+        assert [chaves for chaves, _ in contidos] == [{"url:111"}]
+        assert "CONFERÊNCIA FALHOU" in texto
+        assert "<code>[AVISO]</code>" in html and "CONFERÊNCIA FALHOU" in html
+
+    def test_falha_em_todos_os_posts_avisa_e_sai_com_erro(self, monkeypatch,
+                                                          tmp_path):
+        def estoura(c, con, estado):
+            raise RuntimeError("separador fora")
+        boletim = self._prepara(monkeypatch, tmp_path,
+                                self._rodada(_captura("a", ident="111")),
+                                estoura)
+        enviados = []
+        monkeypatch.setattr(boletim, "_envia_telegram",
+                            lambda texto, html=False: enviados.append(texto)
+                            or "enviado")
+        monkeypatch.setattr(boletim, "_grava", lambda texto: tmp_path / "b")
+        monkeypatch.setattr("sys.argv", ["boletim"])
+        with pytest.raises(SystemExit) as saida:
+            boletim.main()
+        assert saida.value.code == 1
+        assert any("nenhum conferido" in e for e in enviados), enviados
+        con = conecta(tmp_path / "t.db")
+        assert _ja_entregues(con) == set()
+        con.close()
+
+    def test_marca_so_depois_de_entregar(self, monkeypatch, tmp_path):
+        from src import boletim, config
+        monkeypatch.setattr(config, "BANCO", tmp_path / "t.db")
+        conecta(tmp_path / "t.db").close()
+        monkeypatch.setattr(boletim, "_grava", lambda texto: tmp_path / "b")
+        contidos = [({"url:1"}, "resumo")]
+        monkeypatch.setattr(
+            boletim, "monta",
+            lambda dias, reenviar=False: ("texto", 0.0, contidos, "<b>h</b>",
+                                          0))
+
+        def roda(argv, resposta):
+            monkeypatch.setattr(boletim, "_envia_telegram",
+                                lambda texto, html=False: resposta)
+            monkeypatch.setattr("sys.argv", ["boletim"] + argv)
+            boletim.main()
+            con = conecta(tmp_path / "t.db")
+            marcados = _ja_entregues(con)
+            con.close()
+            return marcados
+
+        # Marca = "o leitor recebeu": nem pré-visualização nem envio que
+        # falhou marcam; só o envio que deu certo.
+        assert roda(["--sem-envio"], "enviado") == set()
+        assert roda([], "FALHOU no Telegram (400)") == set()
+        assert roda([], "enviado ao Telegram em 1 mensagem(ns)") == {"url:1"}
 
 
 class TestAvisoDeFalha:

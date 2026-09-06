@@ -67,8 +67,8 @@ class TestReescritaSoParaFato:
         assert "NÃO adivinhe o referente" in INSTRUCOES
 
     def test_nome_incompleto_e_referente_e_nao_se_completa(self):
-        """O boletim de 02/09/2026: o post da charada (status
-        1000000000000000001) saiu como UMA opinião, sem fato — "André"
+        """O boletim de 02/09/2026: o post da charada (o C1 do
+        gabarito local) saiu como UMA opinião, sem fato — "André"
         sem sobrenome foi lido como referente indeterminado, e o acervo
         tinha o encontro. Nome incompleto é referente e a reescrita não o
         completa; e o predicado precisa estar no texto tanto quanto o
@@ -184,7 +184,7 @@ class TestRoteador:
         return roteia(analise, texto).premissas[0]
 
     def test_positivo_classe_mensuravel_passa(self):
-        """C19 (status 1000000000000000019), e a barreira nasce com o
+        """C19 (post real do gabarito local), e a barreira nasce com o
         VEREDITO na mao: a afirmacao daquele post era rebaixada, e levada
         ao verificador voltou CONFIRMADO por 4 veiculos (CNN, Folha, G1,
         Agencia Brasil) em 03/09/2026. Regra que manda descartar o que o
@@ -208,7 +208,7 @@ class TestRoteador:
         assert p_.tipo == "nao_verificavel"
 
     def test_negativo_o_empresario_nao_entra_pela_porta_nova(self):
-        """O C3 (status 1000000000000000003) QUANTIFICA sem medir.
+        """O C3 (post real do gabarito local) QUANTIFICA sem medir.
         "TODOS", "infindaveis" e "Praticamente" ficaram fora de
         _QUANTIDADE justamente por isto: e o caso que a regra 8 existe
         para fechar, e a porta nova nao pode reabri-lo. Cada linha abaixo
@@ -229,8 +229,8 @@ class TestRoteador:
             assert p_.tipo == "nao_verificavel", (trecho, p_.roteado)
 
     def test_negativo_o_encontro_continua_fora(self):
-        """O caso que fundou a regra por slot (status
-        1000000000000000002) nao pode voltar: sujeito ancorado mas
+        """O caso que fundou a regra por slot (o C2 do gabarito
+        local) nao pode voltar: sujeito ancorado mas
         indeterminado, objeto com nome proprio e sem numero."""
         texto = ("POST 3 (@x, 01 Sep 2026):\nO encontro pesa mais para o "
                  "Brasil que qualquer votacao.")
@@ -243,7 +243,7 @@ class TestRoteador:
         assert "sem entidade nomeada" in p_.roteado
 
     def test_charada_passa(self):
-        # A forma do status 1000000000000000001: nome proprio de uma
+        # A forma do C1 (a charada): nome proprio de uma
         # palavra no sujeito, ancorado, com o QUÊ nomeado ao lado.
         texto = ("POST 6 (@x, 01 Sep 2026):\nCharada: André almocou com "
                  "Trump e o jogo virou.")
@@ -273,8 +273,8 @@ class TestRoteador:
     def test_data_nao_substitui_o_que(self):
         """A data do POST está no texto que o modelo recebe, então
         deixá-la valer como segundo apoio era o freio vazando pelo
-        cabeçalho: sujeito indeterminado do status 1000000000000000003
-        mais a data do próprio post passava."""
+        cabeçalho: sujeito indeterminado do C3 do gabarito local mais a
+        data do próprio post passava."""
         texto = ("POST 7 (@perfil_teste, 01 Sep 2026):\n"
                  "O cara manda em tudo.")
         p_ = self._fato(texto, quem=("o cara", "O cara"),
@@ -299,7 +299,7 @@ class TestRoteador:
     def test_fala_do_post_citado_nao_ancora(self):
         """Trecho copiado do post de um terceiro ancorava perfeitamente, e
         a âncora provava que o pedaço está no texto — não que o autor o
-        afirmou (status 1000000000000000004). A regra 9 passa a existir
+        afirmou (caso real do gabarito local). A regra 9 passa a existir
         em código."""
         from src.premissas import CONTEXTO_ALHEIO, texto_ancoravel
         texto = ("POST (@perfil_teste, 2026-09-01 12:00 UTC):\n"
@@ -339,7 +339,7 @@ class TestRoteador:
         assert p_.tipo == "nao_verificavel"
 
     def test_maiuscula_de_inicio_de_linha_nao_e_nome_proprio(self):
-        """O incidente de US$ 0,36 (status 1000000000000000003): um item
+        """O incidente de US$ 0,36 (o C3 do gabarito local): um item
         de lista abre a linha depois dos dois-pontos, e a maiúscula de
         início de linha era lida como nome próprio."""
         texto = "POST 7 (@x, 01 Sep 2026):\nO cara junta:\n\nGrana curta"
@@ -361,8 +361,8 @@ class TestRoteador:
 
     def test_tipografia_nao_derruba_a_ancora(self):
         """O modelo transcreve “medir” como "medir" — e a âncora falhava
-        por causa de um caractere (a aspa curva do status
-        1000000000000000005)."""
+        por causa de um caractere (a aspa curva de um post real do
+        gabarito local)."""
         texto = 'POST 2 (@x, 01 Sep 2026):\nO relatorio serve para “medir” o risco.'
         p_ = self._fato(texto, quem=("O relatorio", "O relatorio"),
                         o_que=('Selic 15%', '"medir" o risco'))
