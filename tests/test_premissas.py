@@ -531,3 +531,132 @@ class TestCoisaDoProprioAutor:
                             trecho="55% votaram busca de liquidez"))])
         p_ = roteia(analise, texto).premissas[0]
         assert p_.tipo == "relato", p_.roteado
+
+
+class TestCitado:
+    """0.3 (06/09/2026): o post citado é fonte, não autor. `citado` ancora
+    na linha do post citado, vai ao check com reescrita, e perde a
+    reescrita (sem virar não_verificável do autor) quando não ancora, quando
+    não há linha do citado, ou acima do teto por post."""
+
+    TEXTO = ("POST (@x, 26 Aug 2026):\n"
+             "(contexto — post citado pelo autor; as afirmações são de quem "
+             "ele cita: A Rússia estaria preparando uma mobilização de 500 "
+             "mil soldados, segundo o WSJ.)\n"
+             "E será a definitiva mudança. Questão de tempo.")
+
+    def _citado(self, quem, o_que, afirmacao="A Rússia prepara mobilização de 500 mil soldados."):
+        from src.premissas import Referente
+        return Premissa(tipo="citado", afirmacao=afirmacao,
+                        trecho="A Rússia estaria preparando uma mobilização de 500 mil soldados",
+                        quem=Referente(valor=quem[0], trecho=quem[1]),
+                        o_que=Referente(valor=o_que[0], trecho=o_que[1]))
+
+    def test_validador_mantem_a_reescrita_do_citado(self):
+        p_ = self._citado(("A Rússia", "A Rússia"), ("500 mil soldados", "500 mil soldados"))
+        assert p_.afirmacao and p_.texto == p_.afirmacao
+
+    def test_validador_preenche_a_reescrita_do_citado_sem_ela(self):
+        """Modelo que esqueceu a reescrita num citado: o trecho vira a
+        consulta, como no fato."""
+        p_ = self._citado(("A Rússia", "A Rússia"),
+                          ("500 mil soldados", "500 mil soldados"),
+                          afirmacao=None)
+        assert p_.afirmacao == p_.trecho
+
+    def test_citado_barrado_continua_barrado_depois_do_reload(self):
+        """Revisão de 06/09: o cache (`model_validate_json`) reconstruía a
+        reescrita de um citado barrado e ele voltava ao check."""
+        from src.premissas import roteia
+        analise = Analise(premissas=[self._citado(
+            ("Questão de tempo", "Questão de tempo"), ("500 mil", "500 mil"))])
+        barrado = roteia(analise, self.TEXTO)
+        assert barrado.premissas[0].afirmacao is None
+        de_volta = Analise.model_validate_json(barrado.model_dump_json())
+        assert de_volta.premissas[0].afirmacao is None
+        assert de_volta.premissas[0].roteado == barrado.premissas[0].roteado
+
+    def test_o_que_ancorado_so_no_texto_do_autor_nao_vale(self):
+        from src.premissas import roteia
+        # quem no citado, o_que só no texto do autor.
+        analise = Analise(premissas=[self._citado(
+            ("A Rússia", "A Rússia"), ("Questão de tempo", "Questão de tempo"))])
+        p_ = roteia(analise, self.TEXTO).premissas[0]
+        assert p_.afirmacao is None and "QUÊ" in p_.roteado
+
+    def test_relato_do_citado_nao_vira_citado(self):
+        """Regra 7 vale para quem cita: 'minha enquete' no post citado."""
+        from src.premissas import Referente, roteia
+        texto = ("POST (@x, 26 Aug 2026):\n"
+                 "(contexto — post citado pelo autor; as afirmações são de quem "
+                 "ele cita: Minha enquete fechou: 62% acham que o Copom corta.)\n"
+                 "Concordo.")
+        p_ = Premissa(tipo="citado", afirmacao="Na enquete do autor citado, 62% acham que o Copom corta.",
+                      trecho="Minha enquete fechou: 62% acham que o Copom corta.",
+                      quem=Referente(valor="Minha enquete", trecho="Minha enquete"),
+                      o_que=Referente(valor="62%", trecho="62%"))
+        p_ = roteia(Analise(premissas=[p_]), texto).premissas[0]
+        assert p_.afirmacao is None and "relato do citado" in p_.roteado
+
+    def test_texto_citado_preserva_parentese_do_proprio_citado(self):
+        from src.premissas import _texto_citado
+        texto = ("POST (@x, 26 Aug 2026):\n"
+                 "(contexto — post citado pelo autor; as afirmações são de quem "
+                 "ele cita: A Rússia prepara 500 mil soldados (segundo o WSJ))\n"
+                 "Questão de tempo.")
+        assert _texto_citado(texto) == "A Rússia prepara 500 mil soldados (segundo o WSJ)"
+
+    def test_texto_citado_e_a_linha_sem_o_prefixo(self):
+        from src.premissas import _texto_citado
+        assert _texto_citado(self.TEXTO).startswith("A Rússia estaria")
+        assert _texto_citado(self.TEXTO).endswith("segundo o WSJ.")
+        assert _texto_citado("POST (@x, 26 Aug 2026):\nsem contexto") == ""
+
+    def test_ancora_na_linha_do_citado_e_vai_ao_check(self):
+        from src.premissas import roteia
+        analise = Analise(premissas=[self._citado(
+            ("A Rússia", "A Rússia"), ("500 mil soldados", "500 mil soldados"))])
+        p_ = roteia(analise, self.TEXTO).premissas[0]
+        assert p_.tipo == "citado" and p_.afirmacao and p_.roteado is None
+
+    def test_sem_ancora_no_citado_perde_a_reescrita_e_segue_citado(self):
+        from src.premissas import roteia
+        # "Questão de tempo" está no texto do AUTOR, não no citado.
+        analise = Analise(premissas=[self._citado(
+            ("Questão de tempo", "Questão de tempo"), ("500 mil", "500 mil"))])
+        p_ = roteia(analise, self.TEXTO).premissas[0]
+        assert p_.tipo == "citado" and p_.afirmacao is None
+        assert "post citado" in p_.roteado
+
+    def test_sem_linha_do_citado_nao_existe_citado(self):
+        from src.premissas import roteia
+        analise = Analise(premissas=[self._citado(
+            ("A Rússia", "A Rússia"), ("500 mil soldados", "500 mil soldados"))])
+        texto = "POST (@x, 26 Aug 2026):\nA Rússia estaria preparando 500 mil soldados."
+        p_ = roteia(analise, texto).premissas[0]
+        assert p_.afirmacao is None and "sem linha" in p_.roteado
+
+    def test_teto_de_tres_por_post_conta_so_os_conferiveis(self):
+        from src.premissas import TETO_CITADOS, roteia
+        barrados = [self._citado(("Questão de tempo", "Questão de tempo"),
+                                 ("500 mil", "500 mil"),
+                                 afirmacao=f"barrado {i}") for i in range(2)]
+        bons = [self._citado(("A Rússia", "A Rússia"),
+                             ("500 mil soldados", "500 mil soldados"),
+                             afirmacao=f"bom {i}") for i in range(4)]
+        saida = roteia(Analise(premissas=barrados + bons), self.TEXTO).premissas
+        conferiveis = [p.afirmacao for p in saida if p.afirmacao]
+        assert conferiveis == ["bom 0", "bom 1", "bom 2"]
+        assert len(conferiveis) == TETO_CITADOS == 3
+        assert "teto" in saida[5].roteado and "teto" not in saida[0].roteado
+
+    def test_regra_10_esta_no_prompt_e_a_9_nao_a_contradiz(self):
+        from src.premissas import INSTRUCOES
+        assert "10. O POST CITADO É FONTE, NÃO AUTOR" in INSTRUCOES
+        assert "não resolve nem\n   ancora premissa DO AUTOR" in INSTRUCOES
+        assert "Nunca copie `trecho` dela" not in INSTRUCOES
+        # As três frases que diziam "só fato" foram corrigidas juntas.
+        assert "REESCRITA SÓ EM FATO E CITADO" in INSTRUCOES
+        assert "existe apenas para tipo=fato e tipo=citado" in INSTRUCOES
+        assert "As premissas DO AUTOR saem SÓ do texto do post" in INSTRUCOES
+        assert "existe apenas para tipo=fato:" not in INSTRUCOES

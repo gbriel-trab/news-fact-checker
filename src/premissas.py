@@ -77,7 +77,7 @@ class Premissa(BaseModel):
     não ter saída observável."""
 
     tipo: Literal["fato", "previsao", "opiniao", "relato",
-                  "nao_verificavel"] = Field(
+                  "nao_verificavel", "citado"] = Field(
         description=(
             "fato: afirma algo já ocorrido ou um estado presente NO MUNDO, "
             "com referente que o texto identifica. "
@@ -86,34 +86,39 @@ class Premissa(BaseModel):
             "relato: o assunto é o próprio autor do texto — o que ele diz, "
             "fez, costuma fazer ou postou; a prova é o próprio texto. "
             "nao_verificavel: afirma algo sobre o mundo, mas o texto não "
-            "identifica de quem ou do que fala — não há o que conferir."
+            "identifica de quem ou do que fala — não há o que conferir. "
+            "citado: afirmação factual feita pelo POST CITADO (outra conta), "
+            "que o autor amplifica ao citar; é verificada com o nome de quem "
+            "afirmou. Nunca é fato: fato é do autor."
         )
     )
     afirmacao: str | None = Field(
         None,
         description=(
-            "APENAS quando tipo=fato: a afirmação reescrita como frase "
-            "completa e autônoma, que faça sentido sozinha — é o que será "
-            "verificado. Nos demais tipos, OMITA: o trecho literal basta."
+            "APENAS quando tipo=fato ou citado: a afirmação reescrita como "
+            "frase completa e autônoma, que faça sentido sozinha — é o que "
+            "será verificado. Nos demais tipos, OMITA: o trecho literal basta."
         )
     )
     trecho: str = Field(
         description="O pedaço LITERAL do texto de onde ela saiu, sem reescrever."
     )
     quem: Referente | None = Field(
-        None, description="Só em fato: o sujeito da afirmação, ancorado."
+        None, description=("Só em fato e citado: o sujeito da afirmação, "
+                           "ancorado (no citado, com trecho da linha do "
+                           "post citado).")
     )
     o_que: Referente | None = Field(
         None,
         description=(
-            "Só em fato: a outra entidade, o número ou o objeto, ancorado. "
-            "Omita se o texto não dá."
+            "Só em fato e citado: a outra entidade, o número ou o objeto, "
+            "ancorado. Omita se o texto não dá."
         )
     )
     quando: Referente | None = Field(
         None,
         description=(
-            "Só em fato: data de OCORRÊNCIA que o texto dá — valor resolvido "
+            "Só em fato e citado: data de OCORRÊNCIA que o texto dá — valor resolvido "
             "('31/08/2026'), trecho literal ('ontem'). Omita se o texto não "
             "dá. A data do post NÃO é data de ocorrência."
         )
@@ -127,7 +132,8 @@ class Premissa(BaseModel):
     )
     roteado: SkipJsonSchema[str | None] = None
     """Preenchido em CÓDIGO por `roteia`, nunca pelo modelo: por que um
-    fato foi rebaixado a nao_verificavel. Fora do schema enviado."""
+    fato foi rebaixado a nao_verificavel — ou por que um `citado` perdeu a
+    reescrita e não vai ao check. Fora do schema enviado."""
 
     @property
     def texto(self) -> str:
@@ -143,9 +149,14 @@ class Premissa(BaseModel):
         # a paráfrase cai: era o que fazia "[nao_verificavel] André Esteves
         # tem um banco" aparecer no boletim como se fosse o post, com o
         # palpite que a regra 8 manda pôr em `hipotese`.
-        if self.tipo == "fato" and not self.afirmacao:
+        # `roteado` preenchido = o roteador tirou a reescrita de propósito
+        # (um `citado` barrado continua `citado`, sem reescrita): o reload do
+        # cache não pode devolvê-la — revisão de 06/09/2026, que mostrou o
+        # `citado` barrado voltando ao check pelo `model_validate_json`.
+        if (self.tipo in ("fato", "citado") and not self.afirmacao
+                and not self.roteado):
             self.afirmacao = self.trecho
-        if self.tipo != "fato" and self.afirmacao:
+        if self.tipo not in ("fato", "citado") and self.afirmacao:
             self.hipotese = self.hipotese or self.afirmacao
             self.afirmacao = None
         return self
@@ -375,6 +386,57 @@ def _vazio(ref: Referente) -> bool:
     return not uteis or all(t in _FECHADAS for t in uteis)
 
 
+TETO_CITADOS = 3
+"""Quantas premissas `citado` de um post vão ao check. Post citado de canal
+é longo e rende muitas afirmações; três é o bastante para dizer se o que
+o autor amplificou se sustenta, e cada uma custa um check (06/09/2026)."""
+
+
+def _texto_citado(texto: str) -> str:
+    """O texto da linha do post citado, sem o prefixo e os parênteses — é
+    onde o `citado` ancora. Vazio quando não há linha."""
+    m = _RE_CONTEXTO_ALHEIO.search(texto)
+    if not m:
+        return ""
+    linha = m.group(0).rstrip("\n")
+    corpo = linha[len("(" + CONTEXTO_ALHEIO + ":"):].strip()
+    # Só o ")" que `radar.para_separacao` fecha; um ")" do próprio texto
+    # citado ("(segundo o WSJ)") fica.
+    return corpo[:-1].strip() if corpo.endswith(")") else corpo
+
+
+def _roteia_citado(p: "Premissa", norm_citado: str, vaga: bool) -> bool:
+    """O `citado` só vai ao check se ancorar NA LINHA DO POST CITADO, com
+    as mesmas exigências do fato, e dentro do teto por post. Fora disso
+    perde a reescrita (não vai ao check) e ganha o motivo em `roteado`,
+    mas continua `citado`: não é palavra do autor para virar
+    nao_verificavel dele. Devolve True se ficou conferível."""
+    if not norm_citado:
+        motivo = "citado sem linha de post citado no texto"
+    elif not _ancorado(p.quem, norm_citado):
+        motivo = "sujeito sem âncora literal no post citado"
+    elif not _ancorado(p.o_que, norm_citado):
+        motivo = "sem o QUÊ ancorado no post citado (data não substitui)"
+    elif _vazio(p.o_que):
+        motivo = "o QUÊ é pronome, advérbio ou indefinido"
+    elif not (_tem_entidade_ou_numero(p.quem) or _tem_numero(p.o_que)
+              or _classe_mensuravel(p)):
+        motivo = ("sujeito sem entidade nomeada e predicado sem número: "
+                  "não há o que casar no acervo")
+    elif _do_autor(p):
+        # A regra 7 vale para quem cita também: "minha enquete fechou em
+        # 62%" no post citado é relato do citado, não fato do mundo.
+        motivo = ("referente é coisa de quem cita (relato do citado): "
+                  "não é fato do mundo")
+    elif not vaga:
+        motivo = f"acima do teto de {TETO_CITADOS} citados por post"
+    else:
+        return True
+    p.afirmacao = None
+    p.roteado = motivo
+    return False
+
+
 def roteia(analise: Analise, texto: str) -> Analise:
     """Rebaixa a nao_verificavel o fato que não ancora no texto. Código,
     não prompt: é a barreira do princípio 6 (filtro barato antes da
@@ -411,9 +473,16 @@ def roteia(analise: Analise, texto: str) -> Analise:
     errado tem de ser distinguível do certo por quem lê o boletim.
     """
     norm = _normaliza(texto_ancoravel(texto))
+    norm_citado = _normaliza(_texto_citado(texto))
     cabecalho = _RE_HANDLE.match(texto)
     handle = cabecalho.group(1) if cabecalho else ""
+    conferiveis = 0
     for p in analise.premissas:
+        if p.tipo == "citado":
+            # Ancora no post CITADO, não no texto do autor (regra 10).
+            if _roteia_citado(p, norm_citado, conferiveis < TETO_CITADOS):
+                conferiveis += 1
+            continue
         if p.tipo != "fato":
             continue
         novo_tipo = "nao_verificavel"
@@ -464,11 +533,13 @@ def versao_roteador() -> str:
 
     fonte = "".join(inspect.getsource(f) for f in
                     (roteia, _ancorado, _tem_entidade_ou_numero, _vazio,
-                     _normaliza, texto_ancoravel, _do_autor))
+                     _normaliza, texto_ancoravel, _do_autor,
+                     _roteia_citado, _texto_citado))
     # As regexes da condição 5 são dado, não código: mudar uma sem mudar
     # `_do_autor` tem de virar versão nova do mesmo jeito (revisão de
     # 06/09/2026).
     material = (fonte + repr(sorted(_ARTIGOS | _FECHADAS | _INDEFINIDOS))
+                + repr(TETO_CITADOS)
                 + _POSSESSIVO_PROPRIO.pattern + _VERBO_PROPRIO.pattern
                 + _AUTOR_NA_REESCRITA.pattern + _RE_HANDLE.pattern)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:8]
@@ -476,16 +547,19 @@ def versao_roteador() -> str:
 
 INSTRUCOES = """\
 Você separa as afirmações de um texto que argumenta — análise, comentário,
-opinião — em cinco tipos, para que só o verificável seja conferido depois.
+opinião — em seis tipos, para que só o verificável seja conferido depois.
 
   fato             algo já ocorrido, ou um estado presente NO MUNDO, com
                    referente que o texto identifica. Outra fonte poderia
-                   confirmar ou desmentir. É o único tipo verificado.
+                   confirmar ou desmentir. É verificado.
   previsao         afirma sobre o futuro
   opiniao          juízo, avaliação, recomendação, valoração
   relato           o assunto é o próprio autor do texto — ver a regra 7
   nao_verificavel  afirma algo sobre o mundo, mas o texto não identifica
                    de quem ou do que fala — ver a regra 8
+  citado           afirmação factual do POST CITADO (outra conta), que o
+                   autor amplifica ao citar — ver a regra 10. É verificado,
+                   com o nome de quem afirmou. Nunca é fato: fato é do autor.
 
 Regras que importam mais que as outras:
 
@@ -499,9 +573,9 @@ Regras que importam mais que as outras:
    fato:      o desemprego está em 5,3%
    opiniao:   o Copom não tem escolha
 
-3. REESCRITA SÓ EM FATO — E ELA PRECISA SE SUSTENTAR SOZINHA. O campo
-   `afirmacao` existe apenas para tipo=fato: é o que vai ao verificador,
-   e quem o lê não tem o texto original ao lado. Resolva pronome, apelido
+3. REESCRITA SÓ EM FATO E CITADO — E ELA PRECISA SE SUSTENTAR SOZINHA. O
+   campo `afirmacao` existe apenas para tipo=fato e tipo=citado: é o que
+   vai ao verificador, e quem o lê não tem o texto original ao lado. Resolva pronome, apelido
    e referência implícita QUE O PRÓPRIO TEXTO permita resolver — e só
    isso: nome que o texto dá incompleto vai incompleto (regra 8).
 
@@ -624,10 +698,12 @@ Regras que importam mais que as outras:
 9. O CABEÇALHO E A LINHA DE CONTEXTO. O texto começa por "POST (@handle,
    data):" — o handle é o AUTOR (regra 7) e a data é a do post, NUNCA
    data de ocorrência. Depois dela pode haver uma linha "(contexto — ...)".
-   As premissas saem SÓ do texto do post, nunca da linha de contexto: o
-   "post anterior do próprio autor" (a thread dele, ou um post dele mesmo
-   que ele cita) é conferido por conta própria, e extrair dele aqui é a
-   mesma premissa duas vezes. O contexto serve para RESOLVER o que o post
+   As premissas DO AUTOR saem SÓ do texto do post, nunca da linha de
+   contexto (o que a linha do post citado de OUTRA conta rende é `citado`,
+   regra 10 — com dono, nunca como premissa do autor): o "post anterior do
+   próprio autor" (a thread dele, ou um post dele mesmo que ele cita) é
+   conferido por conta própria, e extrair dele aqui é a mesma premissa
+   duas vezes. O contexto serve para RESOLVER o que o post
    referencia — pronome, "isso", "esse ponto", "o encontro", nome que só
    está lá — e nisso a linha do próprio autor vale como texto dele:
    `valor` resolvido por ela e `quem`/`o_que` ancorados nela, pode.
@@ -638,8 +714,28 @@ Regras que importam mais que as outras:
              15%": ele é do post anterior)
 
    A linha do "post citado pelo autor" (outra conta) não resolve nem
-   ancora nada: são palavras de quem ele cita — o que o autor diz sobre
-   elas é premissa, o citado em si não. Nunca copie `trecho` dela.
+   ancora premissa DO AUTOR: são palavras de quem ele cita — o que o autor
+   diz sobre elas é premissa dele; o que elas afirmam sobre o mundo sai
+   como `citado` (regra 10), nunca como fato.
+
+10. O POST CITADO É FONTE, NÃO AUTOR. A linha "(contexto — post citado pelo
+   autor; …)" é de outra conta, que o autor amplifica ao citar. As
+   afirmações FACTUAIS dela — evento ocorrido ou estado presente no mundo,
+   com referente identificado, que imprensa poderia confirmar ou
+   desmentir — saem como `citado`: reescrita autônoma em `afirmacao`, e
+   `quem`/`o_que`/`quando` com `trecho` copiado DA LINHA DO CITADO, com as
+   mesmas exigências da regra 8. O que o citado relata de si ("um Cybercab
+   me buscou no hotel"), opina ou prevê NÃO sai. No máximo 3 por post, as
+   mais conferíveis. Nunca `fato`: fato é do autor. Sem a linha do citado,
+   não existe `citado`.
+
+   Texto:   "(contexto — post citado pelo autor; as afirmações são de quem
+             ele cita: O BC do Japão elevou a taxa básica para 1% nesta
+             terça.)\nIsso muda tudo para o carry trade."
+   citado:  O BC do Japão elevou a taxa básica para 1%
+            quem {valor "O BC do Japão", trecho "O BC do Japão"} · o_que
+            {valor "1%", trecho "para 1%"}
+   opiniao: Isso muda tudo para o carry trade.
 """
 
 
