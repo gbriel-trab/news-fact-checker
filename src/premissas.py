@@ -228,15 +228,29 @@ def _ancorado(ref: Referente | None, texto_norm: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(alvo)}(?!\w)", texto_norm) is not None
 
 
+_ENFASE = frozenset(
+    "todos todas tudo nada nunca sempre muito muita muitos muitas isso isto "
+    "sim nao urgente breaking atencao alerta agora ja".split())
+"""Palavra comum que em caixa alta é grito, não sigla ("TODOS os outros
+empresários", 03/09/2026). Token em caixa alta que não está aqui e tem até
+`_SIGLA_MAXIMA` letras é sigla: WSJ, OTAN, IPCA, BNDES, IBOVESPA."""
+_SIGLA_MAXIMA = 8
+"""Acima disto, caixa alta é ênfase ("MINERADORAS", "IMPORTANTE"): as
+siglas do mundo econômico e político cabem em oito letras."""
+
+
 def _tem_entidade_ou_numero(ref: Referente) -> bool:
     """Nome próprio, sigla ou número no valor do referente.
 
     Duas exclusões medidas na revisão de 03/09/2026: token que ABRE o
     trecho não conta como nome próprio (maiúscula de início de linha —
     "Banco dele", "Participação societária" vinham do post do
-    "empresário"), e caixa alta com mais de duas letras é ênfase, não
-    sigla ("TODOS os outros empresários"); sigla curta (BC, IPCA, RIOT)
-    continua valendo."""
+    "empresário"), e caixa alta que é ÊNFASE não é sigla ("TODOS os outros
+    empresários"). Até 07/09/2026 a segunda exclusão pegava QUALQUER caixa
+    alta com três letras ou mais — WSJ, OTAN, IPCA caíam, e o docstring
+    prometia o contrário; os casos com IPCA passavam só porque o número no
+    predicado salvava (achado no C32). Sigla é caixa alta curta que não é
+    palavra comum (`_ENFASE`, `_SIGLA_MAXIMA`)."""
     tokens = ref.valor.split()
     # A posição só é evidência quando há mais de um token: um referente de
     # uma palavra ("André", "Esteves") não oferece contraste nenhum, e
@@ -252,7 +266,9 @@ def _tem_entidade_ou_numero(ref: Referente) -> bool:
         if i == 0 and abre_o_trecho:
             continue
         if limpo.isupper() and len(limpo) > 2:
-            continue
+            if _normaliza(limpo) in _ENFASE or len(limpo) > _SIGLA_MAXIMA:
+                continue
+            return True
         if limpo[0].isupper() and limpo.casefold() not in _ARTIGOS:
             return True
     return False
@@ -535,6 +551,7 @@ def versao_roteador() -> str:
     # `_do_autor` tem de virar versão nova do mesmo jeito (revisão de
     # 06/09/2026).
     material = (fonte + repr(sorted(_ARTIGOS | _FECHADAS | _INDEFINIDOS))
+                + repr(sorted(_ENFASE)) + repr(_SIGLA_MAXIMA)
                 + _POSSESSIVO_PROPRIO.pattern + _VERBO_PROPRIO.pattern
                 + _AUTOR_NA_REESCRITA.pattern + _RE_HANDLE.pattern)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:8]

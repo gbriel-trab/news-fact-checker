@@ -293,6 +293,28 @@ locais" sem entidade) e 4 na outra (2 conferíveis) — a variação entre
 chamadas é do modelo, não do teto, e é o motivo de o caso cobrar "ao menos
 1" e não uma lista.
 
+**Sigla não é ênfase (07/09/2026).** Os barrados do C32 abriram dois
+defeitos, e só um era defeito. "A OTAN" e "WSJ" caíam porque a exclusão
+de ênfase de 03/09 ("TODOS os outros empresários") dizia "caixa alta com
+mais de duas letras é grito" — e o docstring prometia que IPCA e RIOT
+passavam; passavam só quando o número no predicado salvava. Agora sigla é
+caixa alta curta (até oito letras) que não é palavra comum (`_ENFASE`);
+"TODOS", "NADA", "MINERADORAS" seguem fora. Casos antes da regra: C33
+("A OTAN cercou Kaliningrado em 18 de agosto", sem número, caía no
+roteador) e C34 ("TODOS os empresários estão no bolso dele", que tem de
+continuar fora). "Os russos" com "há relatos locais de preparativos" NÃO
+é defeito: classe sem medida cai pela regra 8, e consertar isso — gentílico
+como entidade, ou nome próprio só no predicado — reabriria "o encontro que
+ocorreu" + "o Brasil" de 01/09 e deixaria passar "os brasileiros estão
+pessimistas". Decisão do dono: fica como está. Bateria de 07/09 com a
+sigla: 34 casos × 2, US$ 0,91, zero regressões; C33 e C34 2/2, e no C32 a
+OTAN passou a sair conferível. Instabilidade que fica registrada: numa das
+duas passadas do C32 o modelo ABREVIOU um trecho longo do citado com
+reticências ("esse foi o tema das reuniões ... avisando as autoridades"),
+e a regra 4 (trecho literal) acusou — é comportamento do modelo em trecho
+de 200 caracteres, não a regra do citado; entra como pauta para a próxima
+mudança de prompt ("copie o trecho inteiro, sem reticências").
+
 **Refazer dias passados (06/09/2026).** `radar.busca` e `boletim.monta`
 aceitam `desde`/`ate` (só por nome; a assinatura antiga segue valendo), e
 o boletim ganhou `--desde`/`--ate`: janela explícita em UTC, fim

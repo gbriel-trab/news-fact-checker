@@ -663,3 +663,38 @@ class TestCitado:
         assert "existe apenas para tipo=fato e tipo=citado" in INSTRUCOES
         assert "As premissas DO AUTOR saem SÓ do texto do post" in INSTRUCOES
         assert "existe apenas para tipo=fato:" not in INSTRUCOES
+
+
+class TestSiglaNaoEEnfase:
+    """07/09/2026: WSJ, OTAN e IPCA caíam no roteador como ênfase porque
+    'caixa alta com mais de duas letras' era a regra inteira; o docstring
+    prometia que sigla curta valia. Sigla é caixa alta curta que não é
+    palavra comum; ênfase é palavra comum ou token longo."""
+
+    def _e(self, valor):
+        from src.premissas import Referente, _tem_entidade_ou_numero
+        return _tem_entidade_ou_numero(Referente(valor=valor, trecho=valor))
+
+    def test_siglas_contam_como_entidade(self):
+        for v in ("WSJ", "a OTAN", "o IPCA", "o BC", "o BNDES", "IBOVESPA"):
+            assert self._e(v), v
+
+    def test_enfase_continua_fora(self):
+        for v in ("TODOS os empresários", "NADA mudou", "MINERADORAS",
+                  "IMPORTANTE", "BREAKING"):
+            assert not self._e(v), v
+
+    def test_otan_sem_numero_vai_ao_check_e_todos_nao(self):
+        from src.premissas import Referente, roteia
+        texto = "POST (@x, 01 Sep 2026):\nA OTAN cercou Kaliningrado em 18 de agosto."
+        p_ = Premissa(tipo="fato", afirmacao="A OTAN cercou Kaliningrado em 18 de agosto.",
+                      trecho="A OTAN cercou Kaliningrado em 18 de agosto",
+                      quem=Referente(valor="A OTAN", trecho="A OTAN"),
+                      o_que=Referente(valor="Kaliningrado", trecho="Kaliningrado"))
+        assert roteia(Analise(premissas=[p_]), texto).premissas[0].tipo == "fato"
+        texto2 = "POST (@x, 01 Sep 2026):\nTODOS os empresários estão no bolso dele."
+        p2 = Premissa(tipo="fato", afirmacao="Todos os empresários estão no bolso dele.",
+                      trecho="TODOS os empresários estão no bolso dele",
+                      quem=Referente(valor="TODOS os empresários", trecho="TODOS os empresários"),
+                      o_que=Referente(valor="no bolso dele", trecho="no bolso dele"))
+        assert roteia(Analise(premissas=[p2]), texto2).premissas[0].tipo == "nao_verificavel"
