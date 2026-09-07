@@ -252,11 +252,13 @@ de alguém, não resposta. Critério por metadado
 comentarista. O leitor continua vendo o comentário citado no arquivo e no
 Telegram, marcado "resposta, fora da separação"; o modelo não o recebe.
 **Tipo `citado` (0.3, 06/09/2026, na mesma noite).** O post citado de
-canal é FONTE, não autor: as afirmações factuais dele saem como `citado`,
+canal é de OUTRA conta: as afirmações factuais dele saem como `citado`,
 com reescrita conferível como o fato, ancoradas na linha do post citado
 (regra 10 do separador; `_roteia_citado` em código, mesmas quatro
-condições do fato, teto de 3 por post), conferidas no check e exibidas
-com o nome de quem afirmou — "[CITADO de @AnaliseGeopol]" no arquivo e no
+condições do fato mais a regra 7 para quem cita), CONFERIDAS no check
+como qualquer fato — "fonte, não autor", que é o título da regra 10, fala
+só da atribuição, nunca de pular a conferência — e exibidas com o nome de
+quem afirmou — "[CITADO de @AnaliseGeopol]" no arquivo e no
 Telegram —, nunca misturadas às premissas do autor. `citado` que não
 ancora, sem linha do citado ou acima do teto perde a reescrita e fica como
 "nada a conferir", ainda `citado`: não vira não_verificável do autor. A
@@ -279,7 +281,17 @@ tem quatro afirmações conferíveis e o modelo escolhe três, variando entre
 passadas (Ratcliffe/OTAN/bálticos numa, Ratcliffe/OTAN/Rússia na outra);
 o caso passou a cobrar "ao menos 1 citado conferível" (`citados_min`, chave
 opcional do comparador). Limite visto na bateria: "a OTAN" cai no roteador
-porque sigla de quatro letras é lida como ênfase.
+porque sigla de quatro letras é lida como ênfase. **O teto de 3 citados
+por post saiu em 07/09** ("tira o teto, vamos pagar pra ver"): deixava de
+fora uma afirmação conferível, fato do autor nunca teve teto, e o custo é
+segurado pela demanda por rodada e pela extração por dia. Bateria de
+07/09 sem o teto: 32 casos × 2, US$ 0,91, zero regressões; o C32 rendeu 7
+citados numa passada (4 conferíveis: a mobilização de 500 mil, Ratcliffe
+diretor da CIA, as reuniões dele em Moscou, os bálticos na fronteira; 3
+barrados pelo roteador, entre eles "a OTAN" pela sigla e "há relatos
+locais" sem entidade) e 4 na outra (2 conferíveis) — a variação entre
+chamadas é do modelo, não do teto, e é o motivo de o caso cobrar "ao menos
+1" e não uma lista.
 
 **Refazer dias passados (06/09/2026).** `radar.busca` e `boletim.monta`
 aceitam `desde`/`ate` (só por nome; a assinatura antiga segue valendo), e

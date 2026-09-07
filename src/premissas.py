@@ -386,12 +386,6 @@ def _vazio(ref: Referente) -> bool:
     return not uteis or all(t in _FECHADAS for t in uteis)
 
 
-TETO_CITADOS = 3
-"""Quantas premissas `citado` de um post vão ao check. Post citado de canal
-é longo e rende muitas afirmações; três é o bastante para dizer se o que
-o autor amplificou se sustenta, e cada uma custa um check (06/09/2026)."""
-
-
 def _texto_citado(texto: str) -> str:
     """O texto da linha do post citado, sem o prefixo e os parênteses — é
     onde o `citado` ancora. Vazio quando não há linha."""
@@ -405,12 +399,18 @@ def _texto_citado(texto: str) -> str:
     return corpo[:-1].strip() if corpo.endswith(")") else corpo
 
 
-def _roteia_citado(p: "Premissa", norm_citado: str, vaga: bool) -> bool:
+def _roteia_citado(p: "Premissa", norm_citado: str) -> bool:
     """O `citado` só vai ao check se ancorar NA LINHA DO POST CITADO, com
-    as mesmas exigências do fato, e dentro do teto por post. Fora disso
-    perde a reescrita (não vai ao check) e ganha o motivo em `roteado`,
-    mas continua `citado`: não é palavra do autor para virar
-    nao_verificavel dele. Devolve True se ficou conferível."""
+    as mesmas exigências do fato. Fora disso perde a reescrita (não vai ao
+    check) e ganha o motivo em `roteado`, mas continua `citado`: não é
+    palavra do autor para virar nao_verificavel dele. Devolve True se
+    ficou conferível.
+
+    SEM TETO por post, por decisão do dono (07/09/2026, "tira o teto,
+    vamos pagar pra ver"): nasceu com 3 e deixava de fora uma afirmação
+    conferível do C32 — fato do autor nunca teve teto, e o que segura o
+    custo é a demanda por rodada e a extração por dia, não o número de
+    checks."""
     if not norm_citado:
         motivo = "citado sem linha de post citado no texto"
     elif not _ancorado(p.quem, norm_citado):
@@ -428,8 +428,6 @@ def _roteia_citado(p: "Premissa", norm_citado: str, vaga: bool) -> bool:
         # 62%" no post citado é relato do citado, não fato do mundo.
         motivo = ("referente é coisa de quem cita (relato do citado): "
                   "não é fato do mundo")
-    elif not vaga:
-        motivo = f"acima do teto de {TETO_CITADOS} citados por post"
     else:
         return True
     p.afirmacao = None
@@ -476,12 +474,10 @@ def roteia(analise: Analise, texto: str) -> Analise:
     norm_citado = _normaliza(_texto_citado(texto))
     cabecalho = _RE_HANDLE.match(texto)
     handle = cabecalho.group(1) if cabecalho else ""
-    conferiveis = 0
     for p in analise.premissas:
         if p.tipo == "citado":
             # Ancora no post CITADO, não no texto do autor (regra 10).
-            if _roteia_citado(p, norm_citado, conferiveis < TETO_CITADOS):
-                conferiveis += 1
+            _roteia_citado(p, norm_citado)
             continue
         if p.tipo != "fato":
             continue
@@ -539,7 +535,6 @@ def versao_roteador() -> str:
     # `_do_autor` tem de virar versão nova do mesmo jeito (revisão de
     # 06/09/2026).
     material = (fonte + repr(sorted(_ARTIGOS | _FECHADAS | _INDEFINIDOS))
-                + repr(TETO_CITADOS)
                 + _POSSESSIVO_PROPRIO.pattern + _VERBO_PROPRIO.pattern
                 + _AUTOR_NA_REESCRITA.pattern + _RE_HANDLE.pattern)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:8]
@@ -725,9 +720,9 @@ Regras que importam mais que as outras:
    desmentir — saem como `citado`: reescrita autônoma em `afirmacao`, e
    `quem`/`o_que`/`quando` com `trecho` copiado DA LINHA DO CITADO, com as
    mesmas exigências da regra 8. O que o citado relata de si ("um Cybercab
-   me buscou no hotel"), opina ou prevê NÃO sai. No máximo 3 por post, as
-   mais conferíveis. Nunca `fato`: fato é do autor. Sem a linha do citado,
-   não existe `citado`.
+   me buscou no hotel"), opina ou prevê NÃO sai. Todas as conferíveis
+   saem, sem limite de quantidade. Nunca `fato`: fato é do autor. Sem a
+   linha do citado, não existe `citado`.
 
    Texto:   "(contexto — post citado pelo autor; as afirmações são de quem
              ele cita: O BC do Japão elevou a taxa básica para 1% nesta

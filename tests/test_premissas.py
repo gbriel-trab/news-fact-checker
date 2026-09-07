@@ -636,23 +636,26 @@ class TestCitado:
         p_ = roteia(analise, texto).premissas[0]
         assert p_.afirmacao is None and "sem linha" in p_.roteado
 
-    def test_teto_de_tres_por_post_conta_so_os_conferiveis(self):
-        from src.premissas import TETO_CITADOS, roteia
+    def test_sem_teto_todos_os_conferiveis_seguem(self):
+        """Decisão do dono (07/09/2026): sem teto por post — o de 3 deixava
+        de fora uma afirmação conferível do C32. Só os barrados por âncora
+        ficam de fora, e nenhum motivo fala em teto."""
+        from src.premissas import roteia
         barrados = [self._citado(("Questão de tempo", "Questão de tempo"),
                                  ("500 mil", "500 mil"),
                                  afirmacao=f"barrado {i}") for i in range(2)]
         bons = [self._citado(("A Rússia", "A Rússia"),
                              ("500 mil soldados", "500 mil soldados"),
-                             afirmacao=f"bom {i}") for i in range(4)]
+                             afirmacao=f"bom {i}") for i in range(6)]
         saida = roteia(Analise(premissas=barrados + bons), self.TEXTO).premissas
         conferiveis = [p.afirmacao for p in saida if p.afirmacao]
-        assert conferiveis == ["bom 0", "bom 1", "bom 2"]
-        assert len(conferiveis) == TETO_CITADOS == 3
-        assert "teto" in saida[5].roteado and "teto" not in saida[0].roteado
+        assert conferiveis == [f"bom {i}" for i in range(6)]
+        assert not any("teto" in (p.roteado or "") for p in saida)
 
     def test_regra_10_esta_no_prompt_e_a_9_nao_a_contradiz(self):
         from src.premissas import INSTRUCOES
         assert "10. O POST CITADO É FONTE, NÃO AUTOR" in INSTRUCOES
+        assert "No máximo 3 por post" not in INSTRUCOES
         assert "não resolve nem\n   ancora premissa DO AUTOR" in INSTRUCOES
         assert "Nunca copie `trecho` dela" not in INSTRUCOES
         # As três frases que diziam "só fato" foram corrigidas juntas.

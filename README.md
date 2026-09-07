@@ -134,10 +134,10 @@ Medidos no banco em 05/09/2026:
   silencioso — é a mais coberta
 * Gabarito de regressão dos prompts: 32 casos do separador (ficam fora do
   repositório, porque reproduzem texto de post) e 23 do juiz. Última
-  rodada completa do separador em 07/09/2026, 2 passadas, US$ 0,89: zero
+  rodada completa do separador em 07/09/2026, 2 passadas, US$ 0,91: zero
   regressões, depois de o separador ganhar o tipo `citado` (o post de
-  canal que o autor cita é fonte: suas afirmações são conferidas com o
-  nome de quem as fez)
+  canal que o autor cita é de outra conta: suas afirmações são conferidas
+  como as dele, com o nome de quem as fez, sem teto por post)
 * Boletim refeito dia a dia de 25/08 a 06/09/2026: 13 rodadas, 103 posts
   lidos, 32 no boletim (o resto era resposta a outra conta, descartada
   antes de custar), US$ 1,63 no total — US$ 0,125 por dia
