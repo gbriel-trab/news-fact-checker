@@ -179,7 +179,19 @@ def _confere_post(c: "radar.Captura", conexao,
     dados: dict = {"nao_verificaveis": [], "checks": [], "contextos": [],
                    "sem_premissas": not analise.premissas}
 
-    resto = [p for p in analise.premissas if p.tipo != "fato"]
+    # `citado` com reescrita vai ao check como um fato, rotulado com quem
+    # afirmou (o autor do post citado, que a captura conhece); `citado`
+    # sem reescrita foi barrado pelo roteador e fica com os não-fatos.
+    # Quem afirmou é o autor do post citado de OUTRA conta; sem ele (post
+    # sem citado, ou citado do próprio autor) não existe `citado`
+    # conferível — o roteador já barra, e aqui é a segunda rede.
+    de_quem = (c.referenciado.autor
+               if c.referenciado is not None and not c.contexto_proprio
+               else "")
+    citados = [p for p in analise.premissas
+               if p.tipo == "citado" and p.afirmacao and de_quem]
+    resto = [p for p in analise.premissas
+             if p.tipo != "fato" and p not in citados]
     fatos = [p for p in analise.premissas if p.tipo == "fato"]
 
     vistos: set[str] = set()
@@ -235,8 +247,10 @@ def _confere_post(c: "radar.Captura", conexao,
             linha = check.consulta_recente(conexao, afirmacao)
         return s, linha
 
-    for p in fatos:
+    for p in fatos + citados:
         nota_demanda = None
+        rotulo_citado = (f"[CITADO de @{de_quem}] " if p.tipo == "citado"
+                         else "")
         # CHECK PRIMEIRO; a demanda só depois de "sem evidência". A ordem
         # inversa usava proximidade vetorial como oráculo de cobertura e
         # caiu no primeiro teste vivo (01/09/2026, caso Esteves-Trump):
@@ -296,7 +310,7 @@ def _confere_post(c: "radar.Captura", conexao,
                 partes.append("  [DEMANDA] teto DIÁRIO de extração atingido "
                               "(extract.TETO_DIARIO_USD) — fica o veredito "
                               "só com o acervo")
-        partes.append(f'  premissa: "{p.texto}"')
+        partes.append(f'  {rotulo_citado}premissa: "{p.texto}"')
         evidencias = _RE_EVIDENCIA.findall(saida.getvalue())
         # Raspar o stdout só funciona quando o check RODOU. No reuso ele
         # imprime "veredito gravado nas últimas 24h" e nada mais, então a
@@ -315,6 +329,7 @@ def _confere_post(c: "radar.Captura", conexao,
             "evidencias": evidencias,
             "demanda": nota_demanda,
             "retida": bool(nova is not None and _retida(nova)),
+            "citado_de": de_quem if p.tipo == "citado" else None,
         })
         # Sem evidência vira UMA linha: a enumeração do que foi olhado e
         # rejeitado é trilha de auditoria — mora em `consultas` e no
@@ -496,7 +511,8 @@ def _esc(texto: str) -> str:
 
 
 _TAG_TIPO = {"opiniao": "OPINIÃO", "previsao": "PREVISÃO",
-             "relato": "RELATO", "nao_verificavel": "NÃO VERIFICÁVEL"}
+             "relato": "RELATO", "nao_verificavel": "NÃO VERIFICÁVEL",
+             "citado": "CITADO NÃO CONFERÍVEL"}
 _TAG_VEREDITO = {"confirmado": "CONFIRMADO", "contradito": "CONTRADITO",
                  "sem_evidencia": "SEM EVIDÊNCIA"}
 
@@ -588,12 +604,16 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
                      + (f" · <i>{fontes}</i>" if fontes else ""))
         for c in dados["checks"]:
             rotulo = _TAG_VEREDITO.get(c["veredito"], c["veredito"].upper())
+            # Premissa do post citado: leva o nome de quem afirmou, para
+            # nunca se ler como palavra do autor.
+            quem_cita = (f"<code>[CITADO de @{_esc(c['citado_de'])}]</code> "
+                         if c.get("citado_de") else "")
             if c.get("demanda"):
                 p.append(f"{tag('DEMANDA')} {_esc(c['demanda'])}")
             if c["veredito"] == "sem_evidencia":
                 razao = ("evidência não conferida" if c.get("retida")
                          else "o acervo não cobre")
-                p.append(f"<b>[{rotulo}]</b> {razao} · "
+                p.append(f"{quem_cita}<b>[{rotulo}]</b> {razao} · "
                          f"<i>{_esc(c['afirmacao'])}</i>")
             else:
                 # O TÍTULO, não só o nome do veículo: "CNN · Folha · G1"
@@ -619,8 +639,8 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
 
                 fontes = chr(10).join(
                     _fonte(e) for e in c["evidencias"][:4] if len(e) >= 2)
-                p.append(f"<b>[{rotulo}]</b> · {c['veiculos']} veículo(s) — "
-                         f"<i>{_esc(c['afirmacao'])}</i>")
+                p.append(f"{quem_cita}<b>[{rotulo}]</b> · {c['veiculos']} "
+                         f"veículo(s) — <i>{_esc(c['afirmacao'])}</i>")
                 p.append(f"    {_esc(c['justificativa'])}")
                 if fontes:
                     p.append(f"    {tag('EVIDÊNCIA')} {fontes}")

@@ -592,3 +592,89 @@ class TestCorteEmPedacos:
         a, b = _equilibra(["<b>fora <i>dentro", "segue</i></b> fim"])
         assert a.endswith("</i></b>")
         assert b.startswith("<b><i>")
+
+
+class TestCitadoNoBoletim:
+    """`citado` com reescrita vai ao check rotulado com quem afirmou; sem
+    reescrita fica com os não-fatos como 'nada a conferir'."""
+
+    def _roda(self, tmp_path, monkeypatch, premissas):
+        from types import SimpleNamespace
+
+        from src import boletim
+        analise = SimpleNamespace(premissas=premissas)
+        monkeypatch.setattr("src.premissas.separa",
+                            lambda texto, conexao=None: (analise, SimpleNamespace(custo=0.0)))
+        monkeypatch.setattr("src.check.verifica", lambda *a, **k: None)
+        citado = Post(id="555", autor="sigel", criado_em="2026-09-01T12:00:00Z",
+                      texto="A Rússia prepara 500 mil soldados", tipo="post")
+        c = _captura("Questão de tempo.", ident="333", tipo="citacao",
+                     referenciado=citado)
+        con = _banco(tmp_path)
+        estado = {"acervo": [], "orcamento": 0.5}
+        return boletim._confere_post(c, con, estado)
+
+    def test_citado_conferivel_vai_ao_check_com_o_nome_de_quem_afirmou(
+            self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+        p_ = SimpleNamespace(tipo="citado", afirmacao="A Rússia prepara 500 mil soldados.",
+                             trecho="A Rússia prepara 500 mil soldados",
+                             texto="A Rússia prepara 500 mil soldados.",
+                             quem=None, roteado=None, hipotese=None)
+        bloco, gasto, dados = self._roda(tmp_path, monkeypatch, [p_])
+        assert '[CITADO de @sigel] premissa: "A Rússia prepara 500 mil soldados."' in bloco
+        assert dados["checks"][0]["citado_de"] == "sigel"
+        assert dados["checks"][0]["veredito"] == "sem_evidencia"
+        # Conferível não aparece TAMBÉM como "nada a conferir".
+        assert "nada a conferir" not in bloco
+        assert dados["nao_verificaveis"] == []
+
+    def test_citado_sem_post_citado_de_terceiro_nao_e_conferido(
+            self, tmp_path, monkeypatch):
+        """Segunda rede: sem referenciado de outra conta não há de quem
+        afirmou — o citado (que o roteador já barraria) fica no resto."""
+        from types import SimpleNamespace
+
+        from src import boletim
+        p_ = SimpleNamespace(tipo="citado", afirmacao="X fez Y.", trecho="X fez Y",
+                             texto="X fez Y.", quem=None, roteado=None, hipotese=None)
+        analise = SimpleNamespace(premissas=[p_])
+        monkeypatch.setattr("src.premissas.separa",
+                            lambda texto, conexao=None: (analise, SimpleNamespace(custo=0.0)))
+        monkeypatch.setattr("src.check.verifica",
+                            lambda *a, **k: pytest.fail("conferiu citado sem citado"))
+        bloco, _, dados = boletim._confere_post(
+            _captura("post sem citação", ident="1"), _banco(tmp_path),
+            {"acervo": [], "orcamento": 0.5})
+        assert dados["checks"] == [] and "[CITADO de @]" not in bloco
+
+    def test_citado_barrado_pelo_roteador_nao_vai_ao_check(
+            self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+        p_ = SimpleNamespace(tipo="citado", afirmacao=None,
+                             trecho="um Cybercab me buscou",
+                             texto="um Cybercab me buscou",
+                             quem=None, roteado="sujeito sem âncora", hipotese=None)
+        bloco, gasto, dados = self._roda(tmp_path, monkeypatch, [p_])
+        assert dados["checks"] == []
+        assert "[citado] um Cybercab me buscou — nada a conferir" in bloco
+
+    def test_telegram_rotula_o_citado(self):
+        from src.boletim import _conta_tipos, _formata_telegram
+        dados = {"nao_verificaveis": [], "contextos": [], "sem_premissas": False,
+                 "checks": [{"afirmacao": "A Rússia prepara 500 mil soldados.",
+                             "veredito": "sem_evidencia", "justificativa": "",
+                             "veiculos": 0, "custo": 0.0, "evidencias": [],
+                             "demanda": None, "retida": False,
+                             "citado_de": "AnaliseGeopol"}]}
+        html = _formata_telegram("@x", "06/09", [(1, CAPTURA_DE_TESTE, dados)],
+                                 [], 0.1, 0.03)
+        assert "<code>[CITADO de @AnaliseGeopol]</code> <b>[SEM EVIDÊNCIA]</b>" in html
+        assert _conta_tipos([("citado", "x")]) == "CITADO NÃO CONFERÍVEL"
+        # O rótulo vale também no ramo confirmado/contradito.
+        dados["checks"][0].update({"veredito": "confirmado", "veiculos": 2,
+                                   "justificativa": "duas fontes",
+                                   "evidencias": [("G1", "https://g1/x")]})
+        html = _formata_telegram("@x", "06/09", [(1, CAPTURA_DE_TESTE, dados)],
+                                 [], 0.1, 0.03)
+        assert "<code>[CITADO de @AnaliseGeopol]</code> <b>[CONFIRMADO]</b>" in html

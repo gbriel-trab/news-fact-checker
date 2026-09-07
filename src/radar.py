@@ -586,8 +586,16 @@ def _confere(c: Captura, custo_busca: float) -> None:
         sys.exit(1)
 
     analise, uso = premissas.separa(para_separacao(c), conexao=conexao)
-    fatos = [p for p in analise.premissas if p.tipo == "fato"]
-    resto = [p for p in analise.premissas if p.tipo != "fato"]
+    # `citado` com reescrita é conferido como fato, rotulado com quem
+    # afirmou (o autor do post citado); sem reescrita, fica com o resto.
+    de_quem = (c.referenciado.autor
+               if c.referenciado is not None and not c.contexto_proprio
+               else "")
+    citados = [p for p in analise.premissas
+               if p.tipo == "citado" and p.afirmacao and de_quem]
+    fatos = [p for p in analise.premissas if p.tipo == "fato"] + citados
+    resto = [p for p in analise.premissas
+             if p.tipo != "fato" and p not in citados]
 
     if resto:
         print("NÃO VERIFICÁVEL — e não deve ser")
@@ -599,7 +607,8 @@ def _confere(c: Captura, custo_busca: float) -> None:
         print("Nenhuma premissa verificável no post.")
     else:
         for i, p in enumerate(fatos, 1):
-            print(f"[{i}/{len(fatos)}] no post: \"{p.trecho[:110]}\"")
+            rotulo = f"[CITADO de @{de_quem}] " if p.tipo == "citado" else ""
+            print(f"[{i}/{len(fatos)}] {rotulo}no post: \"{p.trecho[:110]}\"")
             check.verifica(p.texto, conexao=conexao, acervo=acervo)
     conexao.close()
 
