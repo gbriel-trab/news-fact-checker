@@ -293,6 +293,14 @@ class TestRetweetTextual:
             text="RT @bitcoinbrhub: TREZOR IDENTIFICA MAIS 67 MIL CLIENTES"
         )) == ("retweet", "")
 
+    def test_reposted_e_o_nome_novo_de_retweeted(self):
+        """Payload real de 06/09/2026: `referenced_posts: [{"type":
+        "reposted"}]` — e o post passou como `post`."""
+        assert classifica(post_cru(
+            id="8", conversation_id="8", text="RT @OutsOficial: Terças",
+            referenced_posts=[{"type": "reposted", "id": "2"}]
+        )) == ("retweet", "2")
+
     def test_rt_no_meio_do_texto_nao_conta(self):
         assert classifica(post_cru(
             id="6", conversation_id="6",

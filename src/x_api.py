@@ -189,10 +189,11 @@ def classifica(post: dict) -> tuple[str, str]:
     * `referenced` do tipo `replied_to` + autor do referenciado IGUAL ao autor
       do post -> `thread` (o autor continuando a si mesmo)
     * `referenced` do tipo `replied_to` + autor diferente -> `resposta`
-    * `referenced` do tipo `retweeted` -> `retweet`
+    * `referenced` do tipo `retweeted` OU `reposted` (o nome novo, que o
+      servidor de fato manda — medido em 06/09/2026) -> `retweet`
     * `referenced` do tipo `quoted` -> `citacao`
     * sem `referenced` e texto começando por "RT @" -> `retweet` (a forma
-      antiga, copiando o texto; medida em 06/09/2026)
+      antiga, copiando o texto)
     * sem `referenced` e `conversation_id == id` -> `post` (raiz de conversa)
 
     `replied_to` é examinado ANTES de `quoted` porque os dois coexistem quando
@@ -229,12 +230,16 @@ def classifica(post: dict) -> tuple[str, str]:
         if isinstance(item, dict) and item.get("type"):
             por_tipo.setdefault(str(item["type"]), str(item.get("id") or ""))
 
-    # OBSERVADO em 06/09/2026, na primeira leitura do segundo handle: post
-    # cujo texto começa por "RT @alguém:" e chega SEM `referenced_*` e com
-    # `conversation_id` igual ao próprio id — a forma antiga de retuitar,
-    # copiando o texto. Pelo metadado seria `post`, e o separador leria a
-    # palavra de terceiro como premissa do autor. É retweet pelo mesmo
-    # motivo do retweet de metadado: não traz palavra do autor.
+    # OBSERVADO em 06/09/2026, na primeira leitura do segundo handle: o
+    # servidor marca o repost como `{"type": "reposted"}` — o nome NOVO,
+    # par de `post.fields`/`referenced_posts`; a doc de fundamentos só fala
+    # em `retweeted`. Um "RT @OutsOficial: …" passou como `post` e o
+    # separador tratou a palavra de terceiro como premissa do autor. Os dois
+    # nomes são lidos, como nos demais campos. E texto começando por "RT @"
+    # sem referência nenhuma (a forma antiga, copiando) é retweet também:
+    # não traz palavra do autor.
+    if "retweeted" in por_tipo or "reposted" in por_tipo:
+        return "retweet", por_tipo.get("retweeted") or por_tipo.get("reposted")
     if not por_tipo and str(post.get("text") or "").startswith("RT @"):
         return "retweet", ""
 
@@ -246,8 +251,6 @@ def classifica(post: dict) -> tuple[str, str]:
         # Sem `in_reply_to_user_id` não há como afirmar que o pai é o próprio
         # autor, e presumir que é seria falhar aberto.
         return "resposta", pai_id
-    if "retweeted" in por_tipo:
-        return "retweet", por_tipo["retweeted"]
     if "quoted" in por_tipo:
         return "citacao", por_tipo["quoted"]
 
