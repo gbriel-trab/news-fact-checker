@@ -99,11 +99,33 @@ def _termos(referente: str) -> list[str]:
     (a pontuação colada cai — "Ibovespa, Nasdaq" era "ibovespa," e nunca
     casava), fora artigo, preposição, pronome, palavra curta e cabeça
     genérica. "as alts que postei" → ["alts", "postei"]; "a taxa de juros"
-    → ["juros"]; "o BC" → [] (sem filtro)."""
-    return [t for t in re.findall(r"\w+", _normaliza(referente))
-            if len(t) >= _TAMANHO_MINIMO
-            and t not in _ARTIGOS and t not in _FECHADAS
-            and t not in _CABECAS_GENERICAS]
+    → ["juros"]; "o BC" → [] (sem filtro).
+
+    Quando o referente traz NOME PRÓPRIO — token com inicial maiúscula fora
+    da primeira posição, ou @handle, ou $ticker —, só os nomes próprios
+    valem: "O cartão da @ether_fi" é a ether.fi, não qualquer cartão. Sem
+    isso, a demanda pagou uma matéria da Ethena por "cartão" e "cashback"
+    (26/08 do segundo handle, US$ 0,08)."""
+    crus = [c for c in re.findall(r"[@$]?\w+", referente)
+            if c.lstrip("@$") and _normaliza(c.lstrip("@$")) not in _ARTIGOS]
+    # A inicial maiúscula do PRIMEIRO token pode ser só começo de frase
+    # ("Muitos terremotos"): ela conta como nome próprio quando os outros
+    # tokens também são nomes ("Ibovespa, Nasdaq, Russell, SPX") ou quando
+    # o token está sozinho ("Esteves").
+    outros_sao_nomes = all(c[0] in "@$" or c.lstrip("@$")[0].isupper()
+                           for c in crus[1:])
+    proprios = []
+    for i, cru in enumerate(crus):
+        limpo = cru.lstrip("@$")
+        if cru[0] in "@$" or (limpo[0].isupper()
+                              and (i > 0 or outros_sao_nomes)):
+            proprios.append(_normaliza(limpo))
+    uteis = [t for t in re.findall(r"\w+", _normaliza(referente))
+             if len(t) >= _TAMANHO_MINIMO
+             and t not in _ARTIGOS and t not in _FECHADAS
+             and t not in _CABECAS_GENERICAS]
+    so_proprios = [t for t in uteis if t in proprios]
+    return so_proprios or uteis
 
 
 def _menciona(linha, referente: str) -> bool:

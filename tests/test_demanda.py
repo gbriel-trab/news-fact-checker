@@ -295,6 +295,24 @@ class TestGuardaDeReferente:
                                  "a taxa de juros")
         assert demanda._menciona(self._linha("qualquer"), "o governo")
 
+    def test_nome_proprio_no_referente_e_o_que_conta(self):
+        """26/08 do segundo handle: 'O cartão da @ether_fi' casou uma
+        matéria da Ethena por 'cartão'. Com nome próprio no referente, só
+        ele vale; sem nome próprio, qualquer termo útil continua valendo."""
+        assert demanda._termos("O cartão da @ether_fi") == ["ether_fi"]
+        assert demanda._termos("o lucro da Caixa") == ["caixa"]
+        assert demanda._termos("Ibovespa, Nasdaq, Russell, SPX") == [
+            "ibovespa", "nasdaq", "russell", "spx"]
+        assert demanda._termos("o desemprego") == ["desemprego"]
+        assert demanda._termos("Esteves") == ["esteves"]
+        assert demanda._termos("Muitos terremotos") == ["muitos", "terremotos"]
+        assert demanda._termos("André Esteves") == ["andre", "esteves"]
+        assert not demanda._menciona(
+            self._linha("Ethena lança app de pagamentos com cashback"),
+            "O cartão da @ether_fi")
+        assert demanda._menciona(
+            self._linha("Caixa anuncia dividendos"), "o lucro da Caixa")
+
     def test_confere_o_mesmo_texto_que_o_ranking_viu(self):
         """Estadão chega com resumo vazio e o lead no corpo; a guarda lê
         título + começo do corpo, como o embedding."""

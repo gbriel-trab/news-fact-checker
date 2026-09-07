@@ -302,7 +302,10 @@ O que mudou, na ordem de 03/09 (caso positivo primeiro, regra depois):
   pronome ou cabeça genérica ("taxa", "governo", "banco", "pesquisa": "a
   taxa de juros" só casa por "juros"). Sem termo útil, não filtra — o erro
   caro é o falso negativo de cobertura. Flexão não é tolerada ("marcas
-  icônicas" não casa "marca icônica"): limite registrado.
+  icônicas" não casa "marca icônica"): limite registrado. Quando o
+  referente traz nome próprio (@handle, $ticker, inicial maiúscula), só o
+  nome vale: "O cartão da @ether_fi" pagou uma matéria da Ethena por
+  "cartão" e "cashback" (segundo handle, 26/08, US$ 0,08) antes disso.
 * **Exibição**: quando o post referenciado está na mesma rodada, a linha
   de contexto aponta ("é o post 1 desta rodada", no arquivo, no console e
   no Telegram — no [CITANDO] com o handle) em vez de repetir o texto; o
