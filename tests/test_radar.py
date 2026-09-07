@@ -777,3 +777,45 @@ class TestReferenciadoBuscadoAParte:
         assert [(p.id, "cadeia" in m) for p, m in r.descartados] == [
             ("91", True)]
         assert r.lidos == 2
+
+
+class TestCitadoQueEComentario:
+    """Decisão do dono (06/09/2026): o post citado só entra no separador
+    se for post de alguém, não resposta. Metadado, não juízo."""
+
+    def _citacao(self, tipo_do_citado):
+        citado = _post("555", "pergunta do seguidor TOKEN-Q", autor="sigel",
+                       tipo=tipo_do_citado,
+                       pai_id="1" if tipo_do_citado == "resposta" else "")
+        return Captura(_post("333", "Sim... e não.", tipo="citacao",
+                             pai_id="555"), referenciado=citado)
+
+    def test_resposta_citada_nao_vai_ao_separador(self):
+        c = self._citacao("resposta")
+        assert c.citado_e_comentario
+        texto = radar.para_separacao(c)
+        assert "TOKEN-Q" not in texto and CONTEXTO_ALHEIO not in texto
+        # O leitor ainda vê, marcado.
+        assert "resposta, fora da separação" in radar.como_texto(c, 1)
+        assert "TOKEN-Q" in radar.como_texto(c, 1)
+
+    def test_post_raiz_citado_vai(self):
+        c = self._citacao("post")
+        assert not c.citado_e_comentario
+        assert CONTEXTO_ALHEIO in radar.para_separacao(c)
+
+    def test_thread_propria_nao_e_afetada(self):
+        pai = _post("111", "minha raiz", tipo="resposta", pai_id="9")
+        c = Captura(_post("222", "continuando", tipo="thread", pai_id="111"),
+                    referenciado=pai)
+        assert not c.citado_e_comentario
+        assert CONTEXTO_PROPRIO in radar.para_separacao(c)
+
+    def test_telegram_marca_o_comentario_citado(self):
+        from src.boletim import _formata_telegram
+        c = self._citacao("resposta")
+        vazio = {"nao_verificaveis": [], "checks": [], "contextos": [],
+                 "sem_premissas": False}
+        html = _formata_telegram("@perfil_teste", "06/09",
+                                 [(1, c, dict(vazio))], [], 0.1, 0.03)
+        assert "(resposta, fora da separação)" in html

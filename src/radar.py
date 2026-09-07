@@ -89,6 +89,19 @@ class Captura:
     referenciado: Post | None = None
 
     @property
+    def citado_e_comentario(self) -> bool:
+        """O post citado é de outra conta E é uma RESPOSTA — comentário
+        numa conversa, não post de alguém. Decisão do dono (06/09/2026):
+        "só entra no separador se for post de alguém e não resposta". O
+        critério é metadado, não juízo: raiz de conversa é canal, resposta
+        é comentarista — a distinção que separa citar @AnaliseGeopol de
+        citar a pergunta de um seguidor. Vale só para o citado de terceiro;
+        a thread do próprio autor tem outra regra (a cadeia)."""
+        return (self.referenciado is not None
+                and not self.contexto_proprio
+                and self.referenciado.tipo == "resposta")
+
+    @property
     def contexto_proprio(self) -> bool:
         """O referenciado é palavra do PRÓPRIO autor — a thread, ou o autor
         citando a si mesmo? Decide a atribuição no texto do separador:
@@ -308,7 +321,11 @@ def para_separacao(c: Captura) -> str:
     `Captura.contexto_proprio`, comparação de autor, não de texto."""
     linhas = [f"POST (@{c.post.autor}, {quando(c.post.criado_em)}):"]
     ref = c.referenciado
-    if ref is not None and _uma_linha(ref.texto):
+    # Comentário citado (resposta de terceiro) não vai ao separador — só
+    # post de alguém (`Captura.citado_e_comentario`). O leitor ainda o vê
+    # no arquivo e no Telegram, marcado; o modelo, não.
+    if (ref is not None and _uma_linha(ref.texto)
+            and not c.citado_e_comentario):
         prefixo = CONTEXTO_PROPRIO if c.contexto_proprio else CONTEXTO_ALHEIO
         linhas.append(f"({prefixo}: {_uma_linha(ref.texto)})")
     linhas.append(c.post.texto)
@@ -333,7 +350,9 @@ def como_texto(c: Captura, numero: int,
     ref = c.referenciado
     if ref is not None and _uma_linha(ref.texto):
         quem = ("post anterior do próprio autor" if c.contexto_proprio
-                else f"post citado, de @{ref.autor}")
+                else f"post citado, de @{ref.autor}"
+                + (" — resposta, fora da separação"
+                   if c.citado_e_comentario else ""))
         n = (numeros or {}).get(ref.id) if ref.id else None
         corpo = (f"é o post {n} desta rodada" if n
                  else _uma_linha(ref.texto))

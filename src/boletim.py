@@ -567,8 +567,13 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
             # Pai na mesma mensagem: ponteiro, não o texto de novo.
             n = numeros.get(ref.id) if ref.id else None
             de = "" if c.contexto_proprio else f", de @{_esc(ref.autor)}"
-            corpo = (f"é o post [{n}] desta rodada{de}" if n else
-                     f"@{_esc(ref.autor)}: {_esc(' '.join(ref.texto.split()))}")
+            # Comentário citado: o leitor vê, o separador não recebeu — a
+            # marca vai nos dois ramos, com ponteiro ou com o texto.
+            marca = (" (resposta, fora da separação)"
+                     if c.citado_e_comentario else "")
+            corpo = (f"é o post [{n}] desta rodada{de}{marca}" if n else
+                     f"@{_esc(ref.autor)}{marca}: "
+                     f"{_esc(' '.join(ref.texto.split()))}")
             p.append(f"{tag(rotulo)} <i>{corpo}</i>")
         p.append(f"<i>{_esc(post.texto)}</i>")
 

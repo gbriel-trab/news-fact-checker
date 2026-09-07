@@ -241,6 +241,22 @@ matéria e demanda, que devolve `teto_diario` e o boletim imprime. É teto
 de partida: a chamada que cruza a linha ainda acontece, e o pior caso é o
 teto mais uma história.
 
+**Post citado: só post de alguém entra no separador (06/09/2026).** Com
+o segundo handle, a pergunta "o que fazer com o post citado" mudou de
+forma: ele cita canais de informação; o primeiro citava comentários nos
+próprios posts. Decisão do dono: o citado só vai ao separador se for post
+de alguém, não resposta. Critério por metadado
+(`Captura.citado_e_comentario`): raiz de conversa é canal, resposta é
+comentarista. O leitor continua vendo o comentário citado no arquivo e no
+Telegram, marcado "resposta, fora da separação"; o modelo não o recebe.
+Fica desenhado para a 0.3, sem implementar: um tipo de premissa `citado`
+— afirmação factual do post citado, com o handle de quem a fez, conferida
+como fato e exibida à parte ("[CITADO de @x]"), nunca misturada às
+premissas do autor. Isso pede corrigir a letra de "o sistema não gera as
+próprias perguntas" (a afirmação vem do autor, ou do post que ele escolheu
+citar) e casos positivos no gabarito antes da regra; o POST 4 de 26/08 do
+segundo handle (Rússia, 500 mil soldados, citado de um canal) já é um.
+
 **Refazer dias passados (06/09/2026).** `radar.busca` e `boletim.monta`
 aceitam `desde`/`ate` (só por nome; a assinatura antiga segue valendo), e
 o boletim ganhou `--desde`/`--ate`: janela explícita em UTC, fim
