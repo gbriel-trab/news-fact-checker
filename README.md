@@ -72,7 +72,9 @@ separa o que é previsão/opinião/relato — que não se verifica, e não deve
 ser — e o que é afirmação sem referente identificável — que não dá para
 verificar — das premissas factuais, cada uma com sujeito, objeto e data
 **ancorados no trecho literal** e conferidos em código antes de custar uma
-chamada. O resultado é entregue diariamente pelo Telegram.
+chamada. Quando o autor cita o post de um canal, as afirmações factuais do
+citado entram à parte, com o nome de quem as fez: o autor não é avaliado
+pelo que cita, e o que ele amplifica também é conferido. O resultado é entregue diariamente pelo Telegram.
 
 Os prompts do separador e do juiz têm **gabarito de regressão**
 (`gabaritos/`, `python -m src.gabarito`): casos fixos com resposta esperada
@@ -128,13 +130,14 @@ Medidos no banco em 05/09/2026:
 * 3.056 afirmações extraídas de 326 matérias
 * **301 fatos confirmados por 2+ veículos independentes**, de 1.395
   fatos distintos
-* 670 testes, todos sem rede; a camada de verificação — onde erro é
+* 703 testes, todos sem rede; a camada de verificação — onde erro é
   silencioso — é a mais coberta
-* Gabarito de regressão dos prompts: 31 casos do separador (ficam fora do
+* Gabarito de regressão dos prompts: 32 casos do separador (ficam fora do
   repositório, porque reproduzem texto de post) e 23 do juiz. Última
-  rodada completa do separador em 06/09/2026, 2 passadas, US$ 0,87: zero
-  regressões, depois de a regra 7 ganhar "coisa do próprio autor não é
-  referente do mundo" (enquete do autor e o que ele postou são relato)
+  rodada completa do separador em 07/09/2026, 2 passadas, US$ 0,89: zero
+  regressões, depois de o separador ganhar o tipo `citado` (o post de
+  canal que o autor cita é fonte: suas afirmações são conferidas com o
+  nome de quem as fez)
 * Boletim refeito dia a dia de 25/08 a 06/09/2026: 13 rodadas, 103 posts
   lidos, 32 no boletim (o resto era resposta a outra conta, descartada
   antes de custar), US$ 1,63 no total — US$ 0,125 por dia

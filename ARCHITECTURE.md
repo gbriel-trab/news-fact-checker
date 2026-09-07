@@ -28,9 +28,11 @@ sistema que afirmasse verdade seria o oráculo que este projeto recusa.
 
 **O sistema não gera as próprias perguntas.** Ele é um motor de verificação: a
 afirmação a ser checada é escrita por outra pessoa — o autor do post que o radar
-captura —, nunca pelo sistema. O que ele escolhe é QUAIS perfis ler, e a lista
-vem do `.env`, não dele. Dizer que o sistema "detecta desinformação sozinho"
-seria falso.
+captura, ou o post de canal que esse autor escolheu citar (tipo `citado`, desde
+06/09/2026; a escolha do que citar é do autor, e a premissa sai com o nome de
+quem a fez) —, nunca pelo sistema. O que ele escolhe é QUAIS perfis ler, e a
+lista vem do `.env`, não dele. Dizer que o sistema "detecta desinformação
+sozinho" seria falso.
 
 ## Duas metades, dois gatilhos
 
@@ -249,13 +251,35 @@ de alguém, não resposta. Critério por metadado
 (`Captura.citado_e_comentario`): raiz de conversa é canal, resposta é
 comentarista. O leitor continua vendo o comentário citado no arquivo e no
 Telegram, marcado "resposta, fora da separação"; o modelo não o recebe.
-Fica desenhado para a 0.3, sem implementar: um tipo de premissa `citado`
-— afirmação factual do post citado, com o handle de quem a fez, conferida
-como fato e exibida à parte ("[CITADO de @x]"), nunca misturada às
-premissas do autor. Isso pede corrigir a letra de "o sistema não gera as
-próprias perguntas" (a afirmação vem do autor, ou do post que ele escolheu
-citar) e casos positivos no gabarito antes da regra; o POST 4 de 26/08 do
-segundo handle (Rússia, 500 mil soldados, citado de um canal) já é um.
+**Tipo `citado` (0.3, 06/09/2026, na mesma noite).** O post citado de
+canal é FONTE, não autor: as afirmações factuais dele saem como `citado`,
+com reescrita conferível como o fato, ancoradas na linha do post citado
+(regra 10 do separador; `_roteia_citado` em código, mesmas quatro
+condições do fato, teto de 3 por post), conferidas no check e exibidas
+com o nome de quem afirmou — "[CITADO de @AnaliseGeopol]" no arquivo e no
+Telegram —, nunca misturadas às premissas do autor. `citado` que não
+ancora, sem linha do citado ou acima do teto perde a reescrita e fica como
+"nada a conferir", ainda `citado`: não vira não_verificável do autor. A
+letra de "o sistema não gera as próprias perguntas" foi corrigida (a
+escolha do que citar é do autor). Ordem de 03/09: C32 primeiro — o POST 4
+de 26/08 do segundo handle (Rússia, 500 mil soldados; Ratcliffe em
+Moscou), cujo baseline em cache falhava em 2 pontos —, C31 como negativo
+(relato do citado não sai), depois a regra, depois a bateria. Revisão
+adversária do diff antes de pagar (27 agentes, 24 achados, 11 confirmados
+antes de o limite de uso cortar os outros): o pior era o validador
+reconstruindo a reescrita de um `citado` barrado quando o cache era
+relido, e ele voltando ao check; também a regra 3 e o primeiro parágrafo
+da 9 ainda diziam "só fato"; `_do_autor` não valia para o citado ("minha
+enquete" do citado passava); o `--conferir` do radar e o painel não
+conheciam o tipo. Tudo isso corrigido com teste, menos o painel, que segue
+mostrando a afirmação do citado sem o dono — limite registrado. Bateria
+na madrugada de 07/09: 32 casos × 2, US$ 0,89, zero regressões — depois
+de o C32 ser reescrito para cobrar a regra e não a escolha: o post citado
+tem quatro afirmações conferíveis e o modelo escolhe três, variando entre
+passadas (Ratcliffe/OTAN/bálticos numa, Ratcliffe/OTAN/Rússia na outra);
+o caso passou a cobrar "ao menos 1 citado conferível" (`citados_min`, chave
+opcional do comparador). Limite visto na bateria: "a OTAN" cai no roteador
+porque sigla de quatro letras é lida como ênfase.
 
 **Refazer dias passados (06/09/2026).** `radar.busca` e `boletim.monta`
 aceitam `desde`/`ate` (só por nome; a assinatura antiga segue valendo), e

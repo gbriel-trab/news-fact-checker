@@ -149,6 +149,24 @@ class TestComparadorDePremissas:
         assert confere_premissas(
             caso, [P("relato", "nao confio 100% na alta de BTC")]) != []
 
+    def test_citado_tem_reescrita_e_nao_conta_como_fato(self):
+        """0.3 (06/09/2026): `citado` é conferido, logo tem reescrita, e
+        `fatos: 0` continua valendo — fato é do autor."""
+        caso = {"fatos": 0, "esperado": [{"tipo": "citado", "contem": "500 mil"}]}
+        premissas = [P("citado", "A Rússia estaria preparando 500 mil soldados",
+                       "A Rússia prepara 500 mil soldados")]
+        assert confere_premissas(caso, premissas) == []
+        # O citado BARRADO (sem reescrita) não satisfaz o esperado.
+        barrado = [P("citado", "A Rússia estaria preparando 500 mil soldados")]
+        assert confere_premissas(caso, barrado) != []
+
+    def test_citados_min_conta_so_os_conferiveis(self):
+        caso = {"citados_min": 1, "esperado": []}
+        assert confere_premissas(caso, [P("citado", "x", "X fez Y")]) == []
+        falhas = confere_premissas(caso, [P("citado", "x")])
+        assert falhas and "ao menos 1 citado" in falhas[0]
+        assert confere_premissas({"citados_min": 0, "esperado": []}, []) == []
+
     def test_nao_fato_com_reescrita_e_falha(self):
         """O −38% da v2: opinião não pode voltar a vir parafraseada."""
         caso = {"esperado": []}
@@ -310,11 +328,13 @@ class TestArquivosDeCasos:
                 tipos = (item["tipo"] if isinstance(item["tipo"], list)
                          else [item["tipo"]])
                 assert tipos and all(
-                    t in ("fato", "previsao", "opiniao", "relato",
+                    t in ("fato", "previsao", "opiniao", "relato", "citado",
                           "nao_verificavel") for t in tipos), c["id"]
                 assert item["contem"].strip(), c["id"]
             assert all(p.strip() for p in c.get("proibido_em_fato", [])), c["id"]
             assert all(p.strip() for p in c.get("proibido", [])), c["id"]
+            cm = c.get("citados_min")
+            assert cm is None or (isinstance(cm, int) and cm >= 0), c["id"]
             if fatos == 0:
                 # Lista com `fato` dentro também contaria como fato esperado.
                 assert not any("fato" in (i["tipo"] if isinstance(

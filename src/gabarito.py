@@ -154,7 +154,7 @@ _CHAVES_ASSINADAS = ("texto", "afirmacao", "fatos", "esperado",
 # chave nova na tupla fixa muda o material de TODOS os casos e derruba
 # todas as assinaturas de uma vez — `proibido` nasceu em 06/09/2026 com o
 # gabarito 50/50 assinado, e a tupla fixa não pode mais crescer.
-_CHAVES_OPCIONAIS = ("proibido",)
+_CHAVES_OPCIONAIS = ("proibido", "citados_min")
 
 
 def assinatura(caso: dict) -> str:
@@ -374,7 +374,10 @@ def confere_premissas(caso: dict, premissas: list) -> list[str]:
     `.afirmacao` (a classe Premissa do separador, ou um dublê). Regras:
 
     * `fatos`: número EXATO de premissas tipo fato, quando presente.
-    * Não-fato com `afirmacao` preenchida é falha sempre: a regra 3 manda
+    * Não-fato com `afirmacao` preenchida é falha sempre — exceto o
+      `citado` (06/09/2026), que é conferido e por isso tem reescrita como
+      o fato; o comparador o trata como fato para `esperado`, mas ele NÃO
+      entra em `fatos`: fato é do autor, citado é de quem ele cita. A regra 3 manda
       omitir, e a paráfrase de opinião era 38% da saída paga (v2).
     * Regra 4, conferível sem modelo: todo trecho tem de existir no texto.
     * `esperado`: cada item {tipo, contem} precisa de uma premissa daquele
@@ -388,9 +391,13 @@ def confere_premissas(caso: dict, premissas: list) -> list[str]:
       guarda contra completar o que o texto não diz ("André" → "André
       Esteves", IPCA sem mês → "de agosto").
     * `proibido`: nenhuma premissa, de QUALQUER tipo, pode conter estes
-      pedaços — a guarda da regra 9 (06/09/2026): a linha de contexto não
-      rende premissa, e o vazamento típico não é fato, é a opinião e o
-      relato do post anterior saindo de novo. `fatos: 0` não enxerga isso.
+      pedaços — a guarda da regra 9 (06/09/2026): a linha de contexto do
+      PRÓPRIO autor não rende premissa, e o vazamento típico não é fato, é
+      a opinião e o relato do post anterior saindo de novo. `fatos: 0` não
+      enxerga isso. Desde a regra 10 a linha do post citado de OUTRA conta
+      rende `citado`; num caso assim, `proibido` serve para o que do citado
+      NÃO pode sair (relato dele, como o Cybercab do C31), não para o
+      citado legítimo.
     """
     falhas: list[str] = []
     fatos = [p for p in premissas if p.tipo == "fato"]
@@ -398,7 +405,8 @@ def confere_premissas(caso: dict, premissas: list) -> list[str]:
         falhas.append(f"esperava {caso['fatos']} fato(s), veio {len(fatos)}")
     texto_norm = _normaliza(caso["texto"]) if caso.get("texto") else None
     for p in premissas:
-        if p.tipo != "fato" and getattr(p, "afirmacao", None):
+        if (p.tipo not in ("fato", "citado")
+                and getattr(p, "afirmacao", None)):
             falhas.append(f"[{p.tipo}] veio com reescrita paga: "
                           f"\"{p.afirmacao[:60]}\"")
         if texto_norm is not None and _normaliza(p.trecho) not in texto_norm:
@@ -414,6 +422,11 @@ def confere_premissas(caso: dict, premissas: list) -> list[str]:
         def _bate(p, item=item, tipos=tipos):
             if p.tipo not in tipos or not _contem(p.texto, item["contem"]):
                 return False
+            # `citado` esperado é o CONFERÍVEL: o barrado pelo roteador
+            # continua `citado`, mas sem reescrita, e não pode satisfazer
+            # o caso (revisão de 06/09/2026).
+            if p.tipo == "citado" and not getattr(p, "afirmacao", None):
+                return False
             if item.get("quem"):
                 referente = getattr(p, "quem", None)
                 return bool(referente) and _contem(referente.valor, item["quem"])
@@ -423,6 +436,18 @@ def confere_premissas(caso: dict, premissas: list) -> list[str]:
                           f"\"{item['contem']}\""
                           + (f" com quem \"{item['quem']}\"" if item.get("quem")
                              else ""))
+    # `citados_min`: ao menos N `citado` CONFERÍVEIS (com reescrita). É a
+    # medida certa para post citado longo: o modelo escolhe 3 entre várias
+    # afirmações válidas e a escolha varia entre passadas (C32, 06/09/2026:
+    # Ratcliffe/OTAN/Bálticos numa, Ratcliffe/OTAN/Rússia na outra) — pinar
+    # QUAL afirmação sai é cobrar a escolha, não a regra.
+    minimo = caso.get("citados_min")
+    if minimo is not None:
+        conferiveis = sum(1 for p in premissas
+                          if p.tipo == "citado" and getattr(p, "afirmacao", None))
+        if conferiveis < minimo:
+            falhas.append(f"esperava ao menos {minimo} citado(s) conferível(is), "
+                          f"veio {conferiveis}")
     for pedaco in caso.get("proibido_em_fato", []):
         for p in fatos:
             if _contem(p.texto, pedaco):
