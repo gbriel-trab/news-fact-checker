@@ -315,6 +315,23 @@ e a regra 4 (trecho literal) acusou — é comportamento do modelo em trecho
 de 200 caracteres, não a regra do citado; entra como pauta para a próxima
 mudança de prompt ("copie o trecho inteiro, sem reticências").
 
+**Primeiro boletim com `citado`, segundo handle, 25 a 30/08 (07/09/2026,
+US$ 1,77 nas seis rodadas).** O tipo pagou no primeiro dia com conteúdo:
+o post citado sobre a enchente no Nepal dizia 291 turistas estrangeiros
+desaparecidos, e o check devolveu CONTRADITO pelo G1 — 341 estrangeiros,
+com o total de 384 batendo. Em 30/08, "o AfD lidera as intenções de voto
+na Saxônia-Anhalt", citado de um canal, saiu CONFIRMADO por 2 veículos
+depois de a demanda extrair a matéria. O resto foi "sem evidência" —
+Fed, Ratcliffe em Moscou, drone em Leipzig, mobilização russa —, o
+esperado para geopolítica estrangeira num acervo brasileiro. Observação
+que fica: para "a Rússia estaria preparando uma mobilização de 500 mil",
+a demanda trouxe as matérias certas (Putin nega plano de alistamento em
+massa, G1 e Metrópoles) e o juiz manteve "sem evidência" — negação do
+próprio acusado não conta como evidência independente. É a questão de
+atribuição em aberto ("Fulano disse X" contra "X é verdade") aparecendo
+na saída, não defeito. O dia mais denso (26/08) custou US$ 0,83, o dobro
+de sem o tipo: seis citados conferidos e três demandas.
+
 **Refazer dias passados (06/09/2026).** `radar.busca` e `boletim.monta`
 aceitam `desde`/`ate` (só por nome; a assinatura antiga segue valendo), e
 o boletim ganhou `--desde`/`--ate`: janela explícita em UTC, fim
