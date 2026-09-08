@@ -66,7 +66,7 @@ class TestConfereTeto:
 
 class TestDemandaRespeitaOTetoDiario:
     def test_vira_motivo_teto_diario_sem_gastar(self, monkeypatch):
-        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="": ["m"])
+        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="", q="": ["m"])
 
         def estoura(*a, **k):
             raise extract.TetoDiario("hoje já deu")

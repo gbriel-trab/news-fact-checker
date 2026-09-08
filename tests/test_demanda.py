@@ -15,12 +15,12 @@ from src import demanda
 
 class TestGarante:
     def test_sem_candidata_nao_gasta(self, monkeypatch):
-        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="": [])
+        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="", q="": [])
         r = demanda.garante(None, "x")
         assert r.motivo == "sem_candidata" and r.custo == 0
 
     def test_teto_recusa_antes_da_api(self, monkeypatch):
-        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="": ["m"])
+        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="", q="": ["m"])
         monkeypatch.setattr(demanda.extract, "extrai_grupo",
                             lambda *a: pytest.fail("o teto não segurou"))
         r = demanda.garante(None, "x",
@@ -29,7 +29,7 @@ class TestGarante:
 
     def test_extraiu_reindexa_so_o_grupo_e_fatura_o_real(self, monkeypatch):
         m1, m2 = {"id": 11}, {"id": 22}
-        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="": [m1, m2])
+        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="", q="": [m1, m2])
         monkeypatch.setattr(demanda.extract, "extrai_grupo",
                             lambda c, g: (7, 0.08, False))
         reindexados = []
@@ -46,7 +46,7 @@ class TestGarante:
         # mesma_historia=false num grupo montado por proximidade com a
         # premissa não pode queimar a matéria certa junto com o carona.
         m1, m2 = {"id": 11}, {"id": 22}
-        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="": [m1, m2])
+        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="", q="": [m1, m2])
         chamadas = []
 
         def falso_extrai(c, grupo, *a):
@@ -65,7 +65,7 @@ class TestGarante:
 
     def test_recusa_sem_orcamento_nao_retenta(self, monkeypatch):
         monkeypatch.setattr(demanda, "candidatas",
-                            lambda c, t, r="": [{"id": 1}, {"id": 2}])
+                            lambda c, t, r="", q="": [{"id": 1}, {"id": 2}])
         chamadas = []
         monkeypatch.setattr(
             demanda.extract, "extrai_grupo",
@@ -84,7 +84,7 @@ class TestGarante:
     def test_falha_de_indice_nao_vira_falha_de_demanda(self, monkeypatch):
         # Extração PAGA precisa contar como extração mesmo se o Chroma
         # cair — a rota por chave do check segue enxergando o grafo.
-        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="": [{"id": 1}])
+        monkeypatch.setattr(demanda, "candidatas", lambda c, t, r="", q="": [{"id": 1}])
         monkeypatch.setattr(demanda.extract, "extrai_grupo",
                             lambda c, g, *a: (5, 0.06, False))
 
@@ -130,7 +130,7 @@ class TestConferePostEstado:
                             lambda texto, conexao=None: (analise, uso))
         monkeypatch.setattr(
             demanda, "garante",
-            lambda c, t, o, referente="": demanda.Resultado(
+            lambda c, t, o, referente="", quando="": demanda.Resultado(
                 "extraiu", 1, 3, 0.20))
         monkeypatch.setattr("src.grafo.carrega", lambda c: ["novo"])
 
@@ -339,10 +339,52 @@ class TestGuardaDeReferente:
     def test_garante_repassa_o_referente(self, monkeypatch):
         visto = {}
 
-        def falso(c, t, r=""):
+        def falso(c, t, r="", q=""):
             visto["referente"] = r
+            visto["quando"] = q
             return []
 
         monkeypatch.setattr(demanda, "candidatas", falso)
-        demanda.garante(None, "x", referente="a Selic")
+        demanda.garante(None, "x", referente="a Selic",
+                        quando="2026-08-26T13:08:00Z")
         assert visto["referente"] == "a Selic"
+        assert visto["quando"] == "2026-08-26T13:08:00Z"
+
+
+class TestJanelaEmTornoDoPost:
+    """07/09/2026: o boletim refeito de 26/08 rodou em 07/09 e a demanda
+    olhava os 'últimos 10 dias' de HOJE — as cinco matérias sobre o diretor
+    da CIA em Moscou (25 a 27/08) ficavam fora, e o dono achou a do G1 à
+    mão. A janela fica em torno da data do post."""
+
+    def test_janela_centrada_no_post(self):
+        ini, fim = demanda._janela("2026-08-26T13:08:00Z")
+        assert ini.startswith("2026-08-16") and fim.startswith("2026-09-05")
+        assert ini <= "2026-08-27T02:02:12+00:00" <= fim
+
+    def test_sem_data_a_janela_e_em_torno_de_agora(self):
+        from datetime import datetime, timezone
+        ini, fim = demanda._janela("")
+        agora = datetime.now(timezone.utc).isoformat()
+        assert ini < agora < fim
+        assert demanda._janela("ontem à tarde") == demanda._janela("")
+
+    def test_materia_de_doze_dias_antes_de_hoje_entra_se_o_post_e_da_epoca(
+            self, monkeypatch):
+        from types import SimpleNamespace
+        achado = SimpleNamespace(proximidade=0.9,
+                                 meta={"artigo_id": "966",
+                                       "data": "2026-08-27T02:02:12+00:00"})
+        monkeypatch.setattr(demanda.indice, "indexa_artigos", lambda c: None)
+        monkeypatch.setattr(demanda.indice, "busca",
+                            lambda *a, **k: [achado])
+        linha = {"id": 966, "veiculo": "G1", "titulo": "Chefe da CIA em Moscou",
+                 "resumo": "O diretor da CIA, John Ratcliffe, pediu", "conteudo": ""}
+        monkeypatch.setattr(demanda.extract, "_por_id", lambda c, ids: [linha])
+        monkeypatch.setattr(demanda, "ja_extraida", lambda c, i: False)
+        com_data = demanda.candidatas(None, "Ratcliffe esteve em Moscou",
+                                      "Ratcliffe", "2026-08-26T00:44:00Z")
+        assert [l["id"] for l in com_data] == [966]
+        # Sem a data do post, "agora" está a semanas de 27/08: fora.
+        assert demanda.candidatas(None, "Ratcliffe esteve em Moscou",
+                                  "Ratcliffe", "") == []

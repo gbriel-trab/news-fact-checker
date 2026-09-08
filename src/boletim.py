@@ -274,7 +274,8 @@ def _confere_post(c: "radar.Captura", conexao,
             try:
                 r = demanda.garante(conexao, p.texto,
                                     estado["orcamento"],
-                                    referente=referente)
+                                    referente=referente,
+                                    quando=c.post.criado_em)
             except Exception as erro:  # noqa: BLE001 — não derruba o check
                 r = None
                 # Débito pessimista: a falha pode ter vindo DEPOIS de a

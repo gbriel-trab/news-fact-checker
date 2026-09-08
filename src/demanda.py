@@ -25,7 +25,11 @@ fato — que é literalmente a regra 2 do julgamento do check.
 Freios, na ordem em que seguram:
 
 1. Só entra matéria com título+lead a >= LIMIAR_CANDIDATA da premissa,
-   dentro da janela de dias, que MENCIONE o referente (o QUEM) da
+   dentro da janela de dias EM TORNO DA DATA DO POST (não de "agora": o
+   boletim refeito de 26/08 rodou em 07/09, e as cinco matérias do G1 e
+   da Folha sobre o diretor da CIA em Moscou, de 25 a 27/08, ficavam fora
+   da janela "últimos 10 dias" — o dono achou a do G1 à mão), que MENCIONE
+   o referente (o QUEM) da
    premissa, uma por veículo, no máximo MAX_MATERIAS, e coerente com a
    melhor candidata. A guarda de referente é de 06/09/2026: proximidade
    casa vocabulário, e "as alts que postei andaram entre 40 e 50%" puxou
@@ -152,8 +156,32 @@ def _menciona(linha, referente: str) -> bool:
                for t in termos)
 
 
+def _janela(quando: str = "") -> tuple[str, str]:
+    """(início, fim) ISO da janela de matérias: `agrupa.JANELA_DIAS` para
+    cada lado da data do post — ou de agora, sem data. Notícia sobre o que
+    o post afirma sai dias antes e dias depois dele; e num boletim refeito
+    semanas depois, "últimos N dias" olhava para o lugar errado."""
+    from datetime import datetime, timedelta, timezone
+
+    from . import agrupa
+
+    centro = None
+    texto = str(quando or "").strip()
+    if texto:
+        try:
+            centro = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+            if centro.tzinfo is None:
+                centro = centro.replace(tzinfo=timezone.utc)
+        except ValueError:
+            centro = None
+    if centro is None:
+        centro = datetime.now(timezone.utc)
+    raio = timedelta(days=agrupa.JANELA_DIAS)
+    return (centro - raio).isoformat(), (centro + raio).isoformat()
+
+
 def candidatas(conexao: sqlite3.Connection, texto: str,
-               referente: str = "") -> list[sqlite3.Row]:
+               referente: str = "", quando: str = "") -> list[sqlite3.Row]:
     """Matérias coletadas, ainda sem extração ATUAL, próximas da premissa.
 
     Cinco peneiras, na ordem (três vieram da revisão de 01/09/2026; a
@@ -181,17 +209,14 @@ def candidatas(conexao: sqlite3.Connection, texto: str,
       `agrupa` para isso; aqui o carona é expulso antes de pagar, porque
       mesma_historia=false gravaria marcador em TODAS.
     """
-    from datetime import datetime, timedelta, timezone
-
     from . import agrupa
 
     indice.indexa_artigos(conexao)
     achadas = indice.busca("artigos", texto, quantos=12)
-    corte = (datetime.now(timezone.utc)
-             - timedelta(days=agrupa.JANELA_DIAS)).isoformat()
+    inicio, fim = _janela(quando)
     ids = [int(a.meta["artigo_id"]) for a in achadas
            if a.proximidade >= LIMIAR_CANDIDATA
-           and str(a.meta.get("data", "")) >= corte]
+           and inicio <= str(a.meta.get("data", "")) <= fim]
     if not ids:
         return []
     linhas = {l["id"]: l for l in extract._por_id(conexao, ids)}
@@ -255,11 +280,14 @@ def ja_extraida(conexao: sqlite3.Connection, artigo_id: int) -> bool:
 
 
 def garante(conexao: sqlite3.Connection, texto: str,
-            orcamento: float = TETO_USD, *, referente: str = "") -> Resultado:
+            orcamento: float = TETO_USD, *, referente: str = "",
+            quando: str = "") -> Resultado:
     """Uma volta do ciclo: cobre a premissa se der, dentro do orçamento.
 
     `referente` é o QUEM ancorado da premissa (o `quem.valor` do
     separador); com ele, só candidata que o mencione paga extração.
+    `quando` é a data do post (ISO): a janela de matérias fica em torno
+    dela, não de hoje.
 
     Pressupõe que o chamador JÁ verificou e recebeu "sem evidência" — a
     demanda não re-pergunta se o acervo cobre (ver o docstring do módulo).
@@ -267,7 +295,7 @@ def garante(conexao: sqlite3.Connection, texto: str,
     o check com o acervo que houver. Falha de API sobe como exceção — quem
     chama decide se ela derruba a rodada (o boletim não deixa).
     """
-    grupo = candidatas(conexao, texto, referente)
+    grupo = candidatas(conexao, texto, referente, quando)
     if not grupo:
         return Resultado("sem_candidata", 0, 0, 0.0)
     if orcamento < CUSTO_ESTIMADO:

@@ -410,6 +410,24 @@ antes de pagar a bateria. Bateria de 06/09: 30 casos × 2 passadas, zero
 regressões, US$ 0,87 — contando uma rerrodada de C29/C30 porque a API
 devolveu 529 no meio da primeira. C29 e C30 aguardam assinatura.
 
+**Fechado em 08/09/2026, achado pelo dono lendo o boletim refeito de
+26/08 do segundo handle.** O citado "o WSJ noticiou que o diretor da CIA,
+Ratcliffe, esteve em Moscou" saiu SEM EVIDÊNCIA, e o G1 tinha a matéria
+("Em visita surpresa a Moscou, chefe da CIA pediu que Rússia não ataque
+países da OTAN, diz jornal", 26/08). O acervo tinha CINCO: G1, Folha e
+mais três, de 25 a 27/08, ranqueadas pelo índice a 0,87–0,90 da premissa e
+todas mencionando o referente — e nenhuma extraída. A demanda filtrava
+candidata por "data >= hoje − 10 dias", e o boletim de 26/08 foi refeito
+em 07/09: as matérias da época caíam fora, e o que sobrava eram três
+matérias recentes, irrelevantes, que o juiz recusou certo. O check em si
+não tem janela de data — se a tripla existir, ele acha. A janela da
+demanda agora fica em torno da DATA DO POST (`demanda._janela`: 10 dias
+para cada lado, "agora" só quando o post não tem data); o boletim passa
+`criado_em`. Nada de prompt, sem bateria; o boletim ao vivo não muda de
+comportamento, porque para post de hoje a janela é a mesma. Refazer dia
+passado é feature registrada acima, e o freio de data era o único ponto
+que ainda contava "de hoje".
+
 #### Não existe "o que está em alta"
 
 O radar lê a timeline dos handles escolhidos, numa janela de data, e só
