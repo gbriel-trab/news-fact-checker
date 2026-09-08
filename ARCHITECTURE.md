@@ -428,6 +428,67 @@ comportamento, porque para post de hoje a janela é a mesma. Refazer dia
 passado é feature registrada acima, e o freio de data era o único ponto
 que ainda contava "de hoje".
 
+Três limites medidos no mesmo dia, sem gastar — a seleção de candidatas da
+demanda roda offline, e toda proposta abaixo foi simulada nas 47 premissas
+reais de fato/citado já separadas antes de virar decisão:
+
+* **Referente que é cargo sem nome não casa com a imprensa.** "O Ministro
+  das Relações Exteriores do Nepal informou que um terremoto provocou a
+  avalanche": o `quem` veio como o texto escreve, "Ministro das Relações
+  Exteriores", e a guarda exige isso no título+lead. Nenhuma das 12 mais
+  próximas traz; a que cita o ministro pelo cargo (G1, "o que se sabe até
+  agora") está em 25º, com título genérico; a que contradiz o terremoto
+  (G1, "USGS corrige e diz que não houve terremoto") é a 7ª, mas nunca
+  cita o ministro — e a vaga do G1 vai para "Terremoto atinge o Tibete",
+  outro tremor. Aceitar termos do `o_que` na guarda ("terremoto",
+  "avalanche") rende, nas 47 premissas, +6 matérias (US$ 0,15), metade
+  ruído: Bessent e "a curva de juros" puxam "Ibovespa hoje ao vivo" por
+  juros+títulos+tesouro, o padrão de 06/09. Raridade do termo no acervo
+  NÃO separa os dois casos — "juros" está em 1,3% dos 18.818 documentos,
+  "terremoto" em 0,3%, "avalanche" em 0,7%: três semanas de coleta em que
+  o Nepal foi a maior história. Exigir um termo raro só explode (52 → 83
+  matérias por "abaixo", "rússia", "putin"). Fica como limite: referente
+  de cargo, e referente em inglês que não é nome próprio ("Moscow"), não
+  chegam à demanda. Mesma família: a premissa relata o que o ministro
+  DISSE, e contradizer o terremoto não contradiz o relato — a questão de
+  atribuição, em aberto.
+
+* **Post sobre notícia mais velha que a janela.** Distância diferente da
+  que o conserto acima fechou: ali era rodada→post; aqui é post→evento.
+  Post de hoje sobre o cerco a Kaliningrado de 18/08 procura matérias em
+  torno de hoje. O conserto pronto é centrar a janela no `quando` da
+  premissa quando ele vem como data cheia — e NÃO foi implementado, por
+  três razões medidas e uma de princípio. Medidas: das 47 premissas, 5 têm
+  `quando`, 2 com data cheia, 0 a mais de 10 dias do post (quem posta
+  comenta a notícia do dia); das 28 com zero candidatas, quase nenhuma é
+  janela — são TOTAL3 e altcoins que a imprensa não cobre, premissas em
+  inglês, a enquete do autor. De princípio: hoje TODA âncora temporal do
+  funil é fato (data do post pela API, data da matéria pelo feed,
+  `data_fato` da extração); `quando` seria a primeira saída de modelo a
+  decidir ONDE a demanda gasta. Já há saída de modelo dirigindo a demanda
+  (`quem`, na guarda), mas com assimetria: `quem` errado dá zero
+  candidatas e custa nada; `quando` errado dá candidatas do período
+  errado, paga extração, e as triplas entram no índice para sempre — a
+  "Selic de janeiro contra agosto" autoinfligida, sem filtro de data no
+  check. Se um caso real aparecer, entra com três guardas: só quando o
+  `trecho` traz dia, mês e ano literais (resolução de "ontem" pelo
+  cabeçalho não vale como âncora de gasto); data nunca posterior ao post
+  nem anterior ao acervo; e o boletim imprime a âncora usada. E nunca uma
+  regra de prompt "resolva sempre a data" — seria pedir ao modelo para
+  preencher lacuna com plausibilidade (princípio 3) num campo que passa a
+  mover dinheiro.
+
+* **O juiz não sabe quando a afirmação foi feita.** Recebe a data do fato
+  de cada evidência e alinha a lacuna "quando" (regra 6), mas só quando a
+  afirmação traz data; "a Selic está em 15%" chega sem referência
+  temporal, e uma tripla de outro mês pode render CONTRADITO pela regra 4.
+  Exposição hoje pequena (1.218 triplas de ago/2026, 216 de set, 175 de
+  jan–jul, 90 anteriores a 2026 — e 1.342 sem `data_fato`, sem defesa
+  alguma); cresce a cada mês de coleta. Conserto: data do post como
+  referência no prompt do juiz, com regra de que evidência distante no
+  tempo, quando a afirmação não data, não sustenta nem contradiz. É
+  mudança de prompt: entra só com a bateria do check.
+
 #### Não existe "o que está em alta"
 
 O radar lê a timeline dos handles escolhidos, numa janela de data, e só
