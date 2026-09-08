@@ -409,9 +409,11 @@ def busca(handles: tuple[str, ...], dias: int = 2, *,
     é EXCLUSIVO no endpoint: `desde=2026-08-25, ate=2026-08-26` é o dia 25
     inteiro, em UTC.
 
-    ORDEM. As capturas saem do mais velho para o mais novo, por instante
-    de publicação: o pai de uma thread vem antes do filho, e o ponteiro de
-    contexto aponta para trás. A API devolve o inverso.
+    ORDEM. As capturas saem agrupadas por handle, na ordem em que os
+    handles foram pedidos, e dentro de cada handle do mais velho para o
+    mais novo, por instante de publicação: o pai de uma thread vem antes
+    do filho, e o ponteiro de contexto aponta para trás. A API devolve o
+    inverso.
 
     FALHA POR HANDLE. `PrecisaAutorizar` aborta a rodada inteira na hora:
     sem consentimento humano nada vai destravar, e continuar tentando os
@@ -458,9 +460,14 @@ def busca(handles: tuple[str, ...], dias: int = 2, *,
     # ORDEM DE LEITURA, não a da API. O endpoint devolve do mais novo para
     # o mais velho, e assim o filho de uma thread saía ANTES do pai — o
     # leitor via a resposta, depois a pergunta (31/08, apontado pelo dono
-    # em 06/09/2026). Do mais velho para o mais novo, estável: post sem
-    # data legível fica no fim, na ordem em que veio.
-    ficam = sorted(ficam, key=_ordem_de_leitura)
+    # em 06/09/2026). Com mais de um handle, primeiro AGRUPA por handle na
+    # ordem do .env (decisão do dono, 07/09/2026: ler um perfil de cada
+    # vez, thread junta), e dentro de cada um vai do mais velho para o mais
+    # novo, estável: post sem data legível fica no fim, na ordem em que
+    # veio.
+    posicao = {h.lower(): i for i, h in enumerate(handles)}
+    ficam = sorted(ficam, key=lambda p: (
+        posicao.get(p.autor.lower(), len(posicao)), *_ordem_de_leitura(p)))
     # O índice é sobre TUDO que foi lido, descartado ou não: o pai de uma
     # thread própria pode ter caído na cadeia sem que a thread caísse — e
     # aí não há nada a mostrar — mas o citado de uma citação pode ser um

@@ -678,3 +678,23 @@ class TestCitadoNoBoletim:
         html = _formata_telegram("@x", "06/09", [(1, CAPTURA_DE_TESTE, dados)],
                                  [], 0.1, 0.03)
         assert "<code>[CITADO de @AnaliseGeopol]</code> <b>[CONFIRMADO]</b>" in html
+
+
+class TestCabecalhoPorHandle:
+    """Com mais de um handle, o Telegram abre cada grupo com o handle; com
+    um só, nada muda."""
+
+    def test_telegram_abre_cada_grupo_com_o_handle(self):
+        from src.boletim import _formata_telegram
+        vazio = {"nao_verificaveis": [], "checks": [], "contextos": [],
+                 "sem_premissas": False}
+        a = _captura("a", ident="1", autor="perfil_teste")
+        b = _captura("b", ident="2", autor="sigel")
+        html = _formata_telegram("@perfil_teste, @sigel", "07/09",
+                                 [(1, a, dict(vazio)), (2, b, dict(vazio))],
+                                 [], 0.1, 0.03)
+        assert html.index("<b>@perfil_teste</b>") < html.index("<b>[1]</b>")
+        assert html.index("<b>@sigel</b>") < html.index("<b>[2]</b>")
+        so_um = _formata_telegram("@perfil_teste", "07/09",
+                                  [(1, a, dict(vazio))], [], 0.1, 0.03)
+        assert "<b>@perfil_teste</b>" not in so_um

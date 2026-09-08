@@ -452,7 +452,15 @@ def monta(dias: int, reenviar: bool = False, *,
         # Telegram — o separador continua recebendo o texto.
         numeros = {c.post.id: i for i, (c, _) in enumerate(ineditos, 1)
                    if c.post.id}
+        # Com mais de um handle na rodada, cada grupo abre com o handle: a
+        # rodada já vem agrupada do radar, e o leitor lê um perfil de cada
+        # vez (07/09/2026).
+        varios = len({c.post.autor.lower() for c, _ in ineditos}) > 1
+        autor_anterior = None
         for i, (c, chaves) in enumerate(ineditos, 1):
+            if varios and c.post.autor.lower() != autor_anterior:
+                linhas.append(f"── @{c.post.autor} ──")
+                autor_anterior = c.post.autor.lower()
             linhas.append(radar.como_texto(c, i, numeros))
             # Falha num post não derruba o lote — padrão do extract.main.
             # Mas é CONTADA: separação estourando em todos os posts virava
@@ -565,7 +573,13 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
     if not estruturados:
         p.append("Nenhum post novo na janela.")
     numeros = {c.post.id: i for i, c, _ in estruturados if c.post.id}
+    varios = len({c.post.autor.lower() for _, c, _ in estruturados}) > 1
+    autor_anterior = None
     for i, c, dados in estruturados:
+        if varios and c.post.autor.lower() != autor_anterior:
+            # Um perfil de cada vez: o grupo abre com o handle em negrito.
+            p.append(f"<b>@{_esc(c.post.autor)}</b>")
+            autor_anterior = c.post.autor.lower()
         # Cabeçalho: número, (handle, data) e a âncora do próprio status.
         # O CORPO vai na íntegra, sem truncar: post é conteúdo, não resumo.
         post = c.post

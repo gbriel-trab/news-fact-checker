@@ -819,3 +819,27 @@ class TestCitadoQueEComentario:
         html = _formata_telegram("@perfil_teste", "06/09",
                                  [(1, c, dict(vazio))], [], 0.1, 0.03)
         assert "(resposta, fora da separação)" in html
+
+
+
+class TestOrdemPorHandle:
+    """Decisão do dono (07/09/2026): com mais de um handle, primeiro por
+    handle na ordem do .env, e dentro de cada um do mais velho para o mais
+    novo. Um perfil de cada vez, thread junta."""
+
+    def test_agrupa_por_handle_na_ordem_pedida_e_cronologica_dentro(
+            self, monkeypatch):
+        from src.x_api import Post
+
+        def post(ident, autor, hora):
+            return Post(id=ident, autor=autor, tipo="post",
+                        criado_em=f"2026-08-31T{hora}:00Z", texto=ident)
+        _liga(monkeypatch, {
+            "perfil_teste": [post("a2", "perfil_teste", "11:05"),
+                             post("a1", "perfil_teste", "09:10")],
+            "sigel": [post("b2", "sigel", "13:50"), post("b1", "sigel", "09:40")],
+        })
+        r = radar.busca(("perfil_teste", "sigel"), 1)
+        assert [c.post.id for c in r.capturas] == ["a1", "a2", "b1", "b2"]
+        r = radar.busca(("sigel", "perfil_teste"), 1)
+        assert [c.post.id for c in r.capturas] == ["b1", "b2", "a1", "a2"]
