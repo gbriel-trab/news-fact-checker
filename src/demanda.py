@@ -224,9 +224,12 @@ def candidatas(conexao: sqlite3.Connection, texto: str,
     """
     from . import agrupa
 
-    indice.indexa_artigos(conexao)
-    achadas = indice.busca("artigos", texto, quantos=12)
     inicio, fim = _janela(quando)
+    # Indexa a MESMA janela que vai filtrar: sem isto a busca escolhia
+    # entre o que por acaso já estava na coleção, e matéria da época de um
+    # boletim refeito nunca entrava (09/09/2026).
+    indice.indexa_artigos(conexao, desde=inicio, ate=fim)
+    achadas = indice.busca("artigos", texto, quantos=12)
     ids = [int(a.meta["artigo_id"]) for a in achadas
            if a.proximidade >= LIMIAR_CANDIDATA
            and inicio <= str(a.meta.get("data", "")) <= fim]

@@ -101,3 +101,20 @@ class TestHashConteudo:
         """Sem separador, ("ab", "c") e ("a", "bc") colidiriam — e duas
         matérias diferentes seriam lidas como a mesma."""
         assert hash_conteudo("ab", "c", "") != hash_conteudo("a", "bc", "")
+
+
+class TestDataEmPortugues:
+    """O feed do UOL entrega RFC 822 com nomes em português; o feedparser
+    devolve vazio e a matéria era gravada sem data (09/09/2026)."""
+
+    def test_mes_em_portugues_vira_iso_em_utc(self):
+        from src.collectors.rss import _data_em_portugues as f
+        assert f("Ter, 08 Set 2026 23:42:58 -0300") == "2026-09-09T02:42:58+00:00"
+        assert f("Qua, 26 Ago 2026 13:08:00 -0300") == "2026-08-26T16:08:00+00:00"
+        assert f("08 Set 2026 10:00:00 -0300") == "2026-09-08T13:00:00+00:00"
+
+    def test_ingles_continua_funcionando_e_lixo_vira_none(self):
+        from src.collectors.rss import _data_em_portugues as f
+        assert f("Tue, 08 Sep 2026 23:42:58 -0300") == "2026-09-09T02:42:58+00:00"
+        for ruim in ("", "ontem", None, "Ter, 32 Set 2026 00:00:00 -0300"):
+            assert f(ruim) is None

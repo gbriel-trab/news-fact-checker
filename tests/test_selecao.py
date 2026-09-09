@@ -548,3 +548,55 @@ class TestChaveDeMedida:
         assert k("Lucro Recorrente", "2T2026") == k("lucro_recorrente", "2t2026")
         assert k("margem de erro", None) == k("margem_de_erro", "")
         assert k("lucro", "2t2026") != k("lucro", "1t2026")
+
+
+class TestJanelaDeIndexacao:
+    """09/09/2026: `agrupa.carrega` só sabia contar dos últimos N dias de
+    HOJE, e o índice de matérias nunca viu o que já era velho quando ele
+    foi criado — 504 matérias, entre elas a única sobre a manobra da Otan
+    em Kaliningrado."""
+
+    def _banco(self, tmp_path):
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        con.executemany(
+            "INSERT INTO artigos (url_norm, url_original, veiculo, editoria, "
+            "titulo, resumo, conteudo, hash_conteudo, versao, coletado_em, "
+            "data_publicacao) VALUES (?, ?, 'Folha', 'Mundo', ?, '', '', ?, 1, "
+            "'2026-09-09T00:00:00+00:00', ?)",
+            [(f"u{i}", f"u{i}", t, f"h{i}", d) for i, (t, d) in enumerate([
+                ("Manobra da Otan em Kaliningrado", "2026-08-19T17:33:00+00:00"),
+                ("Notícia de ontem", "2026-09-08T10:00:00+00:00"),
+                ("Sem data", None)])])
+        con.commit()
+        return con
+
+    def test_intervalo_explicito_alcanca_o_que_a_janela_relativa_nao_alcanca(
+            self, tmp_path):
+        from src import agrupa
+        con = self._banco(tmp_path)
+        recentes = [l["titulo"] for l in agrupa.carrega(con, 10)]
+        assert "Manobra da Otan em Kaliningrado" not in recentes
+        janela = [l["titulo"] for l in agrupa.carrega(
+            con, 10, desde="2026-08-16", ate="2026-09-05")]
+        assert janela == ["Manobra da Otan em Kaliningrado"]
+        con.close()
+
+    def test_sem_intervalo_o_comportamento_e_o_de_antes(self, tmp_path):
+        from src import agrupa
+        con = self._banco(tmp_path)
+        assert [l["titulo"] for l in agrupa.carrega(con, 10)] == ["Notícia de ontem"]
+        # Sem janela nenhuma, tudo — inclusive o que não tem data.
+        assert len(agrupa.carrega(con, None)) == 3
+        con.close()
+
+    def test_a_demanda_indexa_a_janela_que_vai_filtrar(self, tmp_path, monkeypatch):
+        from src import demanda, indice
+        visto = {}
+        monkeypatch.setattr(indice, "indexa_artigos",
+                            lambda c, dias=10, desde="", ate="": visto.update(
+                                desde=desde, ate=ate))
+        monkeypatch.setattr(indice, "busca", lambda *a, **k: [])
+        demanda.candidatas(None, "x", "", "2026-08-26T13:50:00+00:00")
+        assert visto["desde"].startswith("2026-08-16")
+        assert visto["ate"].startswith("2026-09-05")

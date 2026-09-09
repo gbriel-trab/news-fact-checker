@@ -7,6 +7,7 @@ Python da máquina estava vencido e derrubava dois dos cinco feeds.
 """
 
 import calendar
+import re
 from datetime import datetime, timezone
 
 import feedparser
@@ -19,6 +20,46 @@ from ..normalize import hash_conteudo, limpa_html, normaliza_url
 
 class FalhaNoFeed(Exception):
     """Feed não pôde ser baixado ou lido."""
+
+
+_MESES_PT = {"jan": "Jan", "fev": "Feb", "mar": "Mar", "abr": "Apr",
+             "mai": "May", "jun": "Jun", "jul": "Jul", "ago": "Aug",
+             "set": "Sep", "out": "Oct", "nov": "Nov", "dez": "Dec"}
+_RE_DIA_PT = re.compile(r"^\s*[A-Za-zÀ-ÿ]{3},\s*")
+_RE_MES_PT = re.compile(r"\b([A-Za-zÀ-ÿ]{3})\b")
+
+
+def _data_em_portugues(texto: str) -> str | None:
+    """RFC 822 com nomes de dia e mês em PORTUGUÊS, em ISO — ou None.
+
+    O feed do UOL entrega "Ter, 08 Set 2026 23:42:58 -0300". O feedparser
+    só conhece os nomes em inglês, devolve `published_parsed` vazio e a
+    matéria era gravada SEM data. Custo medido em 09/09/2026: 3.219
+    matérias, 100% do UOL e 16% do acervo, invisíveis para tudo que
+    trabalha com janela — o índice de matérias, a demanda e o
+    agrupamento. Achado quando uma premissa sobre o drone de Leipzig saiu
+    "o acervo não cobre" com a matéria do UOL no banco.
+
+    O dia da semana é descartado (a data já o determina) e só o mês é
+    traduzido, o que evita casar palavra de três letras dentro do resto
+    da string.
+    """
+    from email.utils import parsedate_to_datetime
+
+    limpo = _RE_DIA_PT.sub("", str(texto or "").strip())
+    if not limpo:
+        return None
+
+    def traduz(m):
+        return _MESES_PT.get(m.group(1).casefold(), m.group(1))
+
+    try:
+        data = parsedate_to_datetime(_RE_MES_PT.sub(traduz, limpo, count=1))
+    except (TypeError, ValueError):
+        return None
+    if data.tzinfo is None:
+        data = data.replace(tzinfo=timezone.utc)
+    return data.astimezone(timezone.utc).isoformat()
 
 
 def _para_iso(struct_time) -> str | None:
@@ -63,8 +104,13 @@ def _para_artigo(feed: Feed, entrada) -> Artigo | None:
         url_norm=normaliza_url(url),
         resumo=resumo,
         conteudo=conteudo,
-        data_publicacao=_para_iso(
-            entrada.get("published_parsed") or entrada.get("updated_parsed")
+        # `_data_em_portugues` é a reserva: feed em português entrega
+        # "Ter, 08 Set 2026" e o feedparser não o parseia.
+        data_publicacao=(
+            _para_iso(entrada.get("published_parsed")
+                      or entrada.get("updated_parsed"))
+            or _data_em_portugues(entrada.get("published")
+                                  or entrada.get("updated") or "")
         ),
         hash_conteudo=hash_conteudo(titulo, resumo, conteudo),
     )

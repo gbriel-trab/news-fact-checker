@@ -664,6 +664,61 @@ passada em todos (US$ 0,53) e três só no que falhar, em vez de três em todos
 —, um terço do preço. O gabarito já respondia por 37% do gasto do projeto
 (US$ 13 de US$ 35 até 08/09), atrás só da extração.
 
+#### O funil tem quatro filtros de data, e três estavam errados
+
+Fechado em 09/09/2026, lendo com o dono o boletim refeito do segundo handle.
+Três premissas saíram "o acervo não cobre" com a matéria no banco, e cada uma
+morreu num filtro diferente — a correção de 08/09 tinha consertado só o
+terceiro:
+
+1. **A data do feed.** O RSS do UOL entrega "Ter, 08 Set 2026 23:42:58
+   -0300", em português, e o `feedparser` só conhece os nomes em inglês:
+   devolvia `published_parsed` vazio e a matéria era gravada SEM data.
+   **3.219 matérias, 100% do UOL e 16% do acervo** — o segundo maior veículo
+   —, invisíveis para tudo que trabalha com janela. O coletor ganhou
+   `_data_em_portugues` (traduz só o mês, descarta o dia da semana) e as já
+   gravadas foram recuperadas pela data da própria URL
+   (`storage.data_pela_url`, hora 00:00 UTC de propósito: a URL dá o dia, e
+   fingir precisão faria o desempate de estado do `check.por_referencia`
+   escolher por um número inventado). Recuperadas 1.711; as 1.508 restantes
+   são subdomínios sem data na URL e seguem sem data — o feed corrigido
+   cobre as novas.
+2. **A janela de INDEXAÇÃO.** `indexa_artigos` chamava `agrupa.carrega(dias)`,
+   que filtra `data_publicacao >= datetime('now', '-10 days')`. A pergunta é
+   sempre relativa a hoje, então o que já era velho quando o índice nasceu
+   (01/09) nunca entrou, e nunca mais entraria: **504 matérias, 361 delas de
+   agosto**, entre elas a ÚNICA do acervo sobre a manobra da Otan em
+   Kaliningrado (Folha, 19/08). `agrupa.carrega` passou a aceitar
+   `desde`/`ate`, e a demanda indexa a MESMA janela que vai filtrar. Sem
+   isto, a correção de 08/09 escolhia bem entre o que por acaso já estava na
+   coleção.
+3. **A janela de RECUPERAÇÃO da demanda** — a de 08/09, centrada na data do
+   post.
+4. **A barreira temporal do juiz** — a de 08/09, `por_referencia`.
+
+Medido depois da correção, sem gastar: as duas premissas voltam a ter
+candidata (Kaliningrado acha a Folha de 19/08; o drone de Leipzig acha o UOL
+e o G1 — o UOL só porque recuperou a data).
+
+**Limite registrado no mesmo dia: fato antigo citado de passagem não vira
+tripla.** "A última visita de um diretor da CIA a Moscou foi a de William
+Burns em novembro de 2021" saiu sem evidência, e a informação ESTÁ no acervo:
+a matéria do G1 "O que pode estar por trás da visita do diretor da CIA a
+Moscou" a traz na posição 738 do texto. A matéria foi extraída e rendeu nove
+triplas, todas das cinco primeiras sentenças, nenhuma sobre Burns — o corte
+no lide, que é o filtro barato do princípio 6 e o de maior efeito no custo
+(medido: 7% das triplas pagas participam de alguma confirmação). Ampliar o
+corte resolveria este caso e multiplicaria o custo de extração no acervo
+inteiro. Fica como limite: **premissa sobre fato anterior à coleta só se
+confirma se alguma matéria recente o tratar no LIDE, não de passagem.**
+
+E um limite de cobertura que não é de código: o acervo começa em 25/08/2026,
+e o que existe de antes é só o resíduo que cada feed carregava no dia em que
+a coleta ligou — 12 matérias para o dia 18/08 inteiro, 20 para o 19,
+382 para o 25. A Folha entregou desde 17/08 e o G1 só desde 20/08. Premissa
+sobre evento dessa semana pode sair sem evidência estando certa, e nenhuma
+correção de código cria a segunda fonte que o AC1 pede.
+
 #### Não existe "o que está em alta"
 
 O radar lê a timeline dos handles escolhidos, numa janela de data, e só

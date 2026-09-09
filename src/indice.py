@@ -145,7 +145,8 @@ def texto_da_tripla(sujeito: str, relacao: str, objeto: str | None,
 
 # ------------------------------------------------------------------ indexação
 
-def indexa_artigos(conexao: sqlite3.Connection, dias: int = 10) -> int:
+def indexa_artigos(conexao: sqlite3.Connection, dias: int = 10,
+                   *, desde: str = "", ate: str = "") -> int:
     """Indexa título+lead das matérias RECENTES — o índice do COLETADO.
 
     As outras coleções indexam o que foi extraído; esta indexa o que foi
@@ -161,7 +162,9 @@ def indexa_artigos(conexao: sqlite3.Connection, dias: int = 10) -> int:
     """
     from . import agrupa
 
-    linhas = agrupa.carrega(conexao, dias)
+    # Com intervalo explícito, indexa a janela PEDIDA — é o que permite a
+    # um boletim refeito enxergar a matéria da época (09/09/2026).
+    linhas = agrupa.carrega(conexao, dias, desde=desde, ate=ate)
     if not linhas:
         return 0
     colecao = _colecao("artigos")

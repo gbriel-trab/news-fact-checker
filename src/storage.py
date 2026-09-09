@@ -7,6 +7,7 @@ engano.
 """
 
 import json
+import re
 import sqlite3
 
 from . import vocabulario
@@ -284,6 +285,43 @@ def _migra_veredito(conexao: sqlite3.Connection) -> None:
     except Exception:
         conexao.execute("ROLLBACK")
         raise
+
+
+_RE_DATA_NA_URL = re.compile(r"/(20\d\d)/(0[1-9]|1[0-2])/(0[1-9]|[12]\d|3[01])/")
+
+
+def data_pela_url(url: str) -> str | None:
+    """A data que a própria URL carrega (/AAAA/MM/DD/), em ISO — ou None.
+
+    Reserva para matéria gravada SEM data: até 09/09/2026 o feed do UOL
+    entregava "Ter, 08 Set 2026", que o feedparser não parseia, e 3.219
+    matérias (16% do acervo) ficaram sem data — invisíveis para o índice
+    de matérias, para a demanda e para o agrupamento. O coletor já lê a
+    data em português; isto recupera o que ficou para trás.
+
+    A hora é 00:00 UTC de propósito: a URL dá o dia, não o instante, e
+    fingir precisão faria o desempate de estado no mesmo dia
+    (`check.por_referencia`) escolher por um número inventado. Com 00:00,
+    matérias do mesmo dia empatam, que é o comportamento seguro."""
+    m = _RE_DATA_NA_URL.search(str(url or ""))
+    if not m:
+        return None
+    return f"{m[1]}-{m[2]}-{m[3]}T00:00:00+00:00"
+
+
+def preenche_datas_pela_url(conexao: sqlite3.Connection) -> int:
+    """Grava `data_publicacao` nas matérias que não a têm e cuja URL a
+    carrega. Só preenche NULL: nunca sobrescreve data do feed."""
+    linhas = conexao.execute(
+        "SELECT id, url_norm FROM artigos WHERE data_publicacao IS NULL"
+    ).fetchall()
+    achadas = [(data, l["id"]) for l in linhas
+               if (data := data_pela_url(l["url_norm"]))]
+    if achadas:
+        conexao.executemany(
+            "UPDATE artigos SET data_publicacao = ? WHERE id = ?", achadas)
+        conexao.commit()
+    return len(achadas)
 
 
 def conecta(caminho: Path) -> sqlite3.Connection:

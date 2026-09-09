@@ -177,10 +177,24 @@ acervo e na busca; só deixa de formar par novo."""
 
 
 def carrega(conexao: sqlite3.Connection,
-            janela_dias: int | None = JANELA_DIAS) -> list[sqlite3.Row]:
+            janela_dias: int | None = JANELA_DIAS,
+            *, desde: str = "", ate: str = "") -> list[sqlite3.Row]:
+    """As matérias da janela. Com `desde`/`ate` (ISO), o intervalo é
+    EXPLÍCITO e `janela_dias` é ignorado.
+
+    A janela relativa a "agora" era a única forma até 09/09/2026, e por
+    isso o índice de matérias nunca viu o que já era velho quando ele foi
+    criado: 504 matérias, 361 delas de agosto, invisíveis para a demanda
+    para sempre — entre elas a única do acervo sobre a manobra da Otan em
+    Kaliningrado. Quem refaz um dia passado passa o intervalo daquele
+    dia."""
     filtro = ""
     parametros: tuple = ()
-    if janela_dias is not None:
+    if desde or ate:
+        filtro = ("WHERE data_publicacao >= ? "
+                  "AND data_publicacao <= ? ")
+        parametros = (desde or "0000", ate or "9999")
+    elif janela_dias is not None:
         filtro = ("WHERE data_publicacao >= "
                   "datetime('now', ?) ")
         parametros = (f"-{janela_dias} days",)

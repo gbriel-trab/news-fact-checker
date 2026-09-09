@@ -378,7 +378,8 @@ class TestJanelaEmTornoDoPost:
         achado = SimpleNamespace(proximidade=0.9,
                                  meta={"artigo_id": "966",
                                        "data": "2026-08-27T02:02:12+00:00"})
-        monkeypatch.setattr(demanda.indice, "indexa_artigos", lambda c: None)
+        monkeypatch.setattr(demanda.indice, "indexa_artigos",
+                            lambda c, dias=10, desde="", ate="": None)
         monkeypatch.setattr(demanda.indice, "busca",
                             lambda *a, **k: [achado])
         linha = {"id": 966, "veiculo": "G1", "titulo": "Chefe da CIA em Moscou",

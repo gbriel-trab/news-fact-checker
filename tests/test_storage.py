@@ -341,3 +341,42 @@ class TestMigracaoDoVeredito:
             "candidatas, citadas, veiculos, modelo, custo_usd, consultado_em) "
             "VALUES ('b', 'dividido', 'j', 2, 2, 2, 'm', 0.1, '2026-09-08')")
         assert con.execute("SELECT veredito FROM consultas").fetchone()[0] == "dividido"
+
+
+class TestDataPelaUrl:
+    """09/09/2026: o feed do UOL entrega "Ter, 08 Set 2026" e o feedparser
+    devolve vazio — 3.219 matérias sem data, invisíveis para toda janela.
+    O coletor passou a ler a data em português; isto recupera as antigas."""
+
+    def test_le_a_data_da_url_e_ignora_o_que_nao_e_data(self):
+        from src.storage import data_pela_url
+        assert data_pela_url(
+            "https://noticias.uol.com.br/ultimas/2026/08/25/spacex-anuncia"
+        ) == "2026-08-25T00:00:00+00:00"
+        assert data_pela_url("https://tnonline.uol.com.br/noticias/parana/homem") is None
+        # Mês e dia impossíveis não viram data.
+        assert data_pela_url("https://x.com/a/2026/13/01/b") is None
+        assert data_pela_url("https://x.com/a/2026/02/32/b") is None
+        assert data_pela_url("") is None
+
+    def test_preenche_so_o_que_esta_vazio(self, tmp_path):
+        con = conecta(tmp_path / "t.db")
+        from src.storage import preenche_datas_pela_url
+        con.executemany(
+            "INSERT INTO artigos (url_norm, url_original, veiculo, editoria, "
+            "titulo, resumo, conteudo, hash_conteudo, versao, coletado_em, "
+            "data_publicacao) VALUES (?, ?, 'UOL', 'Notícias', 't', '', '', ?, 1, "
+            "'2026-09-09T00:00:00+00:00', ?)",
+            [("https://u.com/2026/08/25/a", "https://u.com/2026/08/25/a", "h1", None),
+             ("https://u.com/2026/08/26/b", "https://u.com/2026/08/26/b", "h2",
+              "2026-08-30T10:00:00+00:00"),
+             ("https://u.com/sem-data/c", "https://u.com/sem-data/c", "h3", None)])
+        con.commit()
+        assert preenche_datas_pela_url(con) == 1
+        linhas = dict(con.execute(
+            "SELECT hash_conteudo, data_publicacao FROM artigos").fetchall())
+        assert linhas["h1"] == "2026-08-25T00:00:00+00:00"
+        # Não sobrescreve data que veio do feed, nem inventa a que falta.
+        assert linhas["h2"] == "2026-08-30T10:00:00+00:00"
+        assert linhas["h3"] is None
+        con.close()
