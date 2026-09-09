@@ -489,6 +489,181 @@ reais de fato/citado já separadas antes de virar decisão:
   tempo, quando a afirmação não data, não sustenta nem contradiz. É
   mudança de prompt: entra só com a bateria do check.
 
+**Decisão da noite de 08/09/2026: os três consertos acima e a fala de
+terceiro entram ANTES da v0.2.0, com caso sintético primeiro** (o
+gabarito aceita sintético — o C30 é um — e a regra de 03/09 é caso antes
+da regra, não caso real antes da regra). O que ficou para a v0.3: a
+recuperação do caso do ministro (guarda de referente), a retratação
+("mesmo veículo, versão mais recente vence") e a negação na extração.
+
+* **Tempo no juiz (A).** A data do post vai ao check como `referencia`
+  (fato da API; a afirmação avulsa é de hoje). Antes do juiz, e ANTES da
+  escolha de candidatas, em código (`check.por_referencia`, chamada de
+  dentro de `recupera`): **sai o estado cuja MATÉRIA foi publicada depois
+  da referência** — quem afirmou não podia saber, e a Selic de dezembro
+  não contradiz um post de outubro; e **entre estados da mesma coisa fica
+  o vigente**, sendo "mesma coisa" (veículo, sujeito canônico, relação,
+  OBJETO canônico, unidade). Evento nunca é tocado, porque não expira;
+  veículos diferentes não se substituem — se discordam no mesmo instante,
+  quem diz é o juiz. Empate no instante mantém todos os empatados, e o
+  desempate é a hora de publicação da matéria. O prompt do juiz recebe
+  "DATA DE REFERÊNCIA" e a regra 8 diz o mesmo em prosa, para o que o
+  código não alcança (a afirmação sem data descreve o estado na
+  referência). Casos J19–J24, todos sintéticos: agosto contra dezembro em
+  outubro (confirmado sem citar dezembro) e em janeiro (contradito sem
+  citar agosto), junho e agosto do mesmo veículo, setembro que discorda
+  (controle contra o juiz tímido), estado sem data, e a visita da CIA
+  três meses depois (evento não expira).
+
+  **Cinco escolhas desta barreira vieram da revisão adversária da mesma
+  noite, e todas as cinco primeiras versões estavam erradas** — três
+  lentes independentes sobre o diff, 35 achados, 20 confirmados por
+  reprodução offline:
+  * **O eixo é a publicação, não o fato.** `data_fato` posterior é
+    legítimo em projeção, meta e orçamento: no acervo real são 40 triplas
+    de estado ("salário mínimo deverá subir para R$ 1.741 em 2027",
+    publicada em 25/08/2026), e cortar por ela as tornava invisíveis para
+    qualquer check. Projeção agora fica, e não substitui o valor vigente.
+  * **O objeto entra na chave.** Sem ele, "Esteves integra o BTG" e
+    "Esteves integra o conselho da B3" eram a mesma medida e a mais antiga
+    sumia — dois fatos, não um valor que mudou. É a mesma distinção que
+    `grafo.Afirmacao.chave` já fazia.
+  * **Empate mantém todos os empatados.** Guardando um índice só, o
+    empatado não saía nem virava vigente, e um terceiro mais novo o
+    deixava vivo ao lado do vigente: estado superado chegando ao juiz como
+    matéria-prima de contradição falsa. Empate é o caso comum, não a
+    exceção: entrada indexada antes de 08/09 não tem hora de publicação.
+  * **`outro` precisa do tipo que o modelo deu.** É a válvula de escape do
+    vocabulário (622 triplas, 225 delas estado): sem o palpite,
+    `vocabulario.tipo_de` devolve "evento" e a barreira inteira ficava
+    desligada ali. `tipo_relacao` passou ao metadado das duas rotas.
+  * **A barreira roda antes da reserva de diversidade.** Filtrando depois,
+    a vaga reservada ao segundo veículo era gasta numa evidência que a
+    barreira ia remover em seguida, a vaga não voltava ao ranking, e a
+    lista chegava ao juiz com um veículo só — o oposto do que a reserva
+    existe para garantir, e do critério de duas fontes do AC1.
+  E **lista esvaziada pela barreira não é "o acervo não cobre"**: o check
+  passou a dizer "evidência fora da janela temporal" e a gravar `retida`,
+  senão o boletim dispararia extração paga para cobrir o que já está
+  coberto — o gasto que a marca existe para evitar desde 03/09.
+
+  Dois efeitos colaterais consertados junto: a janela de reuso de 24h
+  casava só pelo TEXTO da afirmação, e passaria a devolver o veredito de
+  outra data de referência quando dois dias são refeitos na mesma sessão
+  (a referência virou coluna de `consultas` e entra no casamento; linha
+  antiga vale como veredito de hoje); e o rótulo `[segundo X]` só sai onde
+  existe reescrita (fato e citado) — em opinião e previsão o que se exibe
+  é o trecho literal, que já traz o "o ministro disse que", e o rótulo
+  repetia a fonte na mesma linha (o eco de 02/09 voltando por outra
+  porta). O campo `fonte` continua gravado nos outros tipos, como
+  diagnóstico, do mesmo jeito que `hipotese`.
+
+* **Janela da demanda na data escrita (B).** `premissas.data_literal`
+  lê o TRECHO do `quando` — nunca o `valor`, que é resolução do modelo —,
+  exige que ele ancore no texto do autor (a mesma âncora do `quem`, que
+  exclui o cabeçalho e a linha do post citado) e traga dia, mês e ano
+  ("18/08/2026", "18 de agosto de 2026", "August 18, 2026"). O boletim
+  centra a janela nela (`_ancora_da_demanda`) com dois freios, nunca
+  depois do dia do post nem antes da matéria mais antiga do acervo, e
+  imprime a âncora quando a usa. Data numérica é dia/mês/ano: "08/18/2026"
+  cai na validação, "05/08/2026" num post em inglês é 5 de agosto —
+  limite registrado. Chave `quando_literal` no gabarito, conferida pela
+  MESMA função. Casos C35–C39: numérica, por extenso, inglês, controle
+  relativo ("semana passada"), e duas datas no texto com só uma de
+  ocorrência.
+
+* **Veredito `dividido` (C).** Quarto veredito, para veículos DIFERENTES
+  incompatíveis entre si sobre o mesmo instante e o mesmo fato — um
+  sustenta, outro contradiz. Nunca conta como confirmação (AC1), mostra
+  os dois lados, e um veículo de cada lado já divide: o sistema não
+  escolhe lado (regra 9). Em código, `aplica_alinhamento` retém divisão
+  com menos de dois veículos citados (vira sem_evidencia retida, sem
+  disparar demanda). Não é divisão: evolução no tempo (regra 8, e o
+  código já deixou só o vigente), arredondamento, o mesmo veículo em
+  versões, negativa de parte interessada. `consultas.veredito` tinha
+  CHECK com três valores e o SQLite não altera CHECK: `_migra_veredito`
+  recria a tabela copiando todas as colunas, numa transação, depois de
+  backup (`data/backups/`, 08/09). Casos J25–J29: Folha 291 contra G1
+  341 (dividido), evolução do mesmo veículo (confirmado), manhã e noite
+  do mesmo dia (contradito pela hora), dois veículos contra o post
+  (contradito), arredondamento (confirmado por dois). O J27 nasceu com a
+  hora numa chave que `_achados_de` não lê, e o desempate — a única razão
+  do caso — nunca rodava; o teste de forma do gabarito passou a rejeitar
+  chave desconhecida dentro de `evidencias`, para um caso não voltar a
+  medir campo inerte. E o J26 pedia "mais de 1.000" contra uma evidência
+  de 1.050: o freio de alinhamento retinha SEMPRE, e o caso mediria o
+  freio numérico em vez da regra 8.
+
+* **Fala citada é evidência de que alguém disse (regra 10 do juiz).**
+  "X afirmou/negou que Z" sustenta que X disse Z. Negativa de PARTE
+  INTERESSADA não contradiz o que outro veículo relata na própria voz
+  (decisão do caso Putin, 07/09, agora regra): J30, Kremlin nega a visita
+  da CIA → confirmado por um veículo, com a negativa na justificativa.
+  A outra ponta, sem a qual a regra apertaria só para um lado: J31,
+  constatação de AUTORIDADE sobre o fato (USGS: não houve terremoto),
+  relatada pelo veículo, contradiz "um terremoto provocou a avalanche".
+  É o primeiro caso positivo do Nepal no gabarito — o lado do juiz; a
+  recuperação segue na v0.3. O precedente que a regra abre, dito em voz
+  alta: o juiz passa a classificar quem fala em relação ao fato, parte
+  ou autoridade — classificação, como o alinhamento de lacunas, não
+  "perguntar se é verdade" (princípio 1); a fronteira é difusa, e por
+  isso entra medida nas duas pontas.
+
+* **Fala de terceiro dentro do post (D, regra 7 do separador).** "O
+  ministro informou que Y", "segundo a PF, Y": quem disse não é a
+  premissa; Y é, no tipo que Y tem por si (fato, opinião, previsão), e
+  quem disse vai em `fonte`, exibido como "[segundo X]" no radar, no
+  arquivo e no Telegram. Negativa não desembrulha ("X negou que Y" é o
+  fato da negativa; Y não vira fato por ter sido negado). Terceiro citado
+  nunca é `relato`. É a terceira forma da mesma lógica: a regra 7 já
+  desembrulhava o "eu disse" do autor, e a regra 10 confere o conteúdo
+  do post citado; faltava a fala citada DENTRO do texto, que saía com o
+  embrulho e fazia o check conferir "que o ministro informou". Chave
+  `fonte_min` no gabarito. Casos C40–C44: o ministro do Nepal (o caso
+  cobra o desembrulho e a fonte, não o roteamento — "terremoto" é sujeito
+  de classe e pode cair no roteador), opinião dita por terceiro, previsão
+  dita por terceiro, "segundo a PF" com número, e a negativa como
+  controle. Exemplos do prompt (IBGE, presidente) diferentes dos casos de
+  propósito: exemplo dentro do prompt só prova reprodução. O J32 fecha o
+  par que faltava entre as duas regras: premissa desembrulhada cuja única
+  evidência no acervo é a tripla de atribuição do próprio falante
+  ("ministro afirmou que houve terremoto") tem de dar `sem_evidencia` —
+  sem ele, o par positivo/negativo ficava aberto justamente na direção
+  que custa, "CONFIRMADO · 1 veículo" para o que ninguém verificou.
+
+Bateria de 08/09/2026, as duas: **zero regressões, US$ 3,80** (separador
+44 casos, check 37, 3 passadas cada). O check passou inteiro de primeira,
+incluindo os catorze casos novos. O separador achou duas coisas, e as duas
+eram do gabarito, não do modelo:
+
+* **C7, e é o achado que importa.** "Galípolo disse que não vai cortar os
+  juros em setembro" passava desde 03/09 como FATO sobre o dizer, e a regra
+  7 nova o transformou em previsão sobre o conteúdo — 3 passadas de 3, o
+  modelo obedecendo exatamente ao que escrevi. O caso já registrava a lacuna
+  ("o prompt não tem regra para 'X disse Y' de terceiro; duas leituras
+  honestas"), e a regra escolheu o lado errado sem que eu percebesse: o
+  DIZER é conferível no acervo (relação `afirmou`), e alegar declaração que
+  não houve é justamente o que precisa ser checado. A regra 7 passou a ter
+  duas metades: desembrulha quando o conteúdo se confere sozinho; quando não
+  se confere (juízo, futuro), a premissa é "X disse Y", tipo fato, com
+  `quem` = X. C41 e C42 mudaram de expectativa junto, e o C7 voltou a passar.
+  Segunda rodada do separador, só ele: US$ 0,61.
+* **C38 cobrava tradução, não regra.** O post é em inglês e o `contem` pedia
+  "Kaliningrad"; a reescrita sai em português ("Kaliningrado"), e o modelo
+  acertou o conteúdo nas três passadas. O caso existe para a data literal em
+  inglês, que passou — a expectativa virou o ano mais o referente ancorado
+  ("NATO", como o texto escreve), que sobrevivem à tradução.
+
+Instável conhecido: C19 passa 2 de 3 ("recuperação judicial" no singular
+contra "recuperações judiciais" do caso), que é o limite de flexão do
+comparador já registrado acima. Não barra: regressão é falhar em todas.
+
+A bateria em duas etapas nasceu desta rodada, por causa do custo: uma
+passada em todos (US$ 0,53) e três só no que falhar, em vez de três em todos
+(US$ 1,58). Mesmo poder de detecção — uma falha isolada nunca foi regressão
+—, um terço do preço. O gabarito já respondia por 37% do gasto do projeto
+(US$ 13 de US$ 35 até 08/09), atrás só da extração.
+
 #### Não existe "o que está em alta"
 
 O radar lê a timeline dos handles escolhidos, numa janela de data, e só

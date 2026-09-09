@@ -698,3 +698,100 @@ class TestCabecalhoPorHandle:
         so_um = _formata_telegram("@perfil_teste", "07/09",
                                   [(1, a, dict(vazio))], [], 0.1, 0.03)
         assert "<b>@perfil_teste</b>" not in so_um
+
+
+class TestAncoraDaDemanda:
+    """08/09/2026: post de hoje sobre evento datado de semanas atrás
+    procura matérias em torno do evento; a data vem do trecho literal e
+    tem dois freios (não depois do post, não antes do acervo)."""
+
+    @staticmethod
+    def _fato(trecho):
+        from src.premissas import Premissa, Referente
+        return Premissa(tipo="fato", trecho=trecho, afirmacao="x",
+                        quando=Referente(valor="18/08/2026", trecho=trecho))
+
+    def test_data_escrita_vira_centro_e_o_boletim_avisa(self):
+        from src import boletim
+        texto = "POST (@x, 08 Sep 2026):\nEm 18/08/2026 a OTAN cercou Kaliningrado."
+        quando, nota = boletim._ancora_da_demanda(
+            self._fato("Em 18/08/2026"), texto, "2026-09-08T10:00:00Z", "2023-01-08")
+        assert quando == "2026-08-18T12:00:00+00:00"
+        assert "18/08/2026" in nota and "data escrita no post" in nota
+
+    def test_sem_data_escrita_fica_a_data_do_post(self):
+        from src import boletim
+        texto = "POST (@x, 08 Sep 2026):\nOntem a OTAN cercou Kaliningrado."
+        quando, nota = boletim._ancora_da_demanda(
+            self._fato("Ontem"), texto, "2026-09-08T10:00:00Z", "2023-01-08")
+        assert (quando, nota) == ("2026-09-08T10:00:00Z", "")
+
+    def test_data_depois_do_post_ou_antes_do_acervo_nao_vale(self):
+        from src import boletim
+        texto = "POST (@x, 08 Sep 2026):\nEm 18/08/2026 a OTAN cercou Kaliningrado."
+        p = self._fato("Em 18/08/2026")
+        assert boletim._ancora_da_demanda(p, texto, "2026-08-01T10:00:00Z", "2023-01-08")[1] == ""
+        assert boletim._ancora_da_demanda(p, texto, "2026-09-08T10:00:00Z", "2026-08-20")[1] == ""
+        # Sem piso conhecido, só o teto do post vale.
+        assert boletim._ancora_da_demanda(p, texto, "2026-09-08T10:00:00Z", "")[0].startswith("2026-08-18")
+
+
+class TestRotuloDeFonte:
+    def test_arquivo_e_telegram_mostram_de_quem_o_autor_tirou(
+            self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+
+        from src import boletim
+        fato = SimpleNamespace(tipo="fato", afirmacao="a dívida fechou julho em 78% do PIB",
+                               trecho="Segundo o Tesouro, a dívida fechou julho em 78% do PIB",
+                               texto="a dívida fechou julho em 78% do PIB",
+                               quem=None, roteado=None, hipotese=None, fonte="o Tesouro")
+        opiniao = SimpleNamespace(tipo="opiniao", afirmacao=None,
+                                  trecho="a oposição sabota", texto="a oposição sabota",
+                                  quem=None, roteado=None, hipotese=None, fonte="o ministro")
+        analise = SimpleNamespace(premissas=[fato, opiniao])
+        monkeypatch.setattr("src.premissas.separa",
+                            lambda texto, conexao=None: (analise, SimpleNamespace(custo=0.0)))
+        monkeypatch.setattr("src.check.verifica", lambda *a, **k: None)
+        bloco, _, dados = boletim._confere_post(
+            _captura("post", ident="9"), _banco(tmp_path), {"acervo": [], "orcamento": 0.5})
+        assert '[segundo o Tesouro] premissa: "a dívida fechou julho em 78% do PIB"' in bloco
+        # Sem reescrita (opinião, previsão, relato) o que se exibe é o trecho
+        # literal, que já traz o "o ministro disse que": o rótulo repetiria a
+        # fonte na mesma linha. O campo continua gravado, para diagnóstico.
+        assert "[opiniao] a oposição sabota — nada a conferir" in bloco
+        assert "[segundo o ministro]" not in bloco
+        assert dados["checks"][0]["fonte"] == "o Tesouro"
+        html = boletim._formata_telegram("@x", "08/09", [(1, _captura("post", ident="9"), dados)],
+                                         [], 0.1, 0.03)
+        assert "<code>[segundo o Tesouro]</code>" in html
+
+
+class TestDivididoNoBoletim:
+    def test_telegram_diz_que_os_veiculos_discordam(self):
+        from src import boletim
+        dados = {"nao_verificaveis": [], "contextos": [], "sem_premissas": False,
+                 "checks": [{"afirmacao": "291 desaparecidos", "veredito": "dividido",
+                             "justificativa": "Folha diz 291, G1 diz 341", "veiculos": 2,
+                             "custo": 0.02, "evidencias": [("Folha", "u1"), ("G1", "u2")],
+                             "demanda": None, "retida": False, "citado_de": None}]}
+        html = boletim._formata_telegram("@x", "08/09", [(1, CAPTURA_DE_TESTE, dados)],
+                                         [], 0.1, 0.03)
+        assert "<b>[DIVIDIDO]</b> · 2 veículos discordam" in html
+        assert "Folha diz 291, G1 diz 341" in html
+
+    def test_check_recebe_a_data_do_post_como_referencia(self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+
+        from src import boletim
+        visto = {}
+        fato = SimpleNamespace(tipo="fato", afirmacao="x", trecho="x", texto="x",
+                               quem=None, roteado=None, hipotese=None, fonte=None)
+        monkeypatch.setattr("src.premissas.separa",
+                            lambda texto, conexao=None: (SimpleNamespace(premissas=[fato]),
+                                                         SimpleNamespace(custo=0.0)))
+        monkeypatch.setattr("src.check.verifica",
+                            lambda *a, **k: visto.update(k))
+        boletim._confere_post(_captura("post", ident="9"), _banco(tmp_path),
+                              {"acervo": [], "orcamento": 0.5})
+        assert visto["referencia"] == "2026-09-01T12:00:00Z"

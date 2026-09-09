@@ -70,6 +70,12 @@ class Afirmacao:
     — ver `_mesma_medida`. No FIM do dataclass porque campo com default
     não pode preceder campo sem."""
 
+    tipo_relacao: str | None = None
+    """evento ou estado. Derivado da relação em `vocabulario.tipo_de` para
+    todo o enum; em `outro`, que é a válvula de escape, só o modelo sabe —
+    e é o que a barreira temporal do check (`por_referencia`) precisa
+    saber para não tratar estado como evento (08/09/2026)."""
+
     @property
     def chave(self) -> tuple[str, str, str]:
         """O que precisa coincidir para duas afirmações serem candidatas a
@@ -305,7 +311,7 @@ def carrega(conexao: sqlite3.Connection,
         SELECT t.sujeito_canonico s, t.relacao r, t.objeto_canonico o,
                t.valor_numero vn, t.valor_unidade vu, t.valor_contexto vc,
                t.valor_propriedade vp, t.valor_recorte vr,
-               t.data_fato df, t.origem og,
+               t.data_fato df, t.origem og, t.tipo_relacao tr,
                a.veiculo, a.titulo, a.url_norm, a.data_publicacao dp
         FROM triplas t
         JOIN extracoes e ON e.id = t.extracao_id
@@ -341,6 +347,7 @@ def carrega(conexao: sqlite3.Connection,
                   l["o"], l["vn"], l["vu"], l["vc"],
                   l["df"], l["og"], l["veiculo"], l["titulo"], l["url_norm"],
                   l["dp"],
+                  tipo_relacao=l["tr"],
                   # A chave só existe quando o modelo deu a propriedade:
                   # sem ela, `_mesma_medida` cai no embedding, que é o
                   # comportamento da safra antiga.

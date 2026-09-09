@@ -156,6 +156,19 @@ def _menciona(linha, referente: str) -> bool:
                for t in termos)
 
 
+def inicio_do_acervo(conexao: sqlite3.Connection) -> str:
+    """Data ISO da matéria mais antiga do acervo, ou "". Piso para a
+    âncora da janela: data escrita no post anterior a isso não tem
+    matéria possível, e a janela ficaria em torno do nada."""
+    try:
+        linha = conexao.execute(
+            "SELECT MIN(data_publicacao) FROM artigos "
+            "WHERE data_publicacao IS NOT NULL").fetchone()
+    except sqlite3.Error:
+        return ""
+    return str(linha[0] or "") if linha else ""
+
+
 def _janela(quando: str = "") -> tuple[str, str]:
     """(início, fim) ISO da janela de matérias: `agrupa.JANELA_DIAS` para
     cada lado da data do post — ou de agora, sem data. Notícia sobre o que

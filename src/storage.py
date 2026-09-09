@@ -120,7 +120,8 @@ CREATE TABLE IF NOT EXISTS consultas (
     id             INTEGER PRIMARY KEY,
     afirmacao      TEXT    NOT NULL,
     veredito       TEXT    NOT NULL CHECK (
-                       veredito IN ('confirmado', 'contradito', 'sem_evidencia')),
+                       veredito IN ('confirmado', 'contradito', 'sem_evidencia',
+                                    'dividido')),
     justificativa  TEXT    NOT NULL,
     candidatas     INTEGER NOT NULL,
     citadas        INTEGER NOT NULL,
@@ -203,6 +204,10 @@ MIGRACOES: tuple[tuple[str, str], ...] = (
     # partir do que já estava gravado, que saiu com "CONFIRMADO · 4
     # veículos" e nenhum link.
     ("consultas", "evidencias TEXT"),
+    # A data de referência do veredito (08/09/2026): o dia da afirmação
+    # entra no julgamento, então a janela de reuso de 24h — que casa só
+    # pelo texto — precisa saber de que dia era o veredito guardado.
+    ("consultas", "referencia TEXT"),
     # A medida deixa de ser prosa e vira CHAVE (03/09/2026). Medido: a
     # mesma medida da Caixa saiu em 6 redações diferentes, e o mecanismo
     # que existia — embedding a 0,95 — SEPAROU 9 dos 15 pares. Dois
@@ -228,6 +233,59 @@ def _migra(conexao: sqlite3.Connection) -> None:
             conexao.execute(f"ALTER TABLE {tabela} ADD COLUMN {definicao}")
 
 
+_BASE_CONSULTAS = ("id", "afirmacao", "veredito", "justificativa",
+                   "candidatas", "citadas", "veiculos", "modelo", "custo_usd",
+                   "consultado_em")
+
+
+def _migra_veredito(conexao: sqlite3.Connection) -> None:
+    """O CHECK de `consultas.veredito` ganha 'dividido' (08/09/2026).
+
+    SQLite não altera CHECK: a tabela é recriada com o mesmo conteúdo,
+    numa transação — a única migração do projeto que reescreve tabela, e
+    por isso só depois de backup do banco (feito em 08/09/2026). Nada é
+    apagado: todas as colunas, inclusive as acrescentadas por `_migra`,
+    são copiadas com o tipo que têm. Idempotente: com 'dividido' já no
+    CHECK, não faz nada."""
+    linha = conexao.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' "
+        "AND name = 'consultas'").fetchone()
+    if linha is None or "'dividido'" in linha[0]:
+        return
+    info = conexao.execute("PRAGMA table_info(consultas)").fetchall()
+    colunas = [c[1] for c in info]
+    extras = ", ".join(f"{c[1]} {c[2] or 'TEXT'}" for c in info
+                       if c[1] not in _BASE_CONSULTAS)
+    lista = ", ".join(colunas)
+    conexao.execute("BEGIN")
+    try:
+        conexao.execute(f"""
+            CREATE TABLE consultas_nova (
+                id             INTEGER PRIMARY KEY,
+                afirmacao      TEXT    NOT NULL,
+                veredito       TEXT    NOT NULL CHECK (
+                    veredito IN ('confirmado', 'contradito', 'sem_evidencia',
+                                 'dividido')),
+                justificativa  TEXT    NOT NULL,
+                candidatas     INTEGER NOT NULL,
+                citadas        INTEGER NOT NULL,
+                veiculos       INTEGER NOT NULL,
+                modelo         TEXT    NOT NULL,
+                custo_usd      REAL    NOT NULL,
+                consultado_em  TEXT    NOT NULL{', ' + extras if extras else ''}
+            )""")
+        conexao.execute(f"INSERT INTO consultas_nova ({lista}) "
+                        f"SELECT {lista} FROM consultas")
+        conexao.execute("DROP TABLE consultas")
+        conexao.execute("ALTER TABLE consultas_nova RENAME TO consultas")
+        conexao.execute("CREATE INDEX IF NOT EXISTS idx_consultas_data "
+                        "ON consultas (consultado_em)")
+        conexao.execute("COMMIT")
+    except Exception:
+        conexao.execute("ROLLBACK")
+        raise
+
+
 def conecta(caminho: Path) -> sqlite3.Connection:
     """Abre o banco, criando arquivo e esquema se ainda não existirem."""
     caminho.parent.mkdir(parents=True, exist_ok=True)
@@ -241,6 +299,7 @@ def conecta(caminho: Path) -> sqlite3.Connection:
     conexao.row_factory = sqlite3.Row
     conexao.executescript(ESQUEMA)
     _migra(conexao)
+    _migra_veredito(conexao)
     conexao.commit()
     return conexao
 
@@ -387,7 +446,8 @@ def salva_consulta(conexao: sqlite3.Connection, afirmacao: str, veredito: str,
                    veiculos: int, modelo: str, custo: float,
                    prompt_versao: str | None = None,
                    retida: bool = False,
-                   evidencias: list | None = None) -> int:
+                   evidencias: list | None = None,
+                   referencia: str = "") -> int:
     """Grava a consulta e o veredito. Devolve o id.
 
     `retida` distingue 'sem evidência porque o acervo não cobre' de
@@ -398,13 +458,14 @@ def salva_consulta(conexao: sqlite3.Connection, afirmacao: str, veredito: str,
         INSERT INTO consultas (afirmacao, veredito, justificativa, candidatas,
                                citadas, veiculos, modelo, custo_usd,
                                consultado_em, prompt_versao, retida,
-                               evidencias)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               evidencias, referencia)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (afirmacao, veredito, justificativa, candidatas, citadas, veiculos,
          modelo, custo, datetime.now(timezone.utc).isoformat(),
          prompt_versao, int(retida),
-         json.dumps(evidencias or [], ensure_ascii=False)),
+         json.dumps(evidencias or [], ensure_ascii=False),
+         str(referencia or "")[:10]),
     )
     conexao.commit()
     return cursor.lastrowid

@@ -437,3 +437,357 @@ class TestApoioFragil:
         """Um veiculo ja tem o aviso proprio, de antes."""
         from src.check import apoio_fragil
         assert not apoio_fragil([self.LIVE], {"Folha"})
+
+
+def _ev(veiculo, relacao, valor, data_fato, sujeito="Selic", unidade="%",
+        publicada=""):
+    return Achado(f"{sujeito} {relacao} {valor}", 0.0,
+                  {"veiculo": veiculo, "titulo": "t", "url": "u",
+                   "sujeito": sujeito, "relacao": relacao, "objeto": "",
+                   "valor": valor, "unidade": unidade, "data_fato": data_fato,
+                   "origem": "e", "data_publicacao": publicada})
+
+
+class TestPorReferencia:
+    """Regra 8 em código (08/09/2026): estado se julga na data de
+    referência; evento não expira."""
+
+    def test_estado_posterior_a_referencia_sai(self):
+        from src.check import por_referencia
+        ago = _ev("G1", "tem_atributo", 15.0, "2026-08-20")
+        dez = _ev("Folha", "tem_atributo", 14.5, "2026-12-10")
+        assert por_referencia([ago, dez], "2026-10-15T12:00:00Z") == [ago]
+        assert por_referencia([ago, dez], "2027-01-15") == [ago, dez]
+
+    def test_mesmo_veiculo_mesma_medida_fica_o_mais_recente_ate_a_referencia(self):
+        from src.check import por_referencia
+        jun = _ev("G1", "tem_atributo", 14.5, "2026-06-18")
+        ago = _ev("G1", "tem_atributo", 15.0, "2026-08-20")
+        assert por_referencia([jun, ago], "2026-10-15") == [ago]
+        assert por_referencia([ago, jun], "2026-10-15") == [ago]
+        # Veículos diferentes não se substituem: o juiz decide.
+        folha = _ev("Folha", "tem_atributo", 14.5, "2026-06-18")
+        assert por_referencia([folha, ago], "2026-10-15") == [folha, ago]
+
+    def test_sem_data_fica_e_nao_substitui_datado(self):
+        from src.check import por_referencia
+        ago = _ev("G1", "tem_atributo", 15.0, "2026-08-20")
+        sem = _ev("G1", "tem_atributo", 14.25, "")
+        assert por_referencia([sem, ago], "2026-10-15") == [sem, ago]
+
+    def test_evento_nao_expira_nem_e_filtrado(self):
+        from src.check import por_referencia
+        visita = _ev("G1", "participou_de", "", "2026-08-25", sujeito="Ratcliffe")
+        depois = _ev("G1", "participou_de", "", "2026-12-25", sujeito="Ratcliffe")
+        assert por_referencia([visita, depois], "2026-12-01") == [visita, depois]
+
+    def test_empate_no_dia_se_desfaz_pela_hora_de_publicacao(self):
+        from src.check import por_referencia
+        manha = _ev("G1", "tem_atributo", 291, "2026-08-26", sujeito="desaparecidos",
+                    unidade="pessoas", publicada="2026-08-26T10:08:00+00:00")
+        noite = _ev("G1", "tem_atributo", 341, "2026-08-26", sujeito="desaparecidos",
+                    unidade="pessoas", publicada="2026-08-26T22:30:00+00:00")
+        assert por_referencia([manha, noite], "2026-08-27") == [noite]
+        # Sem hora, empate exato: as duas ficam.
+        a = _ev("G1", "tem_atributo", 291, "2026-08-26", sujeito="x")
+        b = _ev("G1", "tem_atributo", 341, "2026-08-26", sujeito="x")
+        assert por_referencia([a, b], "2026-08-27") == [a, b]
+
+    def test_sem_referencia_ou_sem_relacao_nada_muda(self):
+        from src.check import por_referencia
+        dez = _ev("Folha", "tem_atributo", 14.5, "2026-12-10")
+        assert por_referencia([dez], "") == [dez]
+        crua = Achado("x", 0.0, {"veiculo": "G1", "data_fato": "2026-12-10",
+                                 "origem": "e", "titulo": "", "url": ""})
+        assert por_referencia([crua], "2026-10-15") == [crua]
+
+
+class TestJuizComTempo:
+    def test_corpo_leva_data_de_referencia_e_data_de_publicacao(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from src import check
+        visto = {}
+
+        def falso(instrucoes, corpo, schema, modelo=None):
+            visto["corpo"] = corpo
+            return SimpleNamespace(
+                dados=check.Julgamento(alinhamento=[], veredito="confirmado",
+                                       evidencias=[1], justificativa="j"),
+                uso=SimpleNamespace(custo=0.0))
+        monkeypatch.setattr(check.llm, "gera", falso)
+        ev = _ev("G1", "tem_atributo", 15.0, "2026-08-20",
+                 publicada="2026-08-20T09:00:00+00:00")
+        check.julga("A Selic está em 15%", [ev], "2026-10-15T13:00:00+00:00")
+        assert "DATA DE REFERÊNCIA (quando a afirmação foi feita): 2026-10-15" in visto["corpo"]
+        assert "publicada em 2026-08-20" in visto["corpo"]
+        check.julga("x", [ev], "")
+        assert "não informada" in visto["corpo"]
+
+    def test_prompt_e_schema_conhecem_o_tempo_e_o_dividido(self):
+        from src import check
+        assert "A AFIRMAÇÃO TEM DATA" in check.INSTRUCOES_JULGAMENTO
+        assert "EVENTO (algo que ocorreu num instante) não expira" in check.INSTRUCOES_JULGAMENTO
+        assert "DIVIDIDO é o veredito quando VEÍCULOS DIFERENTES" in check.INSTRUCOES_JULGAMENTO
+        assert "FALA CITADA É EVIDÊNCIA DE QUE ALGUÉM DISSE" in check.INSTRUCOES_JULGAMENTO
+        assert "CONSTATAÇÃO DE\n   AUTORIDADE" in check.INSTRUCOES_JULGAMENTO
+        enum = check.Julgamento.model_json_schema()["properties"]["veredito"]["enum"]
+        assert enum == ["confirmado", "contradito", "sem_evidencia", "dividido"]
+        assert check.ROTULOS["dividido"] == "DIVIDIDO"
+
+    def test_verifica_repassa_a_referencia_e_assume_hoje_sem_ela(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from src import check
+        visto = {}
+        afirmacao = SimpleNamespace(sujeito_canonico="selic", relacao=SimpleNamespace(value="tem_atributo"),
+                                    objeto_canonico=None, busca="selic")
+        monkeypatch.setattr(check, "estrutura", lambda t: (afirmacao, SimpleNamespace(custo=0.0)))
+        monkeypatch.setattr(check, "apoios_de", lambda a: (["Selic"], ["15"]))
+        # Datas relativas a hoje: com 2026-12-10 fixo o teste passaria a
+        # falhar sozinho em 11/12/2026, sem ninguém mexer em código.
+        from datetime import datetime, timedelta, timezone
+        hoje_d = datetime.now(timezone.utc).date()
+        antes = (hoje_d - timedelta(days=20)).isoformat()
+        depois = (hoje_d + timedelta(days=90)).isoformat()
+        ago = _ev("G1", "tem_atributo", 15.0, antes)
+        dez = _ev("Folha", "tem_atributo", 14.5, depois)
+        monkeypatch.setattr(check, "recupera", lambda a, acervo, mapa, ref="", sem_tempo=False: [ago, dez])
+
+        def julga(texto, evidencias, referencia=""):
+            visto["evidencias"] = evidencias
+            visto["referencia"] = referencia
+            return (check.Julgamento(alinhamento=[], veredito="confirmado",
+                                     evidencias=[1], justificativa="j"),
+                    SimpleNamespace(custo=0.0))
+        monkeypatch.setattr(check, "julga", julga)
+        futuro = (hoje_d + timedelta(days=200)).isoformat()
+        check.verifica("A Selic está em 15%", acervo=[], referencia=futuro)
+        assert visto["referencia"] == futuro
+        assert visto["evidencias"] == [ago, dez]
+        # Sem referência, a afirmação é de HOJE, e o estado publicado
+        # depois de hoje sai.
+        check.verifica("A Selic está em 15%", acervo=[])
+        assert visto["referencia"][:2] == "20" and visto["evidencias"] == [ago]
+
+
+class TestDividido:
+    def test_dividido_exige_dois_veiculos_citados(self):
+        from src import check
+        j = check.Julgamento(alinhamento=[], veredito="dividido",
+                             evidencias=[1, 2], justificativa="discordam")
+        folha = _ev("Folha", "tem_atributo", 291, "2026-08-26")
+        g1 = _ev("G1", "tem_atributo", 341, "2026-08-26")
+        assert check.aplica_alinhamento(j, [folha, g1], ["x"], []) is j
+        retido = check.aplica_alinhamento(j, [g1, g1], ["x"], [])
+        assert retido.veredito == "sem_evidencia" and retido.retida
+        assert "Divisão retida" in retido.justificativa
+
+
+class TestReusoPorReferencia:
+    """08/09/2026: a janela de 24h casava só pelo texto. Com a data de
+    referência no julgamento, refazer dois dias na mesma sessão reusaria o
+    veredito do primeiro no segundo."""
+
+    def _grava(self, con, texto, veredito, referencia):
+        from src.storage import salva_consulta
+        return salva_consulta(con, texto, veredito, "j", 1, 1, 1, "m", 0.1,
+                              referencia=referencia)
+
+    def test_mesma_afirmacao_em_dias_diferentes_nao_reusa(self, tmp_path):
+        from src import check
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        self._grava(con, "A Selic está em 15%", "confirmado", "2026-08-25")
+        assert check.consulta_recente(
+            con, "A Selic está em 15%", referencia="2026-08-25T10:00:00Z") is not None
+        assert check.consulta_recente(
+            con, "A Selic está em 15%", referencia="2026-08-26T10:00:00Z") is None
+        con.close()
+
+    def test_linha_antiga_sem_referencia_vale_como_hoje(self, tmp_path):
+        from datetime import datetime, timezone
+
+        from src import check
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        con.execute(
+            "INSERT INTO consultas (afirmacao, veredito, justificativa, "
+            "candidatas, citadas, veiculos, modelo, custo_usd, consultado_em) "
+            "VALUES ('x', 'confirmado', 'j', 1, 1, 1, 'm', 0.1, ?)",
+            (datetime.now(timezone.utc).isoformat(),))
+        con.commit()
+        hoje = datetime.now(timezone.utc).isoformat()
+        assert check.consulta_recente(con, "x") is not None
+        assert check.consulta_recente(con, "x", referencia=hoje) is not None
+        assert check.consulta_recente(con, "x", referencia="2026-08-26") is None
+        con.close()
+
+    def test_verifica_grava_a_referencia(self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+
+        from src import check
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        afirmacao = SimpleNamespace(sujeito_canonico="selic",
+                                    relacao=SimpleNamespace(value="tem_atributo"),
+                                    objeto_canonico=None, busca="selic")
+        monkeypatch.setattr(check, "estrutura", lambda t: (afirmacao, SimpleNamespace(custo=0.0)))
+        monkeypatch.setattr(check, "recupera", lambda a, acervo, mapa, ref="", sem_tempo=False: [])
+        check.verifica("A Selic está em 15%", conexao=con, acervo=[],
+                       referencia="2026-08-26T13:00:00Z")
+        assert con.execute("SELECT referencia FROM consultas").fetchone()[0] == "2026-08-26"
+        con.close()
+
+
+class TestBarreiraTemporalRevisada:
+    """Os defeitos que a revisão adversária de 08/09/2026 achou em
+    `por_referencia` — cada um com o par positivo/negativo."""
+
+    def test_objeto_na_chave_dois_fatos_do_mesmo_sujeito_sobrevivem(self):
+        """Sem o objeto, "Esteves integra o BTG" e "Esteves integra o
+        conselho da B3" eram a mesma medida e a mais antiga sumia."""
+        from src.check import por_referencia
+        btg = _ev("G1", "integra", "", "2019-01-01", sujeito="André Esteves",
+                  unidade="")
+        btg.meta["objeto"] = "BTG Pactual"
+        b3 = _ev("G1", "integra", "", "2025-01-01", sujeito="André Esteves",
+                 unidade="")
+        b3.meta["objeto"] = "conselho da B3"
+        assert por_referencia([btg, b3], "2026-09-08") == [btg, b3]
+        # Controle: mesmo objeto e datas diferentes, aí sim é o mesmo
+        # fato e o antigo sai.
+        velho = _ev("G1", "integra", "", "2015-01-01", sujeito="André Esteves",
+                    unidade="")
+        velho.meta["objeto"] = "BTG Pactual"
+        assert por_referencia([velho, btg], "2026-09-08") == [btg]
+
+    def test_empate_no_instante_nao_deixa_o_superado_vivo(self):
+        """O empatado não entrava em `fora` nem virava vigente: quando um
+        terceiro, mais novo, chegava, o empatado ficava."""
+        from src.check import por_referencia
+        jan_a = _ev("G1", "tem_atributo", 15.0, "2026-01-01")
+        jan_b = _ev("G1", "tem_atributo", 15.0, "2026-01-01")
+        fev = _ev("G1", "tem_atributo", 12.0, "2026-02-01")
+        assert por_referencia([jan_a, jan_b, fev], "2026-03-01") == [fev]
+        assert por_referencia([fev, jan_a, jan_b], "2026-03-01") == [fev]
+        # Empatados sem nada mais novo: os dois ficam.
+        assert por_referencia([jan_a, jan_b], "2026-03-01") == [jan_a, jan_b]
+
+    def test_projecao_nao_e_cortada_nem_suprime(self):
+        """`data_fato` posterior é legítimo (projeção, meta, orçamento):
+        no acervo real são 40 triplas de estado, entre elas "salário
+        mínimo deverá subir para R$ 1.741 em 2027", publicada em 25/08."""
+        from src.check import por_referencia
+        projecao = _ev("Agência Brasil", "tem_atributo", 1741, "2027-01-01",
+                       sujeito="salário mínimo", unidade="BRL",
+                       publicada="2026-08-25T10:00:00+00:00")
+        atual = _ev("Agência Brasil", "tem_atributo", 1518, "2026-01-01",
+                    sujeito="salário mínimo", unidade="BRL",
+                    publicada="2026-01-02T10:00:00+00:00")
+        assert por_referencia([atual, projecao], "2026-09-08") == [atual, projecao]
+
+    def test_o_corte_e_pela_materia_publicada_nao_pelo_fato(self):
+        from src.check import por_referencia
+        depois = _ev("Folha", "tem_atributo", 14.5, "2026-12-10",
+                     publicada="2026-12-10T09:00:00+00:00")
+        assert por_referencia([depois], "2026-10-15") == []
+        # Mesma data de fato, mas a matéria saiu ANTES da referência: fica.
+        anunciada = _ev("Folha", "tem_atributo", 14.5, "2026-12-10",
+                        publicada="2026-09-01T09:00:00+00:00")
+        assert por_referencia([anunciada], "2026-10-15") == [anunciada]
+
+    def test_outro_usa_o_tipo_que_o_modelo_deu(self):
+        """`outro` é a válvula de escape do vocabulário (622 triplas): sem
+        o palpite, toda tripla nela passava pela barreira como evento."""
+        from src.check import por_referencia
+        estado = _ev("G1", "outro", 80000, "2026-12-01", sujeito="Bitcoin",
+                     unidade="USD", publicada="2026-12-01T10:00:00+00:00")
+        estado.meta["tipo_relacao"] = "estado"
+        assert por_referencia([estado], "2026-02-01") == []
+        evento = _ev("G1", "outro", "", "2026-12-01", sujeito="Bitcoin",
+                     publicada="2026-12-01T10:00:00+00:00")
+        evento.meta["tipo_relacao"] = "evento"
+        assert por_referencia([evento], "2026-02-01") == [evento]
+
+    def test_com_removidas_devolve_o_que_a_barreira_tirou(self):
+        from src.check import por_referencia
+        dez = _ev("Folha", "tem_atributo", 14.5, "2026-12-10")
+        ficam, fora = por_referencia([dez], "2026-10-15", com_removidas=True)
+        assert (ficam, fora) == ([], [dez])
+
+
+class TestTempoAntesDaEscolha:
+    """A barreira roda dentro de `recupera`, antes da reserva de
+    diversidade: filtrar depois gastava a vaga do segundo veículo numa
+    evidência que ia ser removida em seguida."""
+
+    def test_a_vaga_do_segundo_veiculo_nao_e_gasta_por_evidencia_futura(
+            self, monkeypatch):
+        from types import SimpleNamespace
+
+        from src import check
+        def com_distancia(e, distancia):
+            return Achado(e.texto, distancia, e.meta)
+
+        # A Folha tem duas triplas: a melhor ranqueada é POSTERIOR à
+        # referência, e é ela que a reserva pegaria antes da barreira.
+        futura = com_distancia(
+            _ev("Folha", "tem_atributo", 14.5, "2026-12-10",
+                publicada="2026-12-10T09:00:00+00:00"), 0.10)
+        boa = com_distancia(
+            _ev("Folha", "tem_atributo", 15.0, "2026-08-20",
+                publicada="2026-08-20T09:00:00+00:00"), 0.35)
+        do_g1 = [com_distancia(
+            _ev("G1", "tem_atributo", 15.0, "2026-08-0%d" % d,
+                sujeito="Selic %d" % d,
+                publicada="2026-08-0%dT09:00:00+00:00" % d), 0.11 + d / 100)
+            for d in range(1, 10)]
+        monkeypatch.setattr(check.indice, "busca",
+                            lambda *a, **k: [futura] + do_g1 + [boa])
+        monkeypatch.setattr(check, "_por_chave", lambda *a, **k: [])
+        afirmacao = SimpleNamespace(sujeito_canonico="selic", busca="selic",
+                                    relacao=SimpleNamespace(value="tem_atributo"),
+                                    objeto_canonico=None)
+        saiu = check.recupera(afirmacao, [], None, "2026-10-15")
+        assert "Folha" in {a.meta["veiculo"] for a in saiu}, \
+            "a reserva perdeu a vaga do segundo veículo"
+        assert futura not in saiu
+        # Com `sem_tempo`, o material bruto volta — é o que `verifica` conta.
+        assert futura in check.recupera(afirmacao, [], None, "2026-10-15",
+                                        sem_tempo=True)
+
+
+class TestListaVaziaPorTempo:
+    """Lista esvaziada pela barreira não é "o acervo não cobre": sem a
+    marca `retida`, o boletim pagava extração para cobrir o que já está
+    coberto."""
+
+    def test_grava_retida_e_nao_diz_que_o_acervo_nao_cobre(
+            self, tmp_path, monkeypatch, capsys):
+        from types import SimpleNamespace
+
+        from src import check
+        from src.storage import conecta
+        con = conecta(tmp_path / "t.db")
+        afirmacao = SimpleNamespace(sujeito_canonico="selic", busca="selic",
+                                    relacao=SimpleNamespace(value="tem_atributo"),
+                                    objeto_canonico=None)
+        monkeypatch.setattr(check, "estrutura",
+                            lambda t: (afirmacao, SimpleNamespace(custo=0.0)))
+        dez = _ev("Folha", "tem_atributo", 14.5, "2026-12-10",
+                  publicada="2026-12-10T09:00:00+00:00")
+        monkeypatch.setattr(check, "recupera",
+                            lambda a, acervo, mapa, ref="", sem_tempo=False: [dez])
+        monkeypatch.setattr(check, "julga",
+                            lambda *a, **k: pytest.fail("julgou sem evidência"))
+        check.verifica("A Selic está em 15%", conexao=con, acervo=[],
+                       referencia="2026-10-15T12:00:00Z")
+        saida = capsys.readouterr().out
+        assert "fora da janela temporal" in saida
+        assert "não falam do assunto" not in saida
+        linha = con.execute("SELECT veredito, retida, candidatas FROM "
+                            "consultas").fetchone()
+        assert (linha["veredito"], bool(linha["retida"]),
+                linha["candidatas"]) == ("sem_evidencia", True, 1)
+        con.close()

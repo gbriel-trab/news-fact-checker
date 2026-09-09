@@ -284,8 +284,9 @@ def indexa_afirmacoes(conexao: sqlite3.Connection,
         """
         SELECT t.id, t.sujeito_canonico s, t.relacao r, t.objeto_canonico o,
                t.valor_numero vn, t.valor_unidade vu, t.valor_contexto vc,
-               t.data_fato df, t.origem og, t.sentenca sent,
-               a.id AS artigo_id, a.veiculo, a.titulo, a.url_norm
+               t.data_fato df, t.origem og, t.sentenca sent, t.tipo_relacao tr,
+               a.id AS artigo_id, a.veiculo, a.titulo, a.url_norm,
+               a.data_publicacao dp_art
         FROM triplas t
         JOIN extracoes e ON e.id = t.extracao_id
         JOIN artigos   a ON a.id = e.artigo_id
@@ -333,6 +334,13 @@ def indexa_afirmacoes(conexao: sqlite3.Connection,
             "data_fato": l["df"] or "", "origem": l["og"], "sentenca": l["sent"],
             "valor": l["vn"] if l["vn"] is not None else "",
             "unidade": l["vu"] or "", "contexto": l["vc"] or "",
+            # Lidos por `check.por_referencia`: a data da matéria é o eixo
+            # do corte temporal e o desempate de estado no mesmo dia; o
+            # tipo da relação é o que salva a tripla em `outro` de ser
+            # tratada como evento. Entrada indexada antes de 08/09/2026
+            # não tem nenhum dos dois e cai no comportamento antigo.
+            "data_publicacao": l["dp_art"] or "",
+            "tipo_relacao": l["tr"] or "",
         })
 
     colecao = _colecao("afirmacoes")

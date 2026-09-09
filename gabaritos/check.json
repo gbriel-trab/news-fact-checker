@@ -620,5 +620,613 @@
     "apoios_estruturados": [
       "recuperação extrajudicial"
     ]
+  },
+  {
+    "id": "J19",
+    "tipo": "julgamento",
+    "afirmacao": "A Selic está em 15% ao ano",
+    "referencia": "2026-10-15",
+    "evidencias": [
+      {
+        "texto": "Selic tem atributo 15 % (taxa básica de juros)",
+        "veiculo": "G1",
+        "titulo": "Copom mantém Selic em 15% ao ano",
+        "data_fato": "2026-08-20",
+        "origem": "e",
+        "sujeito": "Selic",
+        "objeto": "",
+        "valor": 15,
+        "relacao": "tem_atributo",
+        "unidade": "%",
+        "data_publicacao": ""
+      },
+      {
+        "texto": "Selic tem atributo 14.5 % (taxa básica de juros)",
+        "veiculo": "Folha",
+        "titulo": "Copom corta Selic para 14,5% na última reunião do ano",
+        "data_fato": "2026-12-10",
+        "origem": "e",
+        "sujeito": "Selic",
+        "objeto": "",
+        "valor": 14.5,
+        "relacao": "tem_atributo",
+        "unidade": "%",
+        "data_publicacao": ""
+      }
+    ],
+    "esperado": "confirmado",
+    "cita_minimo": 1,
+    "nao_cita_veiculo": [
+      "Folha"
+    ],
+    "sujeitos_estruturados": [
+      "Selic"
+    ],
+    "apoios_estruturados": [
+      "15"
+    ],
+    "origem": "sintético (08/09/2026): Selic de agosto contra Selic de dezembro, post de outubro",
+    "nota": "Regra 8 do julgamento + check.por_referencia (08/09/2026): estado se julga na data de referência; evento não expira. Sintético: o acervo ainda não tem tripla da Selic. Dezembro está no futuro do post: sai em código antes do juiz.",
+    "revisado_por": ""
+  },
+  {
+    "id": "J20",
+    "tipo": "julgamento",
+    "afirmacao": "A Selic está em 15% ao ano",
+    "referencia": "2027-01-15",
+    "evidencias": [
+      {
+        "texto": "Selic tem atributo 15 % (taxa básica de juros)",
+        "veiculo": "G1",
+        "titulo": "Copom mantém Selic em 15% ao ano",
+        "data_fato": "2026-08-20",
+        "origem": "e",
+        "sujeito": "Selic",
+        "objeto": "",
+        "valor": 15,
+        "relacao": "tem_atributo",
+        "unidade": "%",
+        "data_publicacao": ""
+      },
+      {
+        "texto": "Selic tem atributo 14.5 % (taxa básica de juros)",
+        "veiculo": "Folha",
+        "titulo": "Copom corta Selic para 14,5% na última reunião do ano",
+        "data_fato": "2026-12-10",
+        "origem": "e",
+        "sujeito": "Selic",
+        "objeto": "",
+        "valor": 14.5,
+        "relacao": "tem_atributo",
+        "unidade": "%",
+        "data_publicacao": ""
+      }
+    ],
+    "esperado": "contradito",
+    "cita_minimo": 1,
+    "nao_cita_veiculo": [
+      "G1"
+    ],
+    "sujeitos_estruturados": [
+      "Selic"
+    ],
+    "apoios_estruturados": [
+      "15"
+    ],
+    "origem": "sintético (08/09/2026): mesma evidência do J19, post de janeiro de 2027",
+    "nota": "Regra 8 do julgamento + check.por_referencia (08/09/2026): estado se julga na data de referência; evento não expira. Sintético: o acervo ainda não tem tripla da Selic. Em janeiro o estado vigente é o de dezembro; agosto foi superado e não sustenta.",
+    "revisado_por": ""
+  },
+  {
+    "id": "J21",
+    "tipo": "julgamento",
+    "afirmacao": "A Selic está em 15% ao ano",
+    "referencia": "2026-10-15",
+    "evidencias": [
+      {
+        "texto": "Selic tem atributo 14.5 % (taxa básica de juros)",
+        "veiculo": "G1",
+        "titulo": "Copom eleva Selic para 14,5%",
+        "data_fato": "2026-06-18",
+        "origem": "e",
+        "sujeito": "Selic",
+        "objeto": "",
+        "valor": 14.5,
+        "relacao": "tem_atributo",
+        "unidade": "%",
+        "data_publicacao": ""
+      },
+      {
+        "texto": "Selic tem atributo 15 % (taxa básica de juros)",
+        "veiculo": "G1",
+        "titulo": "Copom mantém Selic em 15% ao ano",
+        "data_fato": "2026-08-20",
+        "origem": "e",
+        "sujeito": "Selic",
+        "objeto": "",
+        "valor": 15,
+        "relacao": "tem_atributo",
+        "unidade": "%",
+        "data_publicacao": ""
+      }
+    ],
+    "esperado": "confirmado",
+    "cita_minimo": 1,
+    "sujeitos_estruturados": [
+      "Selic"
+    ],
+    "apoios_estruturados": [
+      "15"
+    ],
+    "origem": "sintético (08/09/2026): o mesmo veículo com dois valores, junho e agosto",
+    "nota": "Regra 8 do julgamento + check.por_referencia (08/09/2026): estado se julga na data de referência; evento não expira. Sintético: o acervo ainda não tem tripla da Selic. Mesmo veículo, mesma medida: o código deixa só agosto.",
+    "revisado_por": ""
+  },
+  {
+    "id": "J22",
+    "tipo": "julgamento",
+    "afirmacao": "A Selic está em 15% ao ano",
+    "referencia": "2026-10-15",
+    "evidencias": [
+      {
+        "texto": "Selic tem atributo 14.5 % (taxa básica de juros)",
+        "veiculo": "G1",
+        "titulo": "Copom corta Selic para 14,5%",
+        "data_fato": "2026-09-17",
+        "origem": "e",
+        "sujeito": "Selic",
+        "objeto": "",
+        "valor": 14.5,
+        "relacao": "tem_atributo",
+        "unidade": "%",
+        "data_publicacao": ""
+      }
+    ],
+    "esperado": "contradito",
+    "cita_minimo": 1,
+    "sujeitos_estruturados": [
+      "Selic"
+    ],
+    "apoios_estruturados": [
+      "15"
+    ],
+    "origem": "sintético (08/09/2026): controle — estado datado ANTES da referência que discorda",
+    "nota": "Regra 8 do julgamento + check.por_referencia (08/09/2026): estado se julga na data de referência; evento não expira. Sintético: o acervo ainda não tem tripla da Selic. A regra 8 não pode deixar o juiz tímido: 14,5% em setembro contradiz 15% em outubro.",
+    "revisado_por": ""
+  },
+  {
+    "id": "J23",
+    "tipo": "julgamento",
+    "afirmacao": "A Selic está em 15% ao ano",
+    "referencia": "2026-10-15",
+    "evidencias": [
+      {
+        "texto": "Selic tem atributo 15 % (taxa básica de juros)",
+        "veiculo": "G1",
+        "titulo": "Copom mantém Selic em 15% ao ano",
+        "data_fato": "2026-08-20",
+        "origem": "e",
+        "sujeito": "Selic",
+        "objeto": "",
+        "valor": 15,
+        "relacao": "tem_atributo",
+        "unidade": "%",
+        "data_publicacao": ""
+      },
+      {
+        "texto": "Selic tem atributo 14.25 % (taxa básica de juros)",
+        "veiculo": "CNN Brasil",
+        "titulo": "Entenda como a Selic afeta o seu bolso",
+        "data_fato": "",
+        "origem": "e",
+        "sujeito": "Selic",
+        "objeto": "",
+        "valor": 14.25,
+        "relacao": "tem_atributo",
+        "unidade": "%",
+        "data_publicacao": ""
+      }
+    ],
+    "esperado": "confirmado",
+    "cita_minimo": 1,
+    "nao_cita_veiculo": [
+      "CNN Brasil"
+    ],
+    "sujeitos_estruturados": [
+      "Selic"
+    ],
+    "apoios_estruturados": [
+      "15"
+    ],
+    "origem": "sintético (08/09/2026): estado sem data contra estado datado",
+    "nota": "Regra 8 do julgamento + check.por_referencia (08/09/2026): estado se julga na data de referência; evento não expira. Sintético: o acervo ainda não tem tripla da Selic. Estado sem data não substitui um datado (1.342 triplas do acervo não têm data_fato).",
+    "revisado_por": ""
+  },
+  {
+    "id": "J24",
+    "tipo": "julgamento",
+    "afirmacao": "O diretor da CIA, Ratcliffe, esteve em Moscou",
+    "referencia": "2026-12-01",
+    "evidencias": [
+      {
+        "texto": "John Ratcliffe participou de visita a Moscou",
+        "veiculo": "G1",
+        "titulo": "Em visita surpresa a Moscou, chefe da CIA pediu que Rússia não ataque países da Otan",
+        "data_fato": "2026-08-25",
+        "origem": "e",
+        "sujeito": "John Ratcliffe",
+        "objeto": "visita a Moscou",
+        "valor": "",
+        "relacao": "participou_de",
+        "unidade": "",
+        "data_publicacao": ""
+      }
+    ],
+    "esperado": "confirmado",
+    "cita_minimo": 1,
+    "sujeitos_estruturados": [
+      "Ratcliffe",
+      "visita a Moscou"
+    ],
+    "apoios_estruturados": [
+      "Moscou"
+    ],
+    "origem": "sintético (08/09/2026): evento de agosto, post de dezembro",
+    "nota": "Regra 8 do julgamento + check.por_referencia (08/09/2026): estado se julga na data de referência; evento não expira. Sintético: o acervo ainda não tem tripla da Selic. Evento não expira: três meses depois a visita continua confirmada.",
+    "revisado_por": ""
+  },
+  {
+    "id": "J25",
+    "tipo": "julgamento",
+    "afirmacao": "291 turistas estrangeiros estão desaparecidos no Nepal",
+    "referencia": "2026-08-27",
+    "evidencias": [
+      {
+        "texto": "turistas estrangeiros desaparecidos no Nepal tem atributo 291 pessoas",
+        "veiculo": "Folha",
+        "titulo": "Deslizamentos e enchentes no Nepal e no Tibete matam 162",
+        "data_fato": "2026-08-26",
+        "origem": "e",
+        "sujeito": "turistas estrangeiros desaparecidos no Nepal",
+        "objeto": "",
+        "valor": 291,
+        "relacao": "tem_atributo",
+        "unidade": "pessoas",
+        "data_publicacao": "2026-08-26T11:02:00+00:00"
+      },
+      {
+        "texto": "turistas estrangeiros desaparecidos no Nepal tem atributo 341 pessoas",
+        "veiculo": "G1",
+        "titulo": "Avalanche de lama no Nepal deixa centenas de turistas desaparecidos",
+        "data_fato": "2026-08-26",
+        "origem": "e",
+        "sujeito": "turistas estrangeiros desaparecidos no Nepal",
+        "objeto": "",
+        "valor": 341,
+        "relacao": "tem_atributo",
+        "unidade": "pessoas",
+        "data_publicacao": "2026-08-26T11:02:00+00:00"
+      }
+    ],
+    "esperado": "dividido",
+    "cita_minimo": 2,
+    "sujeitos_estruturados": [
+      "turistas estrangeiros desaparecidos"
+    ],
+    "apoios_estruturados": [
+      "291"
+    ],
+    "origem": "sintético (08/09/2026): Folha 291, G1 341, mesmo dia e mesma hora",
+    "nota": "Veredito `dividido` (regra 9, 08/09/2026): veículos diferentes discordando no mesmo instante. Sintético a partir do caso real de 26/08 (G1 341 contra 291 do post). Um veículo de cada lado já é dividido: o sistema não escolhe lado.",
+    "revisado_por": ""
+  },
+  {
+    "id": "J26",
+    "tipo": "julgamento",
+    "afirmacao": "Cerca de 1.050 pessoas morreram na avalanche do Nepal",
+    "referencia": "2026-09-02",
+    "evidencias": [
+      {
+        "texto": "mortos na avalanche do Nepal tem atributo 626 pessoas",
+        "veiculo": "G1",
+        "titulo": "Número de mortos no Nepal sobe para 626",
+        "data_fato": "2026-08-29",
+        "origem": "e",
+        "sujeito": "mortos na avalanche do Nepal",
+        "objeto": "",
+        "valor": 626,
+        "relacao": "tem_atributo",
+        "unidade": "pessoas",
+        "data_publicacao": ""
+      },
+      {
+        "texto": "mortos na avalanche do Nepal tem atributo 1050 pessoas",
+        "veiculo": "G1",
+        "titulo": "Avalanche no Himalaia: mortes passam de 1.000",
+        "data_fato": "2026-09-01",
+        "origem": "e",
+        "sujeito": "mortos na avalanche do Nepal",
+        "objeto": "",
+        "valor": 1050,
+        "relacao": "tem_atributo",
+        "unidade": "pessoas",
+        "data_publicacao": ""
+      }
+    ],
+    "esperado": "confirmado",
+    "cita_minimo": 1,
+    "sujeitos_estruturados": [
+      "mortos na avalanche do Nepal"
+    ],
+    "apoios_estruturados": [
+      "1.050",
+      "1050"
+    ],
+    "origem": "sintético (08/09/2026): o mesmo veículo, 626 em 29/08 e 1.050 em 01/09",
+    "nota": "Veredito `dividido` (regra 9, 08/09/2026): veículos diferentes discordando no mesmo instante. Sintético a partir do caso real de 26/08 (G1 341 contra 291 do post). Evolução do mesmo veículo não é divisão: o código deixa só o mais recente até a referência. A afirmação usa o número que a evidência traz: com 'mais de 1.000' o freio de alinhamento retinha sempre (o apoio '1000' não reaparece em '1050') e o caso mediria o freio, não a regra 8.",
+    "revisado_por": ""
+  },
+  {
+    "id": "J27",
+    "tipo": "julgamento",
+    "afirmacao": "291 turistas estrangeiros estão desaparecidos no Nepal",
+    "referencia": "2026-08-27",
+    "evidencias": [
+      {
+        "texto": "turistas estrangeiros desaparecidos no Nepal tem atributo 291 pessoas",
+        "veiculo": "G1",
+        "titulo": "Avalanche de lama no Nepal deixa centenas de turistas desaparecidos",
+        "data_fato": "2026-08-26",
+        "origem": "e",
+        "sujeito": "turistas estrangeiros desaparecidos no Nepal",
+        "objeto": "",
+        "valor": 291,
+        "relacao": "tem_atributo",
+        "unidade": "pessoas",
+        "data_publicacao": "2026-08-26T10:08:00+00:00"
+      },
+      {
+        "texto": "turistas estrangeiros desaparecidos no Nepal tem atributo 341 pessoas",
+        "veiculo": "G1",
+        "titulo": "Avalanche de lama no Nepal deixa centenas de turistas desaparecidos",
+        "data_fato": "2026-08-26",
+        "origem": "e",
+        "sujeito": "turistas estrangeiros desaparecidos no Nepal",
+        "objeto": "",
+        "valor": 341,
+        "relacao": "tem_atributo",
+        "unidade": "pessoas",
+        "data_publicacao": "2026-08-26T22:30:00+00:00"
+      }
+    ],
+    "esperado": "contradito",
+    "cita_minimo": 1,
+    "sujeitos_estruturados": [
+      "turistas estrangeiros desaparecidos"
+    ],
+    "apoios_estruturados": [
+      "291"
+    ],
+    "origem": "sintético (08/09/2026): G1 291 de manhã e 341 à noite do mesmo dia",
+    "nota": "Veredito `dividido` (regra 9, 08/09/2026): veículos diferentes discordando no mesmo instante. Sintético a partir do caso real de 26/08 (G1 341 contra 291 do post). Empate no dia se desfaz pela hora de publicação: fica 341, que contradiz 291. A hora vai em `data_publicacao`, que é o campo que `_achados_de` carrega e `por_referencia` lê.",
+    "revisado_por": ""
+  },
+  {
+    "id": "J28",
+    "tipo": "julgamento",
+    "afirmacao": "291 turistas estrangeiros estão desaparecidos no Nepal",
+    "referencia": "2026-08-27",
+    "evidencias": [
+      {
+        "texto": "turistas estrangeiros desaparecidos no Nepal tem atributo 341 pessoas",
+        "veiculo": "G1",
+        "titulo": "Avalanche de lama no Nepal deixa centenas de turistas desaparecidos",
+        "data_fato": "2026-08-26",
+        "origem": "e",
+        "sujeito": "turistas estrangeiros desaparecidos no Nepal",
+        "objeto": "",
+        "valor": 341,
+        "relacao": "tem_atributo",
+        "unidade": "pessoas",
+        "data_publicacao": "2026-08-26T11:02:00+00:00"
+      },
+      {
+        "texto": "turistas estrangeiros desaparecidos no Nepal tem atributo 341 pessoas",
+        "veiculo": "Folha",
+        "titulo": "Deslizamentos e enchentes no Nepal e no Tibete matam 162",
+        "data_fato": "2026-08-26",
+        "origem": "e",
+        "sujeito": "turistas estrangeiros desaparecidos no Nepal",
+        "objeto": "",
+        "valor": 341,
+        "relacao": "tem_atributo",
+        "unidade": "pessoas",
+        "data_publicacao": "2026-08-26T11:02:00+00:00"
+      }
+    ],
+    "esperado": "contradito",
+    "cita_minimo": 2,
+    "sujeitos_estruturados": [
+      "turistas estrangeiros desaparecidos"
+    ],
+    "apoios_estruturados": [
+      "291"
+    ],
+    "origem": "sintético (08/09/2026): dois veículos concordam contra o post",
+    "nota": "Veredito `dividido` (regra 9, 08/09/2026): veículos diferentes discordando no mesmo instante. Sintético a partir do caso real de 26/08 (G1 341 contra 291 do post). Concordância contra a afirmação é contradito, não dividido.",
+    "revisado_por": ""
+  },
+  {
+    "id": "J29",
+    "tipo": "julgamento",
+    "afirmacao": "Cerca de 1.050 pessoas morreram na avalanche do Nepal",
+    "referencia": "2026-09-02",
+    "evidencias": [
+      {
+        "texto": "mortos na avalanche do Nepal tem atributo 1050 pessoas",
+        "veiculo": "G1",
+        "titulo": "Avalanche no Himalaia: mortes passam de 1.000",
+        "data_fato": "2026-09-01",
+        "origem": "e",
+        "sujeito": "mortos na avalanche do Nepal",
+        "objeto": "",
+        "valor": 1050,
+        "relacao": "tem_atributo",
+        "unidade": "pessoas",
+        "data_publicacao": ""
+      },
+      {
+        "texto": "mortos na avalanche do Nepal tem atributo 1052 pessoas",
+        "veiculo": "CNN Brasil",
+        "titulo": "Número de mortos no Nepal chega a 1.052 após enchentes",
+        "data_fato": "2026-09-01",
+        "origem": "e",
+        "sujeito": "mortos na avalanche do Nepal",
+        "objeto": "",
+        "valor": 1052,
+        "relacao": "tem_atributo",
+        "unidade": "pessoas",
+        "data_publicacao": ""
+      }
+    ],
+    "esperado": "confirmado",
+    "cita_minimo": 2,
+    "sujeitos_estruturados": [
+      "mortos na avalanche do Nepal"
+    ],
+    "apoios_estruturados": [
+      "1.050",
+      "1050"
+    ],
+    "origem": "sintético (08/09/2026): 1.050 contra 1.052",
+    "nota": "Veredito `dividido` (regra 9, 08/09/2026): veículos diferentes discordando no mesmo instante. Sintético a partir do caso real de 26/08 (G1 341 contra 291 do post). Arredondamento não divide (regra 4): confirmado por dois veículos.",
+    "revisado_por": ""
+  },
+  {
+    "id": "J30",
+    "tipo": "julgamento",
+    "afirmacao": "O diretor da CIA, Ratcliffe, esteve em Moscou",
+    "referencia": "2026-08-27",
+    "evidencias": [
+      {
+        "texto": "John Ratcliffe participou de visita a Moscou",
+        "veiculo": "G1",
+        "titulo": "Em visita surpresa a Moscou, chefe da CIA pediu que Rússia não ataque países da Otan",
+        "data_fato": "2026-08-25",
+        "origem": "e",
+        "sujeito": "John Ratcliffe",
+        "objeto": "visita a Moscou",
+        "valor": "",
+        "relacao": "participou_de",
+        "unidade": "",
+        "data_publicacao": ""
+      },
+      {
+        "texto": "porta-voz do Kremlin afirmou não houve visita do diretor da CIA a Moscou",
+        "veiculo": "Folha",
+        "titulo": "Kremlin nega visita do chefe da CIA a Moscou",
+        "data_fato": "2026-08-26",
+        "origem": "e",
+        "sujeito": "porta-voz do Kremlin",
+        "objeto": "não houve visita do diretor da CIA a Moscou",
+        "valor": "",
+        "relacao": "afirmou",
+        "unidade": "",
+        "data_publicacao": ""
+      }
+    ],
+    "esperado": "confirmado",
+    "cita_minimo": 1,
+    "nao_cita_veiculo": [
+      "Folha"
+    ],
+    "sujeitos_estruturados": [
+      "Ratcliffe",
+      "visita a Moscou"
+    ],
+    "apoios_estruturados": [
+      "Moscou"
+    ],
+    "origem": "sintético (08/09/2026): G1 relata a visita; Folha relata que o Kremlin negou",
+    "nota": "Regra 10 (08/09/2026), decisão do caso Putin de 07/09: negativa de parte interessada é atribuição, não evidência contrária. Confirmado por um veículo, com a negativa na justificativa. Se a Folha dissesse na própria voz que a visita não ocorreu, seria dividido.",
+    "revisado_por": ""
+  },
+  {
+    "id": "J31",
+    "tipo": "julgamento",
+    "afirmacao": "Um terremoto provocou a avalanche no Nepal",
+    "referencia": "2026-08-27",
+    "evidencias": [
+      {
+        "texto": "ministro das Relações Exteriores do Nepal afirmou um terremoto provocou a avalanche",
+        "veiculo": "G1",
+        "titulo": "Avalanche de lama no Nepal e Tibete: o que se sabe até agora",
+        "data_fato": "2026-08-26",
+        "origem": "e",
+        "sujeito": "ministro das Relações Exteriores do Nepal",
+        "objeto": "um terremoto provocou a avalanche",
+        "valor": "",
+        "relacao": "afirmou",
+        "unidade": "",
+        "data_publicacao": ""
+      },
+      {
+        "texto": "Serviço Geológico dos EUA (USGS) afirmou não houve terremoto antes da avalanche; a própria avalanche gerou o sinal sísmico",
+        "veiculo": "BBC Brasil",
+        "titulo": "Serviço Geológico dos EUA corrige informação e diz que não houve terremoto",
+        "data_fato": "2026-08-26",
+        "origem": "e",
+        "sujeito": "Serviço Geológico dos EUA (USGS)",
+        "objeto": "não houve terremoto antes da avalanche; a própria avalanche gerou o sinal sísmico",
+        "valor": "",
+        "relacao": "afirmou",
+        "unidade": "",
+        "data_publicacao": ""
+      }
+    ],
+    "esperado": "contradito",
+    "cita_minimo": 1,
+    "sujeitos_estruturados": [
+      "terremoto",
+      "avalanche no Nepal"
+    ],
+    "apoios_estruturados": [
+      "avalanche"
+    ],
+    "origem": "sintético (08/09/2026) a partir do caso real do Nepal: o ministro afirmou a causa, o USGS a descartou",
+    "nota": "Regra 10, a outra ponta: constatação de AUTORIDADE sobre o fato (USGS), relatada pelo veículo, é evidência sobre o fato e contradiz. Sem este caso a regra apertaria só para um lado (a lição da regra 8 v2).",
+    "revisado_por": ""
+  },
+  {
+    "id": "J32",
+    "tipo": "julgamento",
+    "afirmacao": "Um terremoto provocou a avalanche no Nepal",
+    "referencia": "2026-08-27",
+    "evidencias": [
+      {
+        "texto": "ministro das Relações Exteriores do Nepal afirmou um terremoto provocou a avalanche",
+        "veiculo": "G1",
+        "data_fato": "2026-08-26",
+        "origem": "e",
+        "sujeito": "ministro das Relações Exteriores do Nepal",
+        "objeto": "um terremoto provocou a avalanche",
+        "valor": "",
+        "relacao": "afirmou",
+        "unidade": "",
+        "data_publicacao": "2026-08-26T14:37:00+00:00",
+        "titulo": "Avalanche de lama no Nepal e Tibete: o que se sabe até agora"
+      }
+    ],
+    "esperado": "sem_evidencia",
+    "sujeitos_estruturados": [
+      "terremoto",
+      "avalanche no Nepal"
+    ],
+    "apoios_estruturados": [
+      "avalanche"
+    ],
+    "origem": "sintético (08/09/2026): o par que fecha regra 7 do separador × regra 10 do juiz",
+    "nota": "Desde a regra 7 nova o separador manda ao check o CONTEÚDO da fala ('um terremoto provocou a avalanche'), e o jeito como o acervo cobre o mesmo enunciado é uma tripla de atribuição. Ela sustenta que o ministro disse, não que ocorreu: sem_evidencia. Sem este caso o par positivo/negativo ficava aberto justamente na direção que custa — 'CONFIRMADO · 1 veículo' para o que ninguém verificou (princípio 5).",
+    "revisado_por": ""
   }
 ]

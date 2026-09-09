@@ -350,10 +350,18 @@ class TestArquivosDeCasos:
             assert c["tipo"] in ("julgamento", "estrutura"), c["id"]
             if c["tipo"] == "julgamento":
                 assert c["esperado"] in ("confirmado", "contradito",
-                                         "sem_evidencia"), c["id"]
+                                         "sem_evidencia", "dividido"), c["id"]
                 assert c["evidencias"], c["id"]
+                # Chave desconhecida dentro de `evidencias` é caso medindo
+                # campo que ninguém lê: o J27 nasceu com "publicada" em vez
+                # de "data_publicacao" e o desempate por hora, que era o que
+                # ele existia para cobrar, nunca rodou (08/09/2026).
+                campos = {"texto", "veiculo", "titulo", "url", "data_fato",
+                          "origem", "sujeito", "objeto", "valor", "relacao",
+                          "unidade", "data_publicacao"}
                 for e in c["evidencias"]:
                     assert {"texto", "veiculo"} <= set(e), c["id"]
+                    assert set(e) <= campos, (c["id"], set(e) - campos)
                 if c["esperado"] == "sem_evidencia":
                     assert not c.get("cita_minimo"), c["id"]
             else:
@@ -408,3 +416,82 @@ class TestArquivosDeCasos:
         monkeypatch.setattr(gabarito, "DIR_GABARITOS", tmp_path)
         with pytest.raises(ValueError, match="repetido"):
             carrega("x")
+
+
+class TestQuandoLiteral:
+    """`quando_literal` mede a data ESCRITA no texto pela mesma função do
+    boletim: true/false/"AAAA-MM-DD"."""
+
+    @staticmethod
+    def _fato(trecho, quando_trecho):
+        from src.premissas import Premissa, Referente
+        return Premissa(tipo="fato", trecho=trecho, afirmacao="x",
+                        quando=Referente(valor="18/08/2026", trecho=quando_trecho))
+
+    def test_true_false_e_data_exata(self):
+        texto = "POST (@x, 08 Sep 2026):\nHoje, 08/09, relembro: em 18/08/2026 a OTAN cercou Kaliningrado."
+        com = [self._fato("em 18/08/2026 a OTAN cercou Kaliningrado", "em 18/08/2026")]
+        sem = [self._fato("a OTAN cercou Kaliningrado", "Hoje, 08/09")]
+        assert confere_premissas({"texto": texto, "quando_literal": True}, com) == []
+        assert confere_premissas({"texto": texto, "quando_literal": "2026-08-18"}, com) == []
+        assert confere_premissas({"texto": texto, "quando_literal": False}, sem) == []
+        assert confere_premissas({"texto": texto, "quando_literal": True}, sem)
+        assert confere_premissas({"texto": texto, "quando_literal": False}, com)
+        assert confere_premissas({"texto": texto, "quando_literal": "2026-09-08"}, com)
+
+    def test_chave_entra_na_assinatura_so_quando_presente(self):
+        base = {"id": "C0", "texto": "x", "fatos": 1}
+        assert assinatura(base) == assinatura(dict(base))
+        assert assinatura(base) != assinatura({**base, "quando_literal": True})
+
+
+class TestFonteMin:
+    def test_conta_premissas_com_fonte_de_qualquer_tipo(self):
+        from types import SimpleNamespace
+        com = SimpleNamespace(tipo="opiniao", texto="a oposição sabota", trecho="a oposição sabota",
+                              afirmacao=None, fonte="o ministro")
+        sem = SimpleNamespace(tipo="fato", texto="x", trecho="x", afirmacao="x", fonte=None)
+        assert confere_premissas({"fonte_min": 1}, [com, sem]) == []
+        assert confere_premissas({"fonte_min": 1}, [sem]) == [
+            "esperava ao menos 1 premissa(s) com `fonte` (fala de terceiro "
+            "desembrulhada), veio 0"]
+
+
+class TestCasoComTempo:
+    def test_nao_cita_veiculo(self):
+        caso = {"esperado": "confirmado", "nao_cita_veiculo": ["Folha"]}
+        assert confere_julgamento(caso, "confirmado", [1], total=2,
+                                  veiculos_citados=["G1"]) == []
+        assert confere_julgamento(caso, "confirmado", [1, 2], total=2,
+                                  veiculos_citados=["G1", "Folha"]) == [
+            "citou evidência de Folha, que o caso proíbe"]
+
+    def test_bateria_aplica_a_selecao_de_producao_e_repassa_a_referencia(
+            self, monkeypatch):
+        from types import SimpleNamespace
+
+        from src import check, gabarito
+        visto = {}
+
+        def julga(texto, achados, referencia=""):
+            visto["n"] = len(achados)
+            visto["referencia"] = referencia
+            return (check.Julgamento(alinhamento=[], veredito="confirmado",
+                                     evidencias=[1], justificativa="j"),
+                    SimpleNamespace(custo=0.01))
+        monkeypatch.setattr(check, "julga", julga)
+        caso = {"id": "J0", "tipo": "julgamento", "afirmacao": "A Selic está em 15%",
+                "esperado": "confirmado", "referencia": "2026-10-15",
+                "sujeitos_estruturados": ["Selic"], "apoios_estruturados": [],
+                "nao_cita_veiculo": ["Folha"],
+                "evidencias": [
+                    {"texto": "Selic 15%", "veiculo": "G1", "sujeito": "Selic",
+                     "relacao": "tem_atributo", "unidade": "%", "valor": 15,
+                     "data_fato": "2026-08-20"},
+                    {"texto": "Selic 14,5%", "veiculo": "Folha", "sujeito": "Selic",
+                     "relacao": "tem_atributo", "unidade": "%", "valor": 14.5,
+                     "data_fato": "2026-12-10"}]}
+        resultados = []
+        gabarito.roda_check([caso], 1, resultados, mostrar=False)
+        assert visto == {"n": 1, "referencia": "2026-10-15"}
+        assert resultados[0].passou

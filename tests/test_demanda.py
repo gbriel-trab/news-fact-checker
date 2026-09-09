@@ -367,7 +367,10 @@ class TestJanelaEmTornoDoPost:
         ini, fim = demanda._janela("")
         agora = datetime.now(timezone.utc).isoformat()
         assert ini < agora < fim
-        assert demanda._janela("ontem à tarde") == demanda._janela("")
+        # Só o DIA: as duas chamadas leem o relógio em instantes
+        # diferentes, e comparar o ISO inteiro falha por microssegundos.
+        relativa = [x[:10] for x in demanda._janela("ontem à tarde")]
+        assert relativa == [x[:10] for x in demanda._janela("")]
 
     def test_materia_de_doze_dias_antes_de_hoje_entra_se_o_post_e_da_epoca(
             self, monkeypatch):
@@ -388,3 +391,17 @@ class TestJanelaEmTornoDoPost:
         # Sem a data do post, "agora" está a semanas de 27/08: fora.
         assert demanda.candidatas(None, "Ratcliffe esteve em Moscou",
                                   "Ratcliffe", "") == []
+
+
+class TestInicioDoAcervo:
+    def test_menor_data_publicada_ou_vazio(self, tmp_path):
+        import sqlite3
+        con = sqlite3.connect(":memory:")
+        con.execute("CREATE TABLE artigos (id INTEGER, data_publicacao TEXT)")
+        assert demanda.inicio_do_acervo(con) == ""
+        con.executemany("INSERT INTO artigos VALUES (?, ?)",
+                        [(1, "2026-08-25T10:00:00+00:00"), (2, None),
+                         (3, "2023-01-08T09:00:46+00:00")])
+        assert demanda.inicio_do_acervo(con).startswith("2023-01-08")
+        sem_tabela = sqlite3.connect(":memory:")
+        assert demanda.inicio_do_acervo(sem_tabela) == ""

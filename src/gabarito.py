@@ -154,7 +154,8 @@ _CHAVES_ASSINADAS = ("texto", "afirmacao", "fatos", "esperado",
 # chave nova na tupla fixa muda o material de TODOS os casos e derruba
 # todas as assinaturas de uma vez — `proibido` nasceu em 06/09/2026 com o
 # gabarito 50/50 assinado, e a tupla fixa não pode mais crescer.
-_CHAVES_OPCIONAIS = ("proibido", "citados_min")
+_CHAVES_OPCIONAIS = ("proibido", "citados_min", "quando_literal",
+                     "fonte_min", "referencia", "nao_cita_veiculo")
 
 
 def assinatura(caso: dict) -> str:
@@ -448,6 +449,36 @@ def confere_premissas(caso: dict, premissas: list) -> list[str]:
         if conferiveis < minimo:
             falhas.append(f"esperava ao menos {minimo} citado(s) conferível(is), "
                           f"veio {conferiveis}")
+    # `fonte_min` (08/09/2026, regra 7 para fala de terceiro): ao menos N
+    # premissas com `fonte` — o conteúdo da fala saiu como premissa e quem
+    # disse ficou no rótulo. Qualquer tipo: opinião dita por terceiro também
+    # leva fonte.
+    minimo_fonte = caso.get("fonte_min")
+    if minimo_fonte is not None:
+        com_fonte = sum(1 for p in premissas if getattr(p, "fonte", None))
+        if com_fonte < minimo_fonte:
+            falhas.append(f"esperava ao menos {minimo_fonte} premissa(s) com "
+                          f"`fonte` (fala de terceiro desembrulhada), veio "
+                          f"{com_fonte}")
+    # `quando_literal` (08/09/2026): a data de ocorrência ESCRITA no texto,
+    # lida pela MESMA função que o boletim usa para centrar a janela da
+    # demanda (`premissas.data_literal`, do trecho, nunca do valor):
+    # true = alguma premissa conferível traz uma; false = nenhuma traz;
+    # "AAAA-MM-DD" = esta data, e não outra do texto.
+    alvo = caso.get("quando_literal")
+    if alvo is not None and caso.get("texto"):
+        from . import premissas as separador
+        datas = {separador.data_literal(p, caso["texto"])
+                 for p in premissas if p.tipo in ("fato", "citado")} - {""}
+        if alvo is True and not datas:
+            falhas.append("esperava premissa conferível com data literal "
+                          "(quando.trecho com dia, mês e ano no texto)")
+        elif alvo is False and datas:
+            falhas.append(f"data literal onde o texto não dá nenhuma: "
+                          f"{sorted(datas)}")
+        elif isinstance(alvo, str) and alvo not in datas:
+            falhas.append(f"esperava data literal {alvo}, veio "
+                          f"{sorted(datas) or 'nenhuma'}")
     for pedaco in caso.get("proibido_em_fato", []):
         for p in fatos:
             if _contem(p.texto, pedaco):
@@ -470,6 +501,9 @@ def _mostra_premissas(premissas: list) -> str:
         quem = getattr(p, "quem", None)
         if quem:
             extra = f"  «quem: {quem.valor}»"
+        fonte = getattr(p, "fonte", None)
+        if fonte:
+            extra += f"  «fonte: {fonte}»"
         roteado = getattr(p, "roteado", None)
         if roteado:
             extra += f"  «roteador: {roteado}»"
@@ -597,7 +631,8 @@ def historico_premissas(casos: list[dict], conexao) -> None:
 # ----------------------------------------------------------------- check
 
 def confere_julgamento(caso: dict, veredito: str, citadas: list[int],
-                       total: int, retida: bool = False) -> list[str]:
+                       total: int, retida: bool = False,
+                       veiculos_citados: list[str] | None = None) -> list[str]:
     """`esperado` é o veredito; `cita_minimo` (opcional) exige que o
     modelo tenha citado ao menos N evidências VÁLIDAS — índice fora da
     lista é descartado em produção (check.verifica) e aqui é falha;
@@ -618,6 +653,12 @@ def confere_julgamento(caso: dict, veredito: str, citadas: list[int],
     minimo = caso.get("cita_minimo", 0)
     if len(validas) < minimo:
         falhas.append(f"citou {len(validas)} evidência(s), mínimo {minimo}")
+    # `nao_cita_veiculo` (08/09/2026): evidência deste veículo NÃO pode
+    # sustentar o veredito — é como um caso prende a regra 8 (estado
+    # posterior à referência, ou superado) e a regra 10 (negativa citada).
+    for veiculo in caso.get("nao_cita_veiculo", []):
+        if veiculo in (veiculos_citados or []):
+            falhas.append(f"citou evidência de {veiculo}, que o caso proíbe")
     return falhas
 
 
@@ -656,7 +697,11 @@ def _achados_de(evidencias: list[dict]) -> list:
               "url": e.get("url", ""), "data_fato": e.get("data_fato", ""),
               "origem": e.get("origem", "e"),
               "sujeito": e.get("sujeito", ""), "objeto": e.get("objeto", ""),
-              "valor": e.get("valor", "")})
+              "valor": e.get("valor", ""),
+              # Lidos por `check.por_referencia` (08/09/2026): sem relação
+              # a evidência conta como evento e não é tocada.
+              "relacao": e.get("relacao", ""), "unidade": e.get("unidade", ""),
+              "data_publicacao": e.get("data_publicacao", "")})
         for e in evidencias]
 
 
@@ -668,8 +713,14 @@ def roda_check(casos: list[dict], vezes: int, resultados: list,
     for caso in casos:
         for vez in range(1, vezes + 1):
             if caso["tipo"] == "julgamento":
-                achados = _achados_de(caso["evidencias"])
-                julgamento, uso = check.julga(caso["afirmacao"], achados)
+                # A MESMA seleção de produção, antes do juiz: estado
+                # vigente na data de referência do caso (sem referência,
+                # nada é filtrado — casos anteriores a 08/09/2026).
+                referencia = caso.get("referencia", "")
+                achados = check.por_referencia(
+                    _achados_de(caso["evidencias"]), referencia)
+                julgamento, uso = check.julga(caso["afirmacao"], achados,
+                                              referencia)
                 # O MESMO freio de produção, com as mesmas entradas: o
                 # sujeito e os apoios vêm do estruturador, e o caso os
                 # carrega fixos (medidos pelo caso E correspondente).
@@ -680,10 +731,10 @@ def roda_check(casos: list[dict], vezes: int, resultados: list,
                     julgamento, citadas,
                     caso.get("sujeitos_estruturados", []),
                     caso.get("apoios_estruturados", []))
-                falhas = confere_julgamento(caso, julgamento.veredito,
-                                            julgamento.evidencias,
-                                            len(caso["evidencias"]),
-                                            julgamento.retida)
+                falhas = confere_julgamento(
+                    caso, julgamento.veredito, julgamento.evidencias,
+                    len(achados), julgamento.retida,
+                    veiculos_citados=[a.meta["veiculo"] for a in citadas])
                 alinhado = " | ".join(
                     f"{a.lacuna}: {a.na_afirmacao or '—'} ⇄ "
                     f"{a.na_evidencia or '—'}"

@@ -288,3 +288,56 @@ class TestCacheNasExtracoes:
         ).fetchone()
         assert linha["e"] == 5000 and linha["r"] is None
         conexao.close()
+
+
+class TestMigracaoDoVeredito:
+    """08/09/2026: `consultas.veredito` ganha 'dividido'. SQLite não altera
+    CHECK, então a tabela é recriada copiando tudo — inclusive as colunas
+    que `_migra` acrescentou."""
+
+    def test_banco_antigo_passa_a_aceitar_dividido_sem_perder_nada(self, tmp_path):
+        import sqlite3
+        caminho = tmp_path / "velho.db"
+        con = sqlite3.connect(caminho)
+        con.executescript("""
+            CREATE TABLE consultas (
+                id INTEGER PRIMARY KEY, afirmacao TEXT NOT NULL,
+                veredito TEXT NOT NULL CHECK (
+                    veredito IN ('confirmado', 'contradito', 'sem_evidencia')),
+                justificativa TEXT NOT NULL, candidatas INTEGER NOT NULL,
+                citadas INTEGER NOT NULL, veiculos INTEGER NOT NULL,
+                modelo TEXT NOT NULL, custo_usd REAL NOT NULL,
+                consultado_em TEXT NOT NULL, prompt_versao TEXT);
+            INSERT INTO consultas VALUES (7, 'a', 'confirmado', 'j', 1, 1, 1,
+                'm', 0.1, '2026-09-01T00:00:00+00:00', 'v1');
+        """)
+        con.commit()
+        con.close()
+        con = conecta(caminho)
+        colunas = [c[1] for c in con.execute("PRAGMA table_info(consultas)")]
+        assert {"prompt_versao", "retida", "evidencias"} <= set(colunas)
+        con.execute(
+            "INSERT INTO consultas (afirmacao, veredito, justificativa, "
+            "candidatas, citadas, veiculos, modelo, custo_usd, consultado_em) "
+            "VALUES ('b', 'dividido', 'j', 2, 2, 2, 'm', 0.1, "
+            "'2026-09-08T00:00:00+00:00')")
+        con.commit()
+        linhas = con.execute("SELECT id, veredito, prompt_versao FROM consultas "
+                             "ORDER BY id").fetchall()
+        assert [tuple(l) for l in linhas] == [(7, "confirmado", "v1"),
+                                              (8, "dividido", None)]
+        assert con.execute("SELECT name FROM sqlite_master WHERE name = "
+                           "'idx_consultas_data'").fetchone()
+        con.close()
+        # Idempotente: reabrir não recria nem duplica.
+        con = conecta(caminho)
+        assert con.execute("SELECT COUNT(*) FROM consultas").fetchone()[0] == 2
+        con.close()
+
+    def test_banco_novo_ja_nasce_com_dividido(self, tmp_path):
+        con = conecta(tmp_path / "novo.db")
+        con.execute(
+            "INSERT INTO consultas (afirmacao, veredito, justificativa, "
+            "candidatas, citadas, veiculos, modelo, custo_usd, consultado_em) "
+            "VALUES ('b', 'dividido', 'j', 2, 2, 2, 'm', 0.1, '2026-09-08')")
+        assert con.execute("SELECT veredito FROM consultas").fetchone()[0] == "dividido"

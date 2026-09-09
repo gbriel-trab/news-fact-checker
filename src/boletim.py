@@ -120,6 +120,30 @@ def _evidencias_gravadas(linha) -> list[tuple[str, str]]:
             for i in itens if isinstance(i, dict) and i.get("url")]
 
 
+def _ancora_da_demanda(p, texto: str, criado_em: str,
+                       acervo_desde: str = "") -> tuple[str, str]:
+    """(instante-centro da janela da demanda, linha de aviso ou "").
+
+    Post de hoje sobre evento datado de semanas atrás ("em 18/08 a OTAN
+    cercou Kaliningrado") procurava matérias em torno de hoje. A data
+    ESCRITA no post, lida do trecho literal (`premissas.data_literal`,
+    nunca do valor resolvido), vira o centro — com dois freios: nunca
+    depois do dia do post (o autor não data o futuro como ocorrido) e
+    nunca antes da matéria mais antiga do acervo. Fora disso, a data do
+    post, como sempre. Quando a âncora é usada, o boletim diz — janela
+    errada tem de ser visível (08/09/2026)."""
+    from . import premissas
+
+    data = premissas.data_literal(p, texto)
+    dia_do_post = str(criado_em or "")[:10]
+    if (not data or (dia_do_post and data > dia_do_post)
+            or (acervo_desde and data < str(acervo_desde)[:10])):
+        return criado_em, ""
+    return (f"{data}T12:00:00+00:00",
+            f"  [DEMANDA] janela em torno de {data[8:10]}/{data[5:7]}/"
+            f"{data[:4]} (data escrita no post)")
+
+
 def _retida(linha) -> bool:
     """A consulta é confirmação retida pelo freio de alinhamento? Linha
     antiga não tem a coluna — vale False, que é o comportamento de antes."""
@@ -172,8 +196,8 @@ def _confere_post(c: "radar.Captura", conexao,
     # resolve referência e ancora referente; a de quem ele cita, não. A
     # premissa sai só do texto do post — o pai da thread, quando está na
     # rodada, é conferido por conta própria (regra 9 do separador).
-    analise, uso = premissas.separa(radar.para_separacao(c),
-                                    conexao=conexao)
+    texto_separado = radar.para_separacao(c)
+    analise, uso = premissas.separa(texto_separado, conexao=conexao)
     partes: list[str] = []
     custo_demanda = 0.0
     dados: dict = {"nao_verificaveis": [], "checks": [], "contextos": [],
@@ -200,8 +224,8 @@ def _confere_post(c: "radar.Captura", conexao,
         # FATO; aqui vem o trecho literal do post — que é o que o leitor
         # quer ver, sem a paráfrase paga que repetia o post. A anotação
         # (motivo do roteador, hipótese não conferida) fica na trilha.
-        partes.append(f"  [{p.tipo}] {p.texto} — nada a conferir"
-                      f"{premissas.anotacao(p)}")
+        partes.append(f"  [{p.tipo}] {premissas.rotulo_fonte(p)}{p.texto} "
+                      f"— nada a conferir{premissas.anotacao(p)}")
         dados["nao_verificaveis"].append((p.tipo, p.texto))
 
         # A TERCEIRA SAÍDA. Só para `nao_verificavel`, e buscando pela
@@ -238,13 +262,16 @@ def _confere_post(c: "radar.Captura", conexao,
             "SELECT COALESCE(MAX(id), 0) FROM consultas").fetchone()[0]
         s = io.StringIO()
         with contextlib.redirect_stdout(s):
+            # A data do post é a referência temporal do juiz (regra 8).
             check.verifica(afirmacao, conexao=conexao,
-                           acervo=estado["acervo"], forcar=forcar)
+                           acervo=estado["acervo"], forcar=forcar,
+                           referencia=c.post.criado_em)
         linha = conexao.execute(
             "SELECT * FROM consultas WHERE id > ? "
             "ORDER BY id DESC LIMIT 1", (marco_f,)).fetchone()
         if linha is None:
-            linha = check.consulta_recente(conexao, afirmacao)
+            linha = check.consulta_recente(conexao, afirmacao,
+                                           referencia=c.post.criado_em)
         return s, linha
 
     for p in fatos + citados:
@@ -271,11 +298,18 @@ def _confere_post(c: "radar.Captura", conexao,
             # atributo aqui não é falha de API, e não pode ser engolido.
             quem = getattr(p, "quem", None)
             referente = quem.valor if quem else ""
+            # A janela da demanda fica em torno da data ESCRITA no post
+            # quando ela existe e faz sentido; senão, da data do post.
+            quando_janela, nota_ancora = _ancora_da_demanda(
+                p, texto_separado, c.post.criado_em,
+                estado.get("acervo_desde", ""))
+            if nota_ancora:
+                partes.append(nota_ancora)
             try:
                 r = demanda.garante(conexao, p.texto,
                                     estado["orcamento"],
                                     referente=referente,
-                                    quando=c.post.criado_em)
+                                    quando=quando_janela)
             except Exception as erro:  # noqa: BLE001 — não derruba o check
                 r = None
                 # Débito pessimista: a falha pode ter vindo DEPOIS de a
@@ -311,7 +345,8 @@ def _confere_post(c: "radar.Captura", conexao,
                 partes.append("  [DEMANDA] teto DIÁRIO de extração atingido "
                               "(extract.TETO_DIARIO_USD) — fica o veredito "
                               "só com o acervo")
-        partes.append(f'  {rotulo_citado}premissa: "{p.texto}"')
+        partes.append(f'  {rotulo_citado}{premissas.rotulo_fonte(p)}'
+                      f'premissa: "{p.texto}"')
         evidencias = _RE_EVIDENCIA.findall(saida.getvalue())
         # Raspar o stdout só funciona quando o check RODOU. No reuso ele
         # imprime "veredito gravado nas últimas 24h" e nada mais, então a
@@ -331,6 +366,7 @@ def _confere_post(c: "radar.Captura", conexao,
             "demanda": nota_demanda,
             "retida": bool(nova is not None and _retida(nova)),
             "citado_de": de_quem if p.tipo == "citado" else None,
+            "fonte": getattr(p, "fonte", None) or None,
         })
         # Sem evidência vira UMA linha: a enumeração do que foi olhado e
         # rejeitado é trilha de auditoria — mora em `consultas` e no
@@ -446,7 +482,8 @@ def monta(dias: int, reenviar: bool = False, *,
         # O estado é da RODADA e mutável de propósito: exceção num post
         # não pode restaurar orçamento de demanda já gasto nem descartar
         # o acervo recarregado (revisão de 01/09/2026).
-        estado = {"acervo": acervo, "orcamento": demanda.TETO_USD}
+        estado = {"acervo": acervo, "orcamento": demanda.TETO_USD,
+                  "acervo_desde": demanda.inicio_do_acervo(conexao)}
         falhas = 0
         # id → número nesta rodada: o contexto de uma thread cujo pai está
         # aqui vira ponteiro ("é o post 2 desta rodada"), no arquivo e no
@@ -523,7 +560,7 @@ _TAG_TIPO = {"opiniao": "OPINIÃO", "previsao": "PREVISÃO",
              "relato": "RELATO", "nao_verificavel": "NÃO VERIFICÁVEL",
              "citado": "CITADO NÃO CONFERÍVEL"}
 _TAG_VEREDITO = {"confirmado": "CONFIRMADO", "contradito": "CONTRADITO",
-                 "sem_evidencia": "SEM EVIDÊNCIA"}
+                 "sem_evidencia": "SEM EVIDÊNCIA", "dividido": "DIVIDIDO"}
 
 
 def _conta_tipos(nao_verificaveis) -> str:
@@ -623,6 +660,10 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
             # nunca se ler como palavra do autor.
             quem_cita = (f"<code>[CITADO de @{_esc(c['citado_de'])}]</code> "
                          if c.get("citado_de") else "")
+            # Conteúdo de fala de terceiro citada no post: o leitor vê de
+            # quem o autor tirou, e o veredito é sobre o conteúdo.
+            if c.get("fonte"):
+                quem_cita += f"<code>[segundo {_esc(c['fonte'])}]</code> "
             if c.get("demanda"):
                 p.append(f"{tag('DEMANDA')} {_esc(c['demanda'])}")
             if c["veredito"] == "sem_evidencia":
@@ -654,8 +695,13 @@ def _formata_telegram(handles: str, hoje: str, estruturados, notas,
 
                 fontes = chr(10).join(
                     _fonte(e) for e in c["evidencias"][:4] if len(e) >= 2)
-                p.append(f"{quem_cita}<b>[{rotulo}]</b> · {c['veiculos']} "
-                         f"veículo(s) — <i>{_esc(c['afirmacao'])}</i>")
+                # Dividido: os veículos discordam, e nenhum lado conta
+                # como confirmação — a contagem diz isso, não "2 veículos".
+                contagem = (f"{c['veiculos']} veículos discordam"
+                            if c["veredito"] == "dividido"
+                            else f"{c['veiculos']} veículo(s)")
+                p.append(f"{quem_cita}<b>[{rotulo}]</b> · {contagem} — "
+                         f"<i>{_esc(c['afirmacao'])}</i>")
                 p.append(f"    {_esc(c['justificativa'])}")
                 if fontes:
                     p.append(f"    {tag('EVIDÊNCIA')} {fontes}")

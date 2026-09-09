@@ -698,3 +698,90 @@ class TestSiglaNaoEEnfase:
                       quem=Referente(valor="TODOS os empresários", trecho="TODOS os empresários"),
                       o_que=Referente(valor="no bolso dele", trecho="no bolso dele"))
         assert roteia(Analise(premissas=[p2]), texto2).premissas[0].tipo == "nao_verificavel"
+
+
+class TestDataLiteral:
+    """08/09/2026: a data ESCRITA no post vira o centro da janela da
+    demanda — lida do trecho literal do `quando`, nunca do valor que o
+    modelo resolveu (barreira em código não lê saída de modelo)."""
+
+    @staticmethod
+    def _p(valor, trecho):
+        from src.premissas import Referente
+        return Premissa(tipo="fato", trecho=trecho, afirmacao="x",
+                        quando=Referente(valor=valor, trecho=trecho))
+
+    def test_numerica_e_por_extenso_em_portugues(self):
+        from src.premissas import data_literal
+        texto = "POST (@x, 08 Sep 2026):\nEm 18/08/2026 a OTAN cercou Kaliningrado."
+        assert data_literal(self._p("18/08/2026", "Em 18/08/2026"), texto) == "2026-08-18"
+        texto = "POST (@x, 08 Sep 2026):\nNo dia 25 de agosto de 2026 o diretor da CIA esteve em Moscou."
+        assert data_literal(self._p("25/08/2026", "25 de agosto de 2026"), texto) == "2026-08-25"
+        texto = "POST (@x, 08 Sep 2026):\nEm 1º de setembro de 2026 a coleta começou."
+        assert data_literal(self._p("01/09/2026", "1º de setembro de 2026"), texto) == "2026-09-01"
+
+    def test_mes_em_ingles_nas_duas_ordens(self):
+        from src.premissas import data_literal
+        texto = "POST (@x, 08 Sep 2026):\nOn August 18, 2026 NATO encircled Kaliningrad."
+        assert data_literal(self._p("18/08/2026", "August 18, 2026"), texto) == "2026-08-18"
+        texto = "POST (@x, 08 Sep 2026):\nOn 18 August 2026 NATO encircled Kaliningrad."
+        assert data_literal(self._p("18/08/2026", "18 August 2026"), texto) == "2026-08-18"
+
+    def test_valor_resolvido_nao_conta_sem_data_escrita(self):
+        from src.premissas import data_literal
+        texto = "POST (@x, 08 Sep 2026):\nOntem a OTAN cercou Kaliningrado."
+        assert data_literal(self._p("07/09/2026", "Ontem"), texto) == ""
+        texto = "POST (@x, 08 Sep 2026):\nSemana passada a OTAN cercou Kaliningrado."
+        assert data_literal(self._p("01/09/2026", "Semana passada"), texto) == ""
+
+    def test_trecho_fora_do_texto_do_autor_nao_ancora(self):
+        from src.premissas import CONTEXTO_ALHEIO, data_literal
+        # O cabeçalho do post e a linha do post citado não são texto do autor.
+        texto = "POST (@x, 08 Sep 2026):\nA OTAN cercou Kaliningrado."
+        assert data_literal(self._p("08/09/2026", "08 Sep 2026"), texto) == ""
+        texto = (f"POST (@x, 08 Sep 2026):\n({CONTEXTO_ALHEIO} em 18/08/2026 "
+                 f"houve exercício)\nConcordo.")
+        assert data_literal(self._p("18/08/2026", "em 18/08/2026"), texto) == ""
+        # Sem cabeçalho nenhum o texto inteiro é do autor.
+        assert data_literal(self._p("18/08/2026", "em 18/08/2026"), "Em 18/08/2026 x.") == "2026-08-18"
+
+    def test_data_invalida_ou_incompleta_vira_vazio(self):
+        from src.premissas import data_literal
+        texto = "POST (@x, 08 Sep 2026):\nEm 31/02/2026 nada; on 08/18/2026 nothing; hoje 08/09."
+        assert data_literal(self._p("31/02/2026", "31/02/2026"), texto) == ""
+        assert data_literal(self._p("18/08/2026", "08/18/2026"), texto) == ""
+        assert data_literal(self._p("08/09/2026", "hoje 08/09"), texto) == ""
+        assert data_literal(Premissa(tipo="fato", trecho="x", afirmacao="x"), texto) == ""
+
+
+class TestFalaDeTerceiro:
+    """Regra 7 estendida (08/09/2026): "o ministro informou que Y" tem Y
+    como premissa e quem disse em `fonte`. O que o gabarito mede é o
+    modelo (C38–C42); aqui é o contrato: campo, prompt e rótulo."""
+
+    def test_campo_fonte_no_schema_e_na_versao(self):
+        assert "fonte" in Premissa.model_json_schema()["properties"]
+        p = Premissa(tipo="fato", trecho="Segundo o IBGE, x caiu 5,8%",
+                     afirmacao="x caiu 5,8%", fonte="o IBGE")
+        assert p.fonte == "o IBGE"
+        assert Premissa(tipo="opiniao", trecho="y").fonte is None
+
+    def test_prompt_pede_conteudo_com_fonte_e_nao_desembrulha_negativa(self):
+        assert "DESEMBRULHE SÓ O QUE SE CONFERE" in INSTRUCOES
+        assert "Y SE CONFERE SOZINHO" in INSTRUCOES
+        # A segunda metade veio da bateria de 08/09: sem ela, "Galípolo
+        # disse que não corta juros" virava previsão e o DIZER, que o
+        # acervo cobre pela relação `afirmou`, deixava de ser conferido
+        # (C7, que passava desde 03/09 e falhou 3/3).
+        assert "Y NÃO SE CONFERE SOZINHO" in INSTRUCOES
+        assert 'A premissa é "X disse Y", tipo `fato`' in INSTRUCOES
+        assert "negativa não\n   desembrulha" in INSTRUCOES
+        assert "Terceiro citado NUNCA é `relato`" in INSTRUCOES
+
+    def test_rotulo_segundo(self):
+        from src.premissas import rotulo_fonte
+        p = Premissa(tipo="fato", trecho="x", afirmacao="x", fonte=" o  Tesouro ")
+        assert rotulo_fonte(p) == "[segundo o Tesouro] "
+        assert rotulo_fonte(Premissa(tipo="fato", trecho="x", afirmacao="x")) == ""
+        from types import SimpleNamespace
+        assert rotulo_fonte(SimpleNamespace(tipo="fato")) == ""

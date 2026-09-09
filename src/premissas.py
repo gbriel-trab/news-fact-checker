@@ -34,7 +34,7 @@ import hashlib
 import json
 import re
 import unicodedata
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -121,6 +121,15 @@ class Premissa(BaseModel):
             "Só em fato e citado: data de OCORRÊNCIA que o texto dá — valor resolvido "
             "('31/08/2026'), trecho literal ('ontem'). Omita se o texto não "
             "dá. A data do post NÃO é data de ocorrência."
+        )
+    )
+    fonte: str | None = Field(
+        None,
+        description=(
+            "Só quando a premissa é o CONTEÚDO de fala de terceiro citada "
+            "no texto ('o ministro informou que…', 'segundo a PF, …'): quem "
+            "disse, como o texto escreve. A premissa é o que foi dito; a "
+            "fonte é rótulo. Omita quando o autor fala por si."
         )
     )
     hipotese: str | None = Field(
@@ -214,6 +223,59 @@ def texto_ancoravel(texto: str) -> str:
     não que o autor o afirmou. Dentro: a linha de contexto do próprio
     autor (`CONTEXTO_PROPRIO`), que é texto dele (regra 9)."""
     return _RE_CONTEXTO_ALHEIO.sub("", _RE_CABECALHO.sub("", texto))
+
+
+_MESES = {
+    "janeiro": 1, "fevereiro": 2, "marco": 3, "abril": 4, "maio": 5,
+    "junho": 6, "julho": 7, "agosto": 8, "setembro": 9, "outubro": 10,
+    "novembro": 11, "dezembro": 12,
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5,
+    "june": 6, "july": 7, "august": 8, "september": 9, "october": 10,
+    "november": 11, "december": 12,
+    "jan": 1, "fev": 2, "feb": 2, "mar": 3, "abr": 4, "apr": 4, "mai": 5,
+    "jun": 6, "jul": 7, "ago": 8, "aug": 8, "set": 9, "sep": 9, "sept": 9,
+    "out": 10, "oct": 10, "nov": 11, "dez": 12, "dec": 12,
+}
+_RE_DATA_NUMERICA = re.compile(r"(?<!\d)(\d{1,2})[/.](\d{1,2})[/.](\d{4})(?!\d)")
+_RE_DATA_EXTENSO = re.compile(
+    r"(?<!\w)(\d{1,2})(?:o)?\s+(?:de\s+)?([a-z]+)\.?\s+(?:de\s+|of\s+)?(\d{4})(?!\d)")
+_RE_DATA_INGLESA = re.compile(
+    r"(?<!\w)([a-z]+)\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})(?!\d)")
+
+
+def data_literal(p: "Premissa", texto: str) -> str:
+    """AAAA-MM-DD ESCRITA NO TEXTO como data de ocorrência da premissa, ou "".
+
+    Lê o `trecho` do `quando`, nunca o `valor`: o valor é resolução do
+    modelo ("ontem" → data), e barreira em código não pode ler saída de
+    modelo (regra de 03/09/2026). O trecho tem de ancorar no texto do
+    autor — a mesma âncora do `quem`, que exclui o cabeçalho "POST (…)" e
+    a linha do post citado — e trazer dia, mês e ano: "18/08/2026",
+    "18 de agosto de 2026", "August 18, 2026". Data relativa ("ontem",
+    "esta quarta") não conta, mesmo que o modelo a tenha resolvido.
+
+    É o centro da janela da demanda (`boletim._ancora_da_demanda`): post
+    de hoje sobre evento datado de semanas atrás procura matérias em
+    torno do evento, não de hoje. Data numérica é lida como dia/mês/ano;
+    "08/18/2026" cai na validação (mês 18) e vira "", e "05/08/2026" num
+    post em inglês é lido como 5 de agosto — limite registrado.
+    """
+    quando = getattr(p, "quando", None)
+    if quando is None or not _ancorado(quando, _normaliza(texto_ancoravel(texto))):
+        return ""
+    trecho = _normaliza(quando.trecho)
+    if (m := _RE_DATA_NUMERICA.search(trecho)):
+        dia, mes, ano = int(m[1]), int(m[2]), int(m[3])
+    elif (m := _RE_DATA_EXTENSO.search(trecho)) and m[2] in _MESES:
+        dia, mes, ano = int(m[1]), _MESES[m[2]], int(m[3])
+    elif (m := _RE_DATA_INGLESA.search(trecho)) and m[1] in _MESES:
+        mes, dia, ano = _MESES[m[1]], int(m[2]), int(m[3])
+    else:
+        return ""
+    try:
+        return date(ano, mes, dia).isoformat()
+    except ValueError:
+        return ""
 
 
 def _ancorado(ref: Referente | None, texto_norm: str) -> bool:
@@ -628,6 +690,33 @@ Regras que importam mais que as outras:
    Texto:   "Eu disse ontem: o IPCA de julho veio em 5,2%."
    fato:    o IPCA de julho de 2026 foi de 5,2%
 
+   FALA DE TERCEIRO DENTRO DO TEXTO: DESEMBRULHE SÓ O QUE SE CONFERE
+   SOZINHO. "O ministro informou que Y", "segundo o IBGE, Y", "Fulano
+   disse que Y". Quem disse vai SEMPRE em `fonte`, como o texto escreve, e
+   o que muda é qual das duas afirmações vira a premissa:
+
+   * Y SE CONFERE SOZINHO (fato do mundo, já ocorrido ou estado presente):
+     a premissa é Y, tipo `fato`, e o `quem` é o sujeito de Y.
+   * Y NÃO SE CONFERE SOZINHO (juízo, recomendação, futuro): o que resta
+     de verificável é O DIZER, e ele basta — o acervo registra declaração,
+     e alegar declaração que não houve é justamente o que precisa ser
+     conferido. A premissa é "X disse Y", tipo `fato`, com `quem` = X.
+
+   Vale só para TERCEIRO. O que o AUTOR diz é provado pelo próprio post
+   (regra 7 acima): "eu acho que o dólar sobe" é opinião dele, não fato de
+   que ele disse. Terceiro citado NUNCA é `relato`. E negativa não
+   desembrulha: "X negou que Y" afirma que X negou, e a premissa é essa —
+   Y não vira fato por ter sido negado.
+
+   Texto:   "Segundo o IBGE, o desemprego caiu para 5,8% no trimestre."
+   fato:    o desemprego caiu para 5,8% no trimestre
+            fonte "o IBGE" · quem {valor "o desemprego", trecho "o desemprego"}
+   Texto:   "O presidente do BC disse que não corta juros em setembro."
+   fato:    o presidente do BC disse que não corta os juros em setembro
+            fonte "o presidente do BC" · quem {valor "o presidente do BC"}
+            (não é previsão: quem prevê é ele, e o que se confere é que
+             disse — o acervo tem a declaração ou não tem)
+
    E COISA DO PRÓPRIO AUTOR NÃO É REFERENTE DO MUNDO. "Minha enquete", "as
    alts que postei", "o post que fiz", "meu operacional": o referente só
    existe em relação ao autor, e a prova de qualquer número sobre ele é o
@@ -749,6 +838,22 @@ Regras que importam mais que as outras:
             {valor "1%", trecho "para 1%"}
    opiniao: Isso muda tudo para o carry trade.
 """
+
+
+def rotulo_fonte(p: Premissa) -> str:
+    """'[segundo X] ' quando a premissa é conteúdo de fala de terceiro
+    citada no texto (regra 7, 08/09/2026); vazio quando o autor fala por
+    si. É rótulo, não parte da afirmação: o check confere o conteúdo, e o
+    leitor vê de quem o autor tirou."""
+    fonte = " ".join(str(getattr(p, "fonte", None) or "").split())
+    # Só onde existe REESCRITA (fato e citado). Em opinião, previsão e
+    # relato o que se exibe é o trecho literal, que já traz o "o ministro
+    # disse que" — o rótulo repetiria a fonte na mesma linha, o eco de
+    # 02/09 voltando por outra porta. O campo continua gravado: é
+    # diagnóstico de que o modelo entendeu o embrulho, como `hipotese`.
+    if not fonte or not getattr(p, "afirmacao", None):
+        return ""
+    return f"[segundo {fonte}] "
 
 
 def anotacao(p: Premissa) -> str:

@@ -159,7 +159,7 @@ async function carregaResumo() {
     $("consultas").innerHTML = r.consultas.length
       ? "<table><tr><th>afirmação</th><th>veredito</th><th class='num'>veíc.</th><th class='num'>US$</th></tr>" +
         r.consultas.map(c => {
-          const cor = {confirmado:"ok", contradito:"warn", sem_evidencia:"dim"}[c.veredito] || "";
+          const cor = {confirmado:"ok", contradito:"warn", sem_evidencia:"dim", dividido:"warn"}[c.veredito] || "";
           return `<tr><td>${esc(c.afirmacao)}</td><td class="${cor}">${esc(c.veredito)}</td>
             <td class="num">${c.veiculos}</td><td class="num">${(c.custo_usd??0).toFixed(3)}</td></tr>`;
         }).join("") + "</table>"

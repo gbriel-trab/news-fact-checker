@@ -51,6 +51,9 @@ data/raw/
 # Acervo SQLite: binário e cresce sem parar. NAO e regeneravel --
 # precisa de backup fora do Git.
 data/*.db
+# Backup antes de migração que reescreve tabela (08/09/2026, o CHECK de
+# `consultas.veredito`): `data/*.db` não cobre subpasta, e são 77 MB.
+data/backups/
 data/*.db-journal
 data/*.db-wal
 # Índice vetorial persistido localmente

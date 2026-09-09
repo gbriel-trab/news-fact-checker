@@ -114,7 +114,7 @@ class Julgamento(BaseModel):
             "preenchidas antes do veredito. Sem contraparte = null."
         )
     )
-    veredito: Literal["confirmado", "contradito", "sem_evidencia"]
+    veredito: Literal["confirmado", "contradito", "sem_evidencia", "dividido"]
     retida: SkipJsonSchema[bool] = False
     """Preenchido em CÓDIGO por `aplica_alinhamento`, nunca pelo modelo, e
     fora do schema enviado: este `sem_evidencia` é confirmação retida — a
@@ -122,7 +122,8 @@ class Julgamento(BaseModel):
     evidencias: list[int] = Field(
         description=(
             "Números das evidências que sustentam o veredito, da lista "
-            "apresentada. Vazio quando o veredito for sem_evidencia."
+            "apresentada. Vazio quando o veredito for sem_evidencia; em "
+            "dividido, as dos DOIS lados."
         )
     )
     justificativa: str = Field(
@@ -156,11 +157,12 @@ INSTRUCOES_JULGAMENTO = """\
 Você julga se uma afirmação é sustentada pela evidência recuperada de um acervo
 de notícias.
 
-Três vereditos possíveis:
+Quatro vereditos possíveis:
 
   confirmado      a evidência afirma o mesmo que a afirmação
   contradito      a evidência afirma algo incompatível com ela
   sem_evidencia   a evidência não trata do que a afirmação diz
+  dividido        veículos diferentes se contradizem sobre o que ela diz
 
 Regras que importam mais que as outras:
 
@@ -194,7 +196,123 @@ Regras que importam mais que as outras:
    referente: "André se reuniu com Trump" é sustentado por "André Esteves
    participou de reunião com Donald Trump" — o QUEM é contido e o O QUÊ
    coincide. Sozinho, sem outra lacuna, o nome parcial não confirma.
+
+8. A AFIRMAÇÃO TEM DATA. A "data de referência" é quando ela foi feita, e o
+   tempo entra no julgamento pelo tipo da evidência:
+   * ESTADO (valor vigente: taxa, preço, contagem, cargo, saldo) se julga NA
+     REFERÊNCIA. Entre evidências de estado sobre a mesma medida, vale a
+     mais recente até a referência — a anterior foi superada, não
+     contradiz. Estado datado DEPOIS da referência não sustenta nem
+     contradiz: quem afirmou não podia saber. Estado SEM data não
+     substitui um datado.
+   * EVENTO (algo que ocorreu num instante) não expira: evidência de evento
+     anterior à referência vale, por mais distante que seja.
+   Afirmação sem data própria descreve o estado NA referência.
+
+9. DIVIDIDO é o veredito quando VEÍCULOS DIFERENTES, falando do mesmo
+   instante e da mesma medida ou do mesmo fato, são incompatíveis entre si
+   — um sustenta a afirmação e outro a contradiz. Cite os dois lados. NÃO é
+   dividido: evolução no tempo (regra 8), arredondamento (regra 4), o mesmo
+   veículo em versões diferentes, nem negativa de parte interessada (regra
+   10). Um veículo de cada lado já é dividido: o sistema não escolhe lado.
+
+10. FALA CITADA É EVIDÊNCIA DE QUE ALGUÉM DISSE. Evidência do tipo "X
+   afirmou / negou que Z" sustenta que X disse Z — não que Z é verdade ou
+   mentira. Negativa de PARTE INTERESSADA (o próprio sujeito da afirmação,
+   o governo, a empresa ou a pessoa envolvida) NÃO contradiz o que outro
+   veículo relata na própria voz: o veredito segue a evidência de fato, e
+   a negativa entra na justificativa. Diferente é a CONSTATAÇÃO DE
+   AUTORIDADE sobre o fato (órgão técnico, tribunal, auditoria, perícia)
+   relatada pelo veículo: isso é evidência sobre o fato, e pode confirmar
+   ou contradizer.
 """
+
+
+ROTULOS = {"confirmado": "CONFIRMADO", "contradito": "CONTRADITO",
+           "sem_evidencia": "SEM EVIDÊNCIA", "dividido": "DIVIDIDO"}
+
+
+def por_referencia(evidencias: list, referencia: str, *,
+                   com_removidas: bool = False):
+    """Estado se julga NA DATA DE REFERÊNCIA (quando a afirmação foi
+    feita) — e isso é código, antes do juiz (08/09/2026).
+
+    Duas peças, e a revisão adversária da mesma noite mostrou que confundi-las
+    apaga evidência boa:
+
+    1. **O que o autor não podia saber sai.** O eixo é QUANDO A MATÉRIA FOI
+       PUBLICADA, não quando o fato ocorre: `data_fato` posterior é
+       legítimo em projeção, meta e orçamento — no acervo real são 40
+       triplas de estado ("salário mínimo deverá subir para R$ 1.741 em
+       2027", publicada em 25/08/2026), e cortar por ela tornava todas
+       invisíveis para qualquer check. Sem data de publicação (entrada
+       indexada antes de 08/09/2026), a data do fato serve de aproximação.
+    2. **Entre estados da MESMA coisa, fica o vigente.** Mesma coisa é
+       (veículo, sujeito canônico, relação, OBJETO canônico, unidade): sem
+       o objeto, "Esteves integra o BTG" e "Esteves integra o conselho da
+       B3" viravam a mesma medida e a mais antiga sumia — dois fatos, não
+       um valor que mudou. Empate no instante mantém TODOS os empatados
+       (o desempate é a hora de publicação da matéria; entrada antiga não
+       a tem, e empate é o caso comum). Projeção (fato posterior à
+       referência) e estado sem data não substituem nem são substituídos:
+       não são "o valor vigente", e o juiz decide com a regra 8.
+
+    Evento nunca é tocado: não expira. Veículos diferentes não se
+    substituem — se discordam no mesmo instante, quem diz é o juiz
+    (`dividido`). A ordem original se mantém, porque o juiz lê em ordem.
+
+    Com `com_removidas`, devolve (ficam, removidas): quem chama precisa
+    saber que a lista esvaziou POR TEMPO, e não porque o acervo não
+    cobre — a diferença decide se a demanda paga extração.
+    """
+    ref = str(referencia or "")[:10]
+    if not ref:
+        return (list(evidencias), []) if com_removidas else list(evidencias)
+
+    def data_do_fato(e) -> str:
+        return str(e.meta.get("data_fato") or "")[:10]
+
+    def publicada(e) -> str:
+        return str(e.meta.get("data_publicacao") or "")
+
+    def conhecida_em(e) -> str:
+        """Quando isto ficou conhecido: a matéria, senão o fato."""
+        return publicada(e)[:10] or data_do_fato(e)
+
+    fora: set[int] = set()
+    vigente: dict[tuple, tuple[list[int], tuple[str, str]]] = {}
+    for i, e in enumerate(evidencias):
+        m = e.meta
+        tipo = vocabulario.tipo_de(str(m.get("relacao") or "outro"),
+                                   str(m.get("tipo_relacao") or "") or None)
+        if tipo != "estado":
+            continue
+        if conhecida_em(e) > ref:
+            fora.add(i)
+            continue
+        fato = data_do_fato(e)
+        if not fato or fato > ref:
+            continue
+        chave = (str(m.get("veiculo") or "").casefold(),
+                 chave_canonica(str(m.get("sujeito") or "")),
+                 str(m.get("relacao") or ""),
+                 chave_canonica(str(m.get("objeto") or "")),
+                 str(m.get("unidade") or "").casefold())
+        instante = (fato, publicada(e))
+        atual = vigente.get(chave)
+        if atual is None:
+            vigente[chave] = ([i], instante)
+        elif instante > atual[1]:
+            fora.update(atual[0])
+            vigente[chave] = ([i], instante)
+        elif instante == atual[1]:
+            atual[0].append(i)
+        else:
+            fora.add(i)
+    ficam = [e for i, e in enumerate(evidencias) if i not in fora]
+    if not com_removidas:
+        return ficam
+    return ficam, [e for i, e in enumerate(evidencias) if i in fora]
 
 
 def versao_prompt() -> str:
@@ -346,6 +464,19 @@ def aplica_alinhamento(julgamento: Julgamento, citadas: list,
     não cobre", e quem consome (boletim, demanda) precisa distinguir —
     senão a retenção dispara extração paga para cobrir o que já está
     coberto."""
+    if julgamento.veredito == "dividido":
+        # Dividido exige veículos DIFERENTES de cada lado (regra 9): com
+        # um só citado, o juiz chamou de divisão o que é uma redação —
+        # fica retido, com a evidência visível, e sem disparar demanda.
+        veiculos = {str(e.meta.get("veiculo") or "").casefold() for e in citadas}
+        if len(veiculos) >= 2:
+            return julgamento
+        return julgamento.model_copy(update={
+            "veredito": "sem_evidencia", "retida": True,
+            "justificativa": (f"Divisão retida: {len(veiculos)} veículo "
+                              f"citado, e dividido exige veículos diferentes "
+                              f"de cada lado. O juiz havia escrito: "
+                              f"{julgamento.justificativa}")})
     if julgamento.veredito != "confirmado":
         return julgamento
     if not any(_identifica(s) for s in sujeitos):
@@ -457,6 +588,12 @@ def _por_chave(afirmacao: AfirmacaoRecebida,
                     "origem": a.origem, "sentenca": -1, "rota": "chave",
                     "valor": a.valor if a.valor is not None else "",
                     "unidade": a.unidade or "", "contexto": a.contexto or "",
+                    # Lidos por `por_referencia`: a data da MATÉRIA (o eixo
+                    # do corte) e o tipo da relação, que só o modelo sabe
+                    # quando a relação é `outro` — sem ele, 622 triplas em
+                    # `outro` passavam pela barreira como se fossem evento.
+                    "data_publicacao": a.data_publicacao or "",
+                    "tipo_relacao": a.tipo_relacao or "",
                 },
             ))
     return achados
@@ -464,7 +601,9 @@ def _por_chave(afirmacao: AfirmacaoRecebida,
 
 def recupera(afirmacao: AfirmacaoRecebida,
              acervo: list[grafo.Afirmacao] | None = None,
-             mapa: dict[str, str] | None = None) -> list[indice.Achado]:
+             mapa: dict[str, str] | None = None,
+             referencia: str = "",
+             sem_tempo: bool = False) -> list[indice.Achado]:
     """Junta candidatas por proximidade semântica e por identidade exata.
 
     As duas rotas são complementares e cobrem falhas uma da outra: a vetorial
@@ -476,7 +615,16 @@ def recupera(afirmacao: AfirmacaoRecebida,
     ordem, e porque um teto de candidatas cortaria o fim — que era exatamente
     onde a evidência certa estava caindo.
     """
-    achados = _por_chave(afirmacao, acervo or [], mapa)
+    # O TEMPO entra antes da escolha (08/09/2026). Filtrar depois gastava
+    # a reserva de diversidade numa evidência que a barreira ia remover em
+    # seguida: a vaga do segundo veículo não voltava ao ranking e a lista
+    # chegava ao juiz com um veículo só — o oposto do que a reserva existe
+    # para garantir, e do critério de duas fontes do AC1. `sem_tempo`
+    # devolve o material bruto, para quem precisa CONTAR o que a barreira
+    # tira (`verifica`).
+    janela = "" if sem_tempo else referencia
+    achados = por_referencia(_por_chave(afirmacao, acervo or [], mapa),
+                             janela)
     vistos = {_chave_candidata(a) for a in achados}
 
     # Busca FATOR_BUSCA× e escolhe com teto por veículo: sem isso um
@@ -484,8 +632,9 @@ def recupera(afirmacao: AfirmacaoRecebida,
     # (medido em 03/09/2026: G1 em 7 das 10 para a reunião Esteves–Trump)
     # e o segundo veículo, que é o que corrobora, fica de fora.
     candidatas = []
-    for a in indice.busca("afirmacoes", afirmacao.busca,
-                          QUANTAS_CANDIDATAS * FATOR_BUSCA):
+    for a in por_referencia(
+            indice.busca("afirmacoes", afirmacao.busca,
+                         QUANTAS_CANDIDATAS * FATOR_BUSCA), janela):
         chave = _chave_candidata(a)
         if a.proximidade >= MIN_PROXIMIDADE and chave not in vistos:
             a.meta.setdefault("rota", "semantica")
@@ -572,18 +721,25 @@ def _origem_legivel(valor: str) -> str:
     return _ORIGEM_LEGIVEL.get(valor, valor)
 
 
-def julga(texto: str, evidencias: list[indice.Achado]) -> tuple[Julgamento, llm.Uso]:
+def julga(texto: str, evidencias: list[indice.Achado],
+          referencia: str = "") -> tuple[Julgamento, llm.Uso]:
     linhas = []
     for i, e in enumerate(evidencias, 1):
         m = e.meta
+        publicada = str(m.get("data_publicacao") or "")[:10]
         linhas.append(
             f"[{i}] {e.texto}\n"
             f"    veículo: {m['veiculo']} · data do fato: {m['data_fato'] or 'não informada'}"
-            f" · afirmação {_origem_legivel(m['origem'])}\n"
+            + (f" · publicada em {publicada}" if publicada else "")
+            + f" · afirmação {_origem_legivel(m['origem'])}\n"
             f"    matéria: {m['titulo']}"
         )
+    # A data de referência é a do POST (fato da API), nunca resolvida
+    # pelo modelo — regra 8 do julgamento.
+    quando = str(referencia or "")[:10] or "não informada"
     corpo = (
-        f"AFIRMAÇÃO A VERIFICAR:\n{texto}\n\n"
+        f"AFIRMAÇÃO A VERIFICAR:\n{texto}\n"
+        f"DATA DE REFERÊNCIA (quando a afirmação foi feita): {quando}\n\n"
         f"EVIDÊNCIA RECUPERADA DO ACERVO:\n" + "\n".join(linhas)
     )
     r = llm.gera(INSTRUCOES_JULGAMENTO, corpo, Julgamento,
@@ -603,34 +759,56 @@ O boletim ignora a janela quando re-verifica (`forcar=True`).
 
 
 def consulta_recente(conexao, texto: str,
-                     horas: int = HORAS_REUSO):
+                     horas: int = HORAS_REUSO,
+                     referencia: str = ""):
     """Veredito já gravado para esta afirmação dentro da janela, ou None.
 
     O casamento é por texto normalizado (minúsculas, espaços colapsados) em
     Python — o lower() do SQLite ignora acento e mentiria em "É falso que".
+
+    E pela DATA DE REFERÊNCIA (08/09/2026): desde que o dia da afirmação
+    entra no julgamento (regra 8), o mesmo texto pode ter vereditos
+    diferentes em dias diferentes — refazer 25/08 e 26/08 na mesma sessão,
+    com a mesma premissa citada, reusaria o veredito do primeiro dia no
+    segundo. Linha antiga não tem a coluna e vale como veredito de HOJE,
+    que é o que ela era: só reusa quando a referência atual também é hoje.
     """
     if conexao is None:
         return None
     alvo = " ".join(texto.lower().split())
+    dia = (str(referencia or "")[:10]
+           or datetime.now(timezone.utc).date().isoformat())
+    hoje = datetime.now(timezone.utc).date().isoformat()
     limite = (datetime.now(timezone.utc)
               - timedelta(hours=horas)).isoformat()
     for linha in conexao.execute(
             "SELECT * FROM consultas WHERE consultado_em >= ? "
             "ORDER BY id DESC", (limite,)):
-        if " ".join(linha["afirmacao"].lower().split()) == alvo:
+        if " ".join(linha["afirmacao"].lower().split()) != alvo:
+            continue
+        try:
+            gravada = str(linha["referencia"] or "")[:10]
+        except (IndexError, KeyError):
+            gravada = ""
+        if gravada == dia or (not gravada and dia == hoje):
             return linha
     return None
 
 
 def verifica(texto: str, verboso: bool = False,
-             conexao=None, acervo=None, forcar: bool = False) -> None:
+             conexao=None, acervo=None, forcar: bool = False,
+             referencia: str = "") -> None:
+    """`referencia` é QUANDO a afirmação foi feita (ISO; a data do post no
+    boletim). Sem ela, agora: a afirmação avulsa é de hoje. Entra na
+    seleção de estado vigente (`por_referencia`) e no prompt do juiz."""
     print(f'AFIRMAÇÃO\n  "{texto}"\n')
+    referencia = referencia or datetime.now(timezone.utc).isoformat()
 
     if not forcar:
-        anterior = consulta_recente(conexao, texto)
+        anterior = consulta_recente(conexao, texto, referencia=referencia)
         if anterior is not None:
-            rotulo = {"confirmado": "CONFIRMADO", "contradito": "CONTRADITO",
-                      "sem_evidencia": "SEM EVIDÊNCIA"}[anterior["veredito"]]
+            rotulo = ROTULOS.get(anterior["veredito"],
+                                 str(anterior["veredito"]).upper())
             quando = anterior["consultado_em"][:16].replace("T", " ")
             print(f"VEREDITO (reusado — verificada em {quando} UTC)\n"
                   f"  {rotulo} · {anterior['veiculos']} veículo(s)\n")
@@ -652,7 +830,10 @@ def verifica(texto: str, verboso: bool = False,
         mapa = apelidos.mapa_vivo(conexao) if conexao is not None else {}
     except Exception:  # noqa: BLE001
         mapa = {}
-    evidencias = recupera(afirmacao, acervo, mapa)
+    brutas = recupera(afirmacao, acervo, mapa, referencia, sem_tempo=True)
+    evidencias, fora_do_tempo = por_referencia(brutas, referencia,
+                                               com_removidas=True)
+    removidas_por_tempo = len(fora_do_tempo)
 
     if verboso and evidencias:
         # As candidatas que o modelo VAI ver, antes de ele escolher.
@@ -668,6 +849,29 @@ def verifica(texto: str, verboso: bool = False,
             print(f"          [{e.meta['veiculo']}] {e.meta['titulo'][:60]}")
         print()
 
+    if not evidencias and removidas_por_tempo:
+        # A barreira temporal tirou TUDO: o acervo trata do assunto, e o
+        # que falta é matéria da época. Dizer "os veículos não falam do
+        # assunto" seria falso — e, sem a marca `retida`, o boletim
+        # dispararia extração paga para cobrir o que já está coberto (o
+        # gasto que a marca existe para evitar desde 03/09).
+        print("VEREDITO\n  SEM EVIDÊNCIA (evidência fora da janela "
+              f"temporal) · {removidas_por_tempo} candidata(s) "
+              "descartada(s)\n")
+        print("  O acervo trata do assunto, mas o que ele tem é posterior "
+              "à data da afirmação\n  (ou foi superado por valor mais "
+              "recente do mesmo veículo).")
+        print(f"\n  custo: US$ {uso1.custo:.4f}")
+        if conexao is not None:
+            salva_consulta(conexao, texto, "sem_evidencia",
+                           f"{removidas_por_tempo} candidata(s) fora da "
+                           "janela temporal da referência; nenhuma restou "
+                           "para julgar.",
+                           removidas_por_tempo, 0, 0, llm.VERIFICACAO.id,
+                           uso1.custo, prompt_versao=PROMPT_VERSAO,
+                           retida=True, referencia=referencia)
+        return
+
     if not evidencias:
         print("VEREDITO\n  SEM EVIDÊNCIA · 0 veículos\n")
         print("  Nada no acervo trata desta afirmação. Isso não significa que "
@@ -681,10 +885,11 @@ def verifica(texto: str, verboso: bool = False,
             salva_consulta(conexao, texto, "sem_evidencia",
                            "Nenhuma candidata acima do piso de proximidade.",
                            0, 0, 0, llm.VERIFICACAO.id, uso1.custo,
-                           prompt_versao=PROMPT_VERSAO)
+                           prompt_versao=PROMPT_VERSAO,
+                           referencia=referencia)
         return
 
-    julgamento, uso2 = julga(texto, evidencias)
+    julgamento, uso2 = julga(texto, evidencias, referencia)
     citadas = [evidencias[i - 1] for i in julgamento.evidencias
                if 1 <= i <= len(evidencias)]
     # O sujeito e os apoios vêm do ESTRUTURADOR e a conferência é contra o
@@ -694,8 +899,7 @@ def verifica(texto: str, verboso: bool = False,
                                     *apoios_de(afirmacao))
     veiculos = {e.meta["veiculo"] for e in citadas}
 
-    rotulo = {"confirmado": "CONFIRMADO", "contradito": "CONTRADITO",
-              "sem_evidencia": "SEM EVIDÊNCIA"}[julgamento.veredito]
+    rotulo = ROTULOS[julgamento.veredito]
     if julgamento.retida:
         # A evidência continua na tela, rotulada: o veredito que mais
         # precisa de auditoria não pode ser o que menos mostra.
@@ -734,7 +938,10 @@ def verifica(texto: str, verboso: bool = False,
     # Separado das fontes de propósito: é o sistema falando, não o veículo.
     print(f"POR QUE\n  {julgamento.justificativa}")
 
-    if len(veiculos) == 1 and julgamento.veredito != "sem_evidencia":
+    if julgamento.veredito == "dividido":
+        print("\n  ATENÇÃO: os veículos discordam. Nenhum lado conta como "
+              "confirmação.")
+    elif len(veiculos) == 1 and julgamento.veredito != "sem_evidencia":
         print("\n  ATENÇÃO: um veículo só. Sem confirmação independente.")
     elif apoio_fragil(_fontes_citadas(citadas), veiculos):
         print("\n  ATENCAO: dois veiculos, e um deles e pagina "
@@ -749,6 +956,7 @@ def verifica(texto: str, verboso: bool = False,
                        len(citadas), len(veiculos), llm.VERIFICACAO.id,
                        uso1.custo + uso2.custo, prompt_versao=PROMPT_VERSAO,
                        retida=julgamento.retida,
+                       referencia=referencia,
                        # (veículo, título, url) do que o JUIZ citou — não
                        # do que foi recuperado. É o que o princípio 2
                        # exige poder mostrar de novo depois.

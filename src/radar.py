@@ -607,7 +607,8 @@ def _confere(c: Captura, custo_busca: float) -> None:
     if resto:
         print("NÃO VERIFICÁVEL — e não deve ser")
         for p in resto:
-            print(f"  [{p.tipo}] {p.texto}{premissas.anotacao(p)}")
+            print(f"  [{p.tipo}] {premissas.rotulo_fonte(p)}{p.texto}"
+                  f"{premissas.anotacao(p)}")
         print()
 
     if not fatos:
@@ -615,8 +616,10 @@ def _confere(c: Captura, custo_busca: float) -> None:
     else:
         for i, p in enumerate(fatos, 1):
             rotulo = f"[CITADO de @{de_quem}] " if p.tipo == "citado" else ""
+            rotulo += premissas.rotulo_fonte(p)
             print(f"[{i}/{len(fatos)}] {rotulo}no post: \"{p.trecho[:110]}\"")
-            check.verifica(p.texto, conexao=conexao, acervo=acervo)
+            check.verifica(p.texto, conexao=conexao, acervo=acervo,
+                           referencia=c.post.criado_em)
     conexao.close()
 
     print("\nIsto confere premissas contra o acervo, não avalia o autor.")
